@@ -790,6 +790,35 @@ pub fn registered_functions() -> Vec<String> {
     crate::core::sql::udf::registered_function_names()
 }
 
+/// Counters from the candidate rerank read path.
+///
+/// `rows_selected` is what the candidate bitmap asked the reader for and
+/// `rows_decoded` is what it emitted. A sparse read that skips pages keeps the
+/// two close; a read that materialises whole row groups and filters after the
+/// fact shows `rows_decoded` near `rows_requested`. The benchmark harness reads
+/// this after resetting it, so the I/O claim in a result is measured rather than
+/// asserted.
+#[pyfunction]
+pub fn reader_stats(py: Python<'_>) -> PyResult<Py<PyAny>> {
+    let counters = crate::core::reader::stats::ReaderCounters::load();
+    let out = PyDict::new(py);
+    out.set_item("reads", counters.reads)?;
+    out.set_item("rows_requested", counters.rows_requested)?;
+    out.set_item("rows_selected", counters.rows_selected)?;
+    out.set_item("rows_decoded", counters.rows_decoded)?;
+    out.set_item("row_groups_read", counters.row_groups_read)?;
+    out.set_item("row_groups_total", counters.row_groups_total)?;
+    out.set_item("decoded_fraction", counters.decoded_fraction())?;
+    out.set_item("skip_enabled", crate::core::reader::stats::skip_enabled())?;
+    Ok(out.into())
+}
+
+/// Zero the rerank path counters. Called before each measured pass.
+#[pyfunction]
+pub fn reset_reader_stats() {
+    crate::core::reader::stats::ReaderCounters::reset();
+}
+
 /// Names of every graph traversal **table function** the engine registers
 /// (`graph_neighbors`, `graph_shortest_path`, …). The counterpart to
 /// [`registered_functions`] for the `FROM graph_*(...)` surface.

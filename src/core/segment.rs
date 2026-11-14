@@ -873,6 +873,11 @@ impl HybridSegmentWriter {
             // Page stats are a superset of chunk stats, so `merge_parquet_stats`
             // still sees the chunk min/max it needs.
             .set_statistics_enabled(parquet::file::properties::EnabledStatistics::Page)
+            // Row group size is a variable in the rerank ablation: a 128 MB
+            // group changes how much a single candidate costs when the reader
+            // cannot skip. The default matches arrow-rs, so an unset
+            // environment produces byte identical output to before.
+            .set_max_row_group_size(row_group_rows())
             // 32 KB pages hold 64 rows at 128 dims x f32. Small enough that a
             // 40-candidate rerank touches ~40 pages (~1.3 MB) instead of a whole
             // row group, large enough that the page index stays ~3 MB/segment
@@ -1968,6 +1973,20 @@ fn data_page_size_limit() -> usize {
         .and_then(|raw| raw.trim().parse::<usize>().ok())
         .filter(|bytes| *bytes >= 1024)
         .unwrap_or(32 * 1024)
+}
+
+/// Row group size in rows, overridable for the rerank I/O ablation.
+///
+/// The unit is rows rather than bytes because `WriterProperties` counts rows,
+/// and the row width depends on the schema. A 128 dim uint8 vector plus an i64
+/// id is 136 bytes, so 3_942_449 rows lands near 512 MB; the ablation script
+/// converts from bytes when it needs a specific size.
+fn row_group_rows() -> usize {
+    std::env::var("BSDB_PARQUET_ROW_GROUP_ROWS")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .filter(|rows| *rows >= 1_000)
+        .unwrap_or(1_048_576)
 }
 
 #[cfg(test)]

@@ -221,6 +221,7 @@ pub(crate) fn check_is_in(
 pub mod delete;
 pub mod filter;
 pub mod scan;
+pub mod stats;
 
 #[derive(Clone)]
 pub struct EqualityDelete {

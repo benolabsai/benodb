@@ -11,11 +11,13 @@ use parquet::arrow::arrow_reader::{
 };
 use parquet::arrow::async_reader::{ParquetObjectReader, ParquetRecordBatchStreamBuilder};
 use parquet::arrow::ProjectionMask;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use anyhow::Result;
 use roaring::RoaringBitmap;
 
+use super::stats;
 use super::*;
 
 impl HybridReader {
@@ -843,9 +845,28 @@ impl HybridReader {
         }
 
         // Construct RowSelection from Bitmap, skipping untouched row groups.
+        //
+        // The counters below are what turn the I/O claim into a measurement:
+        // ROWS_SELECTED is what the bitmap asked for, ROWS_DECODED is what the
+        // reader emitted. A reader that filters after reading shows the two
+        // equal to the file size, and the paper would have to say so.
+        let total_rows = builder.metadata().file_metadata().num_rows() as u64;
         let groups = Self::row_groups_covering(builder.metadata(), matching_bitmap);
         let num_groups = builder.metadata().num_row_groups();
-        if !groups.is_empty() && groups.len() < num_groups {
+        stats::READS.fetch_add(1, Ordering::Relaxed);
+        stats::ROWS_REQUESTED.fetch_add(total_rows, Ordering::Relaxed);
+        stats::ROWS_SELECTED.fetch_add(matching_bitmap.len(), Ordering::Relaxed);
+        stats::ROW_GROUPS_TOTAL.fetch_add(num_groups as u64, Ordering::Relaxed);
+        if !stats::skip_enabled() {
+            // Control arm for the rerank ablation: read every row group end to
+            // end and discard the rows downstream. Same output, same projection,
+            // no skip, so the difference between arms is the skip alone.
+            stats::ROW_GROUPS_READ.fetch_add(num_groups as u64, Ordering::Relaxed);
+            builder = builder.with_row_selection(RowSelection::from(vec![RowSelector::select(
+                total_rows as usize,
+            )]));
+        } else if !groups.is_empty() && groups.len() < num_groups {
+            stats::ROW_GROUPS_READ.fetch_add(groups.len() as u64, Ordering::Relaxed);
             let mut shifted = RoaringBitmap::new();
             let mut base: u32 = 0;
             for (rg, group_start) in &groups {
@@ -862,6 +883,7 @@ impl HybridReader {
             let selection = self.bitmap_to_row_selection(&shifted, base as usize);
             builder = builder.with_row_selection(selection);
         } else {
+            stats::ROW_GROUPS_READ.fetch_add(num_groups as u64, Ordering::Relaxed);
             let selection = self.bitmap_to_row_selection(
                 matching_bitmap,
                 builder.metadata().file_metadata().num_rows() as usize,
@@ -874,6 +896,7 @@ impl HybridReader {
         let mut batches = Vec::new();
         while let Some(batch_result) = stream.next().await {
             let mut batch = batch_result?;
+            stats::ROWS_DECODED.fetch_add(batch.num_rows() as u64, Ordering::Relaxed);
 
             // Apply Equality Deletes BEFORE schema projection/evolution so delete key columns exist
             if !equality_deletes.is_empty() && batch.num_rows() > 0 {

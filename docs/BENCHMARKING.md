@@ -630,3 +630,21 @@ Each profile also carries `storage_note`, the storage class it expects. The star
 ### Page size ablation
 
 `BSDB_PARQUET_PAGE_BYTES` overrides the 32 KB writer default, and the effective value is written into both the index manifest and the result metadata. Without an override the writer cannot be varied, and the page size comparison in the paper has nothing to compare.
+
+`BSDB_PARQUET_ROW_GROUP_ROWS` overrides the writer's row group size in rows, default 1,048,576, which is arrow-rs's own default. The rerank ablation changes it from 512 MB to 128 MB per group, so the unit is rows and the ablation script converts from bytes using the schema width. Both values land in the manifest and in `meta.harness`.
+
+### Reader counters and the skip arm
+
+`bsdb.reset_reader_stats()` and `bsdb.reader_stats()` expose the counters from the candidate read path. `reader_stats()` returns:
+
+| Field | Meaning |
+|---|---|
+| `rows_requested` | Rows in the files the reader opened |
+| `rows_selected` | Rows the candidate bitmap asked for |
+| `rows_decoded` | Rows the reader actually emitted, before equality deletes |
+| `row_groups_read` / `row_groups_total` | Row groups opened against row groups available |
+| `decoded_fraction` | `rows_decoded / rows_requested` |
+
+The pair that matters is `rows_decoded` against `rows_selected`. A sparse read that skips pages keeps them close. A read that materialises whole row groups and filters afterwards shows `rows_decoded` near `rows_requested`, and the harness records that honestly rather than asserting a skip. The result record carries every field, so the paper's I/O claim can be checked against the artifact instead of the prose.
+
+`BSDB_READER_SKIP=0` forces a full `RowSelection`, which is the control arm: same projection, same quantizer, same candidate count, every row group read to the end. It is read once per process, so an arm cannot drift mid run.

@@ -22,8 +22,10 @@ Intra-engine ablation:
 
 import argparse
 import gc
+import hashlib
 import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -291,6 +293,7 @@ def ingest_stage(bsdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.d
     raw_file.seek(8)  # skip 8-byte header (n_vectors: int32, dim: int32)
 
     process = psutil.Process(os.getpid())
+    io_before = io_snapshot()
 
     t0 = time.time()
     if getattr(args, "auto_warmup", False):
@@ -360,6 +363,8 @@ def ingest_stage(bsdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.d
     table.wait_for_background_tasks()
     build_time = time.time() - t0
 
+    io = io_delta(io_before, io_snapshot())
+    mem = memory_snapshot()
     stats = {
         "stage": "ingest",
         "n_train": n,
@@ -367,7 +372,18 @@ def ingest_stage(bsdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.d
         "ingest_time_s": round(build_time, 2),
         "ingest_rate_vps": round(n / build_time, 0) if build_time > 0 else 0,
         "data_size_mb": round(db_size_mb(db_path), 2),
-        "peak_rss_mb": round(process.memory_info().rss / (1024 * 1024), 1),
+        "peak_rss_mb": _mb(mem["process"]["maxrss_bytes"]),
+        "rss_now_mb": _mb(mem["process"]["rss_bytes"]),
+        "cgroup_peak_mb": _mb(mem["cgroup"]["peak_bytes"]),
+        "cgroup_current_mb": _mb(mem["cgroup"]["current_bytes"]),
+        "cgroup_limit_mb": _mb(mem["cgroup"]["limit_bytes"]),
+        "cgroup_anon_mb": _mb(mem["cgroup"]["anon_bytes"]),
+        "cgroup_file_mb": _mb(mem["cgroup"]["file_bytes"]),
+        "cgroup_file_mapped_mb": _mb(mem["cgroup"]["file_mapped_bytes"]),
+        "swap_current_mb": _mb(mem["swap"]["current_bytes"]),
+        "oom_kill": mem["events"].get("oom_kill"),
+        "write_bytes_physical": io["write_bytes"],
+        "chars_written_total": io["wchar"],
     }
     del table
     return stats
@@ -487,6 +503,9 @@ def write_index_mode(db_path: str, mode: str, idx_type: str, args) -> None:
         "dataset": getattr(args, "dataset", None),
         "flush_every": getattr(args, "flush_every", None),
         "parquet_page_bytes": parquet_page_bytes(),
+        "parquet_row_group_rows": int(
+            os.environ.get("BSDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
+        ),
         "cache_gb": getattr(args, "cache_gb", None),
         "index_compaction": bool(getattr(args, "index_compaction", False)),
         "built_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -701,10 +720,16 @@ def reindex_and_preload(bsdb, args, mode: str):
 
 
 def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, mode: str = "") -> dict:
-    """One query pass at a given (ef_search, n_probe) operating point."""
+    """One query pass at a given (ef_search, n_probe) operating point.
+
+    I/O is sampled around the whole pass rather than per query. `/proc/self/io`
+    is process wide, and the queries run on a thread pool, so a per query delta
+    would attribute eight concurrent reads to whichever thread happened to read
+    the counter. The per query figure in the record is the pass total divided by
+    the query count, which is the honest granularity here.
+    """
     q = len(queries)
     query_vectors = [queries[i].tolist() for i in range(q)]
-    process = psutil.Process(os.getpid())
 
     def search_worker(idx):
         vf = {
@@ -727,10 +752,20 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
             hit = len(set(ids) & truth) / args.k
         return lat, hit
 
+    io_before = io_snapshot()
+    try:
+        import benostreamdb as _bsdb
+
+        _bsdb.reset_reader_stats()
+    except Exception:
+        _bsdb = None
     wall_start = time.time()
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         results = list(executor.map(search_worker, range(q)))
     wall = time.time() - wall_start
+    io = io_delta(io_before, io_snapshot())
+    mem = memory_snapshot()
+    reader = _bsdb.reader_stats() if _bsdb is not None else {}
 
     latencies = [r[0] for r in results]
     hits = [r[1] for r in results if r[1] is not None]
@@ -751,7 +786,37 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
         "pure_qps": round(q / max(wall, 0.001), 1),
         "p50_ms": round(float(np.percentile(latencies, 50)) * 1000, 2),
         "p99_ms": round(float(np.percentile(latencies, 99)) * 1000, 2),
-        "peak_rss_mb": round(process.memory_info().rss / (1024 * 1024), 1),
+        # Memory: the cgroup peak is the number that reconciles with memory.max,
+        # the process maxrss is the high water mark that can exceed it when
+        # reclaimable file pages count as resident, and rss_now_mb is the point
+        # sample the old record mislabelled as a peak.
+        "peak_rss_mb": _mb(mem["process"]["maxrss_bytes"]),
+        "rss_now_mb": _mb(mem["process"]["rss_bytes"]),
+        "cgroup_peak_mb": _mb(mem["cgroup"]["peak_bytes"]),
+        "cgroup_current_mb": _mb(mem["cgroup"]["current_bytes"]),
+        "cgroup_limit_mb": _mb(mem["cgroup"]["limit_bytes"]),
+        "cgroup_anon_mb": _mb(mem["cgroup"]["anon_bytes"]),
+        "cgroup_file_mb": _mb(mem["cgroup"]["file_bytes"]),
+        "cgroup_file_mapped_mb": _mb(mem["cgroup"]["file_mapped_bytes"]),
+        "swap_current_mb": _mb(mem["swap"]["current_bytes"]),
+        "oom_kill": mem["events"].get("oom_kill"),
+        # I/O: physical block reads and total chars returned, so a cold pass and
+        # a warm pass are distinguishable in the artifact.
+        "bytes_read_physical": io["read_bytes"],
+        "chars_read_total": io["rchar"],
+        "syscr": io["syscr"],
+        "bytes_read_per_query": round(io["read_bytes"] / max(q, 1), 1),
+        "chars_read_per_query": round(io["rchar"] / max(q, 1), 1),
+        # Reader side view: what the bitmap asked for, what the reader emitted.
+        # The claim in the paper is a skip, and this is the pair of counts that
+        # separates a skip from a filter applied after the read.
+        "rows_requested": reader.get("rows_requested"),
+        "rows_selected": reader.get("rows_selected"),
+        "rows_decoded": reader.get("rows_decoded"),
+        "row_groups_read": reader.get("row_groups_read"),
+        "row_groups_total": reader.get("row_groups_total"),
+        "decoded_fraction": reader.get("decoded_fraction"),
+        "reader_skip_enabled": reader.get("skip_enabled"),
     }
 
 
@@ -822,7 +887,11 @@ def aggregate_repeats(runs: list) -> dict:
     def values(key):
         return sorted(r[key] for r in runs if r.get(key) is not None)
 
-    for key in ("pure_qps", "p50_ms", "p99_ms", "recall_at_k"):
+    for key in (
+        "pure_qps", "p50_ms", "p99_ms", "recall_at_k",
+        "peak_rss_mb", "cgroup_peak_mb", "cgroup_current_mb",
+        "bytes_read_physical", "chars_read_total",
+    ):
         vals = values(key)
         if not vals:
             continue
@@ -846,6 +915,8 @@ def render_report(args, records, meta) -> str:
     }
     env = meta["envelope"]
     ds = meta["dataset"]
+    mem = meta.get("memory", {})
+    arts = meta.get("artifacts") or {}
     lines = [
         f"# BigANN {ds['name']} — BenoStreamDB quantizer ablation",
         "",
@@ -862,6 +933,15 @@ def render_report(args, records, meta) -> str:
             if str(ds["gt_source"]).startswith("exact")
             else f"`{ds['gt']}` ({ds['gt_source']})"
         ),
+        "- Artifact digests (sha256, first 16 hex; the JSON carries the full value): "
+        + ", ".join(
+            f"{name} `{info['sha256'][:16] if info else 'missing'}`"
+            for name, info in arts.items()
+        ),
+        f"- Memory: cgroup peak {_mb(mem.get('cgroup', {}).get('peak_bytes'))} MiB "
+        f"against limit {_mb(mem.get('cgroup', {}).get('limit_bytes'))} MiB, "
+        f"oom_kill={mem.get('events', {}).get('oom_kill')}, "
+        f"process maxrss {_mb(mem.get('process', {}).get('maxrss_bytes'))} MiB",
         f"- Envelope: hardware=`{env['hardware']}`, threads={env['threads']}, "
         f"BSDB_CACHE_GB={env['cache_gb']}, preload={env['preload_gb']:.1f} GiB",
         f"- Storage: `{env.get('storage', {}).get('device', 'unknown')}` "
@@ -1045,7 +1125,7 @@ def storage_envelope(path: str) -> dict:
 
 def cgroup_cpu_limit() -> Optional[int]:
     """CPU limit from cgroup v2 (`cpu.max`) or v1 (`cpu.cfs_*`), when set."""
-    raw = _read_sys("/sys/fs/cgroup/cpu.max")
+    raw = _read_sys(os.path.join(cgroup_dir(), "cpu.max"))
     if raw:
         parts = raw.split()
         if len(parts) == 2 and parts[0] != "max":
@@ -1061,7 +1141,7 @@ def cgroup_cpu_limit() -> Optional[int]:
 
 def cgroup_memory_limit_bytes() -> Optional[int]:
     """Container memory limit, when the process is actually constrained."""
-    raw = _read_sys("/sys/fs/cgroup/memory.max")
+    raw = _read_sys(os.path.join(cgroup_dir(), "memory.max"))
     if raw and raw != "max":
         return int(raw)
     raw = _read_sys("/sys/fs/cgroup/memory/memory.limit_in_bytes")
@@ -1070,6 +1150,139 @@ def cgroup_memory_limit_bytes() -> Optional[int]:
         if value < (1 << 60):  # cgroup v1 reports a huge sentinel when unlimited
             return value
     return None
+
+
+def _mb(value: Optional[int]) -> Optional[float]:
+    if value is None:
+        return None
+    return round(value / (1024 * 1024), 1)
+
+
+def _read_int_sys(path: str) -> Optional[int]:
+    raw = _read_sys(path)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _keyed_sys(path: str) -> dict:
+    """Parse a `key value` sysfs or procfs file into a dict of ints.
+
+    `/proc/self/io` writes `rchar: 123`, so the key carries a trailing colon.
+    Stripping it is what makes `delta["rchar"]` a real lookup rather than a
+    missing key that reads back as zero.
+    """
+    out: dict = {}
+    raw = _read_sys(path)
+    if not raw:
+        return out
+    for line in raw.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            key = parts[0].rstrip(":")
+            try:
+                out[key] = int(parts[1])
+            except ValueError:
+                out[key] = parts[1]
+    return out
+
+
+def cgroup_dir() -> str:
+    """This process's cgroup v2 directory, which is not the mount root.
+
+    On a systemd host the root of `/sys/fs/cgroup` exposes `cgroup.controllers`
+    but no `memory.max` or `memory.peak`; those live in the slice the process
+    belongs to. Reading the root returns nulls, which reads as unconstrained and
+    contradicts a run that was constrained.
+    """
+    raw = _read_sys("/proc/self/cgroup")
+    if raw:
+        for line in raw.splitlines():
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
+                rel = parts[2].strip().lstrip("/")
+                return os.path.join("/sys/fs/cgroup", rel) if rel else "/sys/fs/cgroup"
+    return "/sys/fs/cgroup"
+
+
+def memory_snapshot() -> dict:
+    """Memory accounting from the cgroup and from the process.
+
+    `memory.peak` is the high water mark the kernel maintained for the cgroup,
+    which is the number that has to reconcile with `memory.max`. Process RSS is a
+    point sample and `ru_maxrss` is the process high water mark, which includes
+    resident pages the cgroup may later reclaim. Recording all three separately
+    is what lets a reader see why a 19 GiB resident peak did not trigger an OOM
+    kill under a 16 GiB limit: file backed pages are reclaimable, anonymous
+    pages are not.
+    """
+    cg = cgroup_dir()
+    stat = _keyed_sys(os.path.join(cg, "memory.stat"))
+    events = _keyed_sys(os.path.join(cg, "memory.events"))
+    proc = psutil.Process(os.getpid())
+    rss = proc.memory_info().rss
+    maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    return {
+        "cgroup": {
+            "peak_bytes": _read_int_sys(os.path.join(cg, "memory.peak")),
+            "current_bytes": _read_int_sys(os.path.join(cg, "memory.current")),
+            "limit_bytes": cgroup_memory_limit_bytes(),
+            "anon_bytes": stat.get("anon"),
+            "file_bytes": stat.get("file"),
+            "file_mapped_bytes": stat.get("file_mapped"),
+            "inactive_file_bytes": stat.get("inactive_file"),
+            "active_file_bytes": stat.get("active_file"),
+            "slab_bytes": stat.get("slab"),
+        },
+        "events": {
+            key: events.get(key)
+            for key in ("low", "high", "max", "oom", "oom_kill", "oom_group_kill")
+        },
+        "swap": {
+            "current_bytes": _read_int_sys(os.path.join(cg, "memory.swap.current")),
+            "peak_bytes": _read_int_sys(os.path.join(cg, "memory.swap.peak")),
+        },
+        "process": {"rss_bytes": rss, "maxrss_bytes": maxrss},
+    }
+
+
+def io_snapshot() -> dict:
+    """Cumulative I/O counters for this process.
+
+    `read_bytes` counts physical block reads; `rchar` counts bytes returned to
+    the caller, including cache hits. Keeping them apart is what separates a
+    cold read from a warm one. The counters are process wide, so with a query
+    thread pool only the pass total is meaningful, and the per query figure
+    below is that total divided by the query count.
+    """
+    return _keyed_sys("/proc/self/io")
+
+
+def io_delta(before: dict, after: dict) -> dict:
+    keys = ("rchar", "wchar", "syscr", "syscw", "read_bytes", "write_bytes")
+    return {k: int(after.get(k, 0) or 0) - int(before.get(k, 0) or 0) for k in keys}
+
+
+def file_digests(paths: dict) -> dict:
+    """SHA-256 and size for each named artifact, so a result names its inputs."""
+    out: dict = {}
+    for name, path in paths.items():
+        if not path or not os.path.exists(path):
+            out[name] = None
+            continue
+        digest = hashlib.sha256()
+        try:
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    digest.update(chunk)
+        except OSError:
+            out[name] = None
+            continue
+        out[name] = {"sha256": digest.hexdigest(), "bytes": os.path.getsize(path)}
+    return out
 
 
 def apply_hardware(args) -> None:
@@ -1601,6 +1814,13 @@ def main():
                 "dim": dim,
                 "metric": metric,
             },
+            # A result names its inputs. Without this a table cannot be tied back
+            # to the exact byte stream that produced it, and a silent dataset
+            # replacement would look like a performance change.
+            "artifacts": file_digests(
+                {"base": base_path, "queries": q_path, "gt": gt_path}
+            ),
+            "memory": memory_snapshot(),
             "harness": {
                 "script": os.path.basename(__file__),
                 # v2: index_size_mb is the Puffin sidecar only. Runs before
@@ -1615,6 +1835,10 @@ def main():
                 "queries": args.queries,
                 "repeat": args.repeat,
                 "parquet_page_bytes": parquet_page_bytes(),
+                "parquet_row_group_rows": int(
+                    os.environ.get("BSDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
+                ),
+                "reader_skip": os.environ.get("BSDB_READER_SKIP", "1") != "0",
                 "reused_index": bool(args.skip_reindex),
                 "allow_dirty": bool(args.allow_dirty),
             },
