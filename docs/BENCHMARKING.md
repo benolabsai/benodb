@@ -647,4 +647,6 @@ Each profile also carries `storage_note`, the storage class it expects. The star
 
 The pair that matters is `rows_decoded` against `rows_selected`. A sparse read that skips pages keeps them close. A read that materialises whole row groups and filters afterwards shows `rows_decoded` near `rows_requested`, and the harness records that honestly rather than asserting a skip. The result record carries every field, so the paper's I/O claim can be checked against the artifact instead of the prose.
 
-`BSDB_READER_SKIP=0` forces a full `RowSelection`, which is the control arm: same projection, same quantizer, same candidate count, every row group read to the end. It is read once per process, so an arm cannot drift mid run.
+`BSDB_READER_SKIP=0` forces a full `RowSelection`, every row group read to the end. It measures the read cost of the same query, but it is **not** a matched recall arm: the rescore path expects a compacted candidate array, sees the full row count instead, and returns the graph order without rescoring. The reader logs `rescore_candidates vector count mismatch` when this happens. Use it for the byte comparison only, and use a coarse page size (`BSDB_PARQUET_PAGE_BYTES` near the row group size) when the control must still rescore.
+
+`BSDB_BENCH_EVICT=query` drops the Parquet pages before every timed query with `posix_fadvise`, and forces a single query worker because a cold measurement and a thread pool are incompatible. Without it the table stays in page cache, `read_bytes` barely moves, and the skip looks like it saves nothing.

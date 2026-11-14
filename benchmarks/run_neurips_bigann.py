@@ -416,6 +416,16 @@ def evict_file_caches(paths: list):
     return evicted_files, evicted_bytes
 
 
+def parquet_files(db_dir: str) -> list:
+    """Every Parquet data file under the table directory."""
+    out = []
+    for root, _dirs, files in os.walk(db_dir):
+        for name in files:
+            if name.endswith(".parquet"):
+                out.append(os.path.join(root, name))
+    return sorted(out)
+
+
 def clear_evaluation_caches(table=None, paths=None, label: str = ""):
     """Flush engine memory caches, sync, and evict OS page caches.
 
@@ -731,7 +741,19 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
     q = len(queries)
     query_vectors = [queries[i].tolist() for i in range(q)]
 
+    # A warm cache hides the skip: the table is already resident, so `read_bytes`
+    # barely moves and only the characters returned to the caller differ. The
+    # physical byte claim needs a cold read, so `BSDB_BENCH_EVICT=query` drops
+    # the Parquet pages before every timed query. That only makes sense with one
+    # query in flight, so the pool is forced to a single worker and the record
+    # says so.
+    evict_mode = os.environ.get("BSDB_BENCH_EVICT", "pass").strip().lower()
+    cold_paths = parquet_files(args.db_dir) if evict_mode == "query" else []
+    workers = 1 if evict_mode == "query" else args.threads
+
     def search_worker(idx):
+        if cold_paths:
+            evict_file_caches(cold_paths)
         vf = {
             "column": "embedding",
             "query": query_vectors[idx],
@@ -760,7 +782,7 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
     except Exception:
         _bsdb = None
     wall_start = time.time()
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         results = list(executor.map(search_worker, range(q)))
     wall = time.time() - wall_start
     io = io_delta(io_before, io_snapshot())
@@ -774,7 +796,8 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
     return {
         "queries": q,
         "k": args.k,
-        "threads": args.threads,
+        "threads": workers,
+        "evict": evict_mode,
         "ef_search": ef_search,
         "n_probe": n_probe,
         # Recorded so a refined point is distinguishable from an unrefined one in the
