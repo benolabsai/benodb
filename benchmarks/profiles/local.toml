@@ -1,0 +1,17 @@
+# This workstation. No cgroup envelope, no strict hardware preflight, so a result
+# from this profile is a developer measurement and must not be quoted in the
+# paper. It exists so the harness is usable without spelling out ten flags.
+#
+# threads is omitted on purpose: the harness falls back to the machine's core
+# count. cache_gb stays modest because the datasets live on the spinning disk and
+# a large cache budget would mostly measure page cache.
+label = "Local workstation (no cgroup envelope)"
+hardware = "local"
+strict_hardware = false
+cache_gb = 8
+preload_gb = 0.0
+batch_size = 100000
+flush_every = 1000000
+warmup_queries = 200
+scratch_dir = "benchmarks/scratch_local"
+storage_note = "PCIe 3.0 x4 NVMe (Gen3)"

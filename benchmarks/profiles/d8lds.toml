@@ -1,0 +1,19 @@
+# Azure Standard_D8lds_v5, the envelope the paper's BigANN numbers come from.
+# 8 vCPU, 16 GiB RAM, local NVMe, and an 8 GiB engine cache budget.
+#
+# The ten machine flags the harness used to require (hardware, strict hardware,
+# threads, cache, preload, batch size, flush cadence, warmup, scratch, tmp) are
+# gone; this file is what replaced them. A flag on the command line still wins.
+#
+# Run with:  run_neurips_bigann.py query --dataset 10m --profile d8lds
+label = "Azure Standard_D8lds_v5 (8 vCPU / 16 GiB)"
+hardware = "d8lds"
+strict_hardware = true
+threads = 8
+cache_gb = 8
+preload_gb = 8.0
+batch_size = 100000
+flush_every = 5000000
+warmup_queries = 500
+scratch_dir = "benchmarks/scratch_d8lds"
+storage_note = "Azure local NVMe (Standard_D8lds_v5)"

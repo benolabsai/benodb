@@ -3,7 +3,7 @@
 #
 # Installs the BenoStreamDB abi3 wheel if one is mounted at /wheels (so the image
 # stays engine-agnostic), then execs the harness with whatever arguments compose
-# passed. `--hardware d8lds --strict-hardware` makes the run fail loudly if the
+# passed. The d8lds profile's strict preflight makes the run fail loudly if the
 # container is not actually constrained to the evaluation envelope.
 set -eu
 

@@ -1,0 +1,13 @@
+# Azure Standard_D8s_v5. 8 vCPU, 32 GiB RAM, 16 GiB engine cache.
+# This is the quantized track envelope used for the Cohere 10M sweep.
+label = "Azure Standard_D8s_v5 (8 vCPU / 32 GiB)"
+hardware = "d8s"
+strict_hardware = true
+threads = 8
+cache_gb = 16
+preload_gb = 16.0
+batch_size = 100000
+flush_every = 5000000
+warmup_queries = 500
+scratch_dir = "benchmarks/scratch_d8s"
+storage_note = "Azure local NVMe (Standard_D8s_v5)"

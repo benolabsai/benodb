@@ -338,7 +338,7 @@ DATASET_DIR=/path/to/bigann \
 ```
 
 [`run_neurips_bigann.py`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/run_neurips_bigann.py) reads the cgroup
-limits itself (`--hardware auto`) and derives:
+limits itself when the profile does not pin them (`hardware = "auto"`) and derives:
 
 | Knob | Derivation |
 | :--- | :--- |
@@ -347,25 +347,28 @@ limits itself (`--hardware auto`) and derives:
 | preload budget | the same half, capped |
 | `BSDB_DISK_CACHE` | off — a local `file://` table is served in place, never copied |
 
-`--hardware d8lds --strict-hardware` pins the reference envelope and **aborts**
-if the container is not actually constrained, so an oversized host run cannot
-silently produce a number that looks comparable but is not.
+`--profile d8lds` pins the reference envelope and **aborts** if the container is
+not actually constrained, so an oversized host run cannot silently produce a
+number that looks comparable but is not.
 
 The run is staged so a large corpus is ingested once and only the index is
 rebuilt per quantizer:
 
 ```bash
-# ingest once (no index), then 3 reindexes + the Pareto grid, in one process
-python benchmarks/run_neurips_bigann.py --dataset 10m --stage both --all-modes --sweep
+# ingest once (no index), then reindex and sweep per quantizer
+python benchmarks/run_neurips_bigann.py ingest --dataset 10m --profile d8lds
+python benchmarks/run_neurips_bigann.py query --dataset 10m --profile d8lds \
+    --modes f32,tq8,tq4,sq8,pq --grid 256/32,128/16,64/8,64/4
 
 # 100M/1B: ingest in one job, reuse the table for every later run
-python benchmarks/run_neurips_bigann.py --dataset 100m --stage ingest
-python benchmarks/run_neurips_bigann.py --dataset 100m --stage query --all-modes --sweep
+python benchmarks/run_neurips_bigann.py ingest --dataset 100m --profile d8lds
+python benchmarks/run_neurips_bigann.py query --dataset 100m --profile d8lds \
+    --modes f32,tq8,sq8 --grid 256/32,128/16,64/8,64/4
 ```
 
-`--sweep` walks `--ef-sweep` × `--n-probe-sweep` (default
-`32,64,128,256` × `4,8,16,32`) against the **same warm index**, and prints the
-fastest operating point that clears recall ≥ 0.90 / 0.95 / 0.98 — the row the
+`--grid` lists the operating points as `ef/np` pairs against the **same warm
+index**, and prints the fastest operating point that clears recall ≥ 0.90 / 0.95 /
+0.98 — the row the
 leaderboard compares against.
 
 Results are written to [`benchmarks/results/neurips_bigann/`](https://github.com/benolabsai/benostreamdb/tree/main/benchmarks/results/neurips_bigann):
@@ -573,3 +576,57 @@ mtime table as the only provenance.
 | `cudaErrorMemoryAllocation: out of memory` on a 50-series card | cu12 wheels have no sm_120 kernels | the GPU image installs `cugraph-cu13`; `RMM_POOL_SIZE=12GB` leaves headroom for the Wayland compositor |
 | GPU image ships an old harness | `bench-gpu` is `FROM bsdb-bench-runner:latest` | `docker_bench.sh` builds `bench` before `bench-gpu` |
 | `docker compose run` cannot see the GPU | Compose < 2.30 ignores `gpus: all` | upgrade Compose, or use `docker run --gpus all` |
+
+---
+
+## 11. Harness Interface
+
+The BigANN harness carried 46 flags. Eighteen of them had no caller anywhere in the repository, five described the search grid, three described which stage to run, and ten described the machine. One namespace was serving three unrelated concerns, which is why reading the command line felt like reading a list of everything anyone had ever needed.
+
+The interface is now a subcommand, a profile, and the parameters that define the experiment. Thirty flags were removed, five were added, and twenty one are visible. The removed ones are gone rather than hidden, so a stale command line fails immediately with `unrecognized arguments` instead of quietly running with defaults it did not ask for.
+
+### Subcommands
+
+```bash
+# 1. Write the table once. No index yet.
+./benchmarks/run_neurips_bigann.py ingest --dataset 10m --profile d8lds
+
+# 2. Measure it. The index is reused when the manifest matches what you asked for.
+./benchmarks/run_neurips_bigann.py query --dataset 10m --profile d8lds \
+    --modes tq8,sq8 --grid 256/32,64/4 --repeat 3
+
+# 3. Build the table level Puffin artifact.
+./benchmarks/run_neurips_bigann.py compact --db-dir benchmarks/scratch_d8lds/bigann_db
+```
+
+The positional command is optional. An invocation with no command runs ingest and query in one process, which is what the old `--stage both` did. The flags that used to describe the machine are gone rather than deprecated, so a command line that still passes them fails with `unrecognized arguments` instead of silently running with defaults.
+
+### Profiles
+
+`--profile` reads `benchmarks/profiles/<name>.toml` and supplies the ten machine settings: hardware label, strict preflight, thread count, cache budget, preload, batch size, flush cadence, warmup probes, scratch directory, and temporary directory. A flag passed on the command line always wins, so a profile is a default rather than a lock.
+
+| Profile | Envelope | Used for |
+|---|---|---|
+| `d8lds` | 8 vCPU, 16 GiB, 8 GiB cache, strict preflight | The BigANN 10M and 100M numbers in the paper |
+| `d8s` | 8 vCPU, 32 GiB, 16 GiB cache, strict preflight | The Cohere 10M quantized track |
+| `e8ds` | 8 vCPU, 64 GiB, 40 GiB cache, strict preflight | The Float32 recall ceiling track |
+| `local` | no cgroup envelope | Developer runs, never quotable |
+
+Keeping the envelope in a file removes a failure mode that has already produced bad artifacts: a run that used thread count 8 with a cache budget of 0 because one flag out of ten was misspelled, and nothing in the output said so.
+
+### What the record now guarantees
+
+| Behaviour | Effect |
+|---|---|
+| `git_rev`, `git_rev_short`, `git_dirty`, `git_dirty_paths` in `meta.engine` | A result names the commit that produced it. The old artifacts said `unknown`. |
+| A dirty tree exits 3 | Unless `--allow-dirty` marks the run as throwaway, no result file is written from a modified tree. |
+| `--repeat N` | Every operating point is measured N times, the median is reported, and the interquartile range is stored as `pure_qps_iqr`, `p50_ms_iqr`, and `recall_at_k_iqr`. |
+| Index manifest at `<db>/.index_mode.json` | Records quantizer, algorithm, `M`, `ef_construction`, dimension, vector count, dataset, flush cadence, page size, cache budget, compaction, build time, and commit. |
+| Reuse guard, exit 4 | A query run refuses an index whose manifest disagrees with the requested mode or graph parameters, and prints the mismatch. This is what stops a run from reporting TQ8 while querying whatever the last build left behind. |
+| `meta.envelope.storage` | The probe resolves a mounted partition to its whole device and records model, firmware, rotational flag, negotiated PCIe generation, link width, and link speed. A Gen3 x4 link caps sequential reads near 3.5 GB/s, so an out of core result on one is not comparable to the same workload on a Gen4 device. The artifact names which device it ran on instead of leaving a reader to infer it from the host label. |
+
+Each profile also carries `storage_note`, the storage class it expects. The startup banner prints the probed device beside that declaration, so a run on a Gen3 volume reports `PCIe 3 x4 (8.0 GT/s PCIe)` next to `declared: PCIe 3.0 x4 NVMe (Gen3)`, and a mismatch is visible before the first query.
+
+### Page size ablation
+
+`BSDB_PARQUET_PAGE_BYTES` overrides the 32 KB writer default, and the effective value is written into both the index manifest and the result metadata. Without an override the writer cannot be varied, and the page size comparison in the paper has nothing to compare.

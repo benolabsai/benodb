@@ -9,7 +9,7 @@ and then re-indexed per quantizer, instead of being re-ingested for every mode:
   query   For each mode: configure the algorithm, rebuild the index *from the
           stored Parquet* (``Table.rebuild_index``), preload, then query.
 
-``--all-modes`` runs the ingest stage once (unless the DB already exists) and
+``--modes`` runs the ingest stage once (unless the DB already exists) and
 then one query pass per mode, all inside a single process, so the table is
 never re-read from the raw ``.u8bin`` and the index is never rebuilt by
 re-ingesting.
@@ -468,6 +468,14 @@ def read_index_mode(db_path: str) -> dict:
 
 
 def write_index_mode(db_path: str, mode: str, idx_type: str, args) -> None:
+    """Record the provenance of the index now on disk.
+
+    This file is the index's manifest: which quantizer built it, with which graph
+    parameters, at which Parquet page size, over how many vectors, and from which
+    commit. A query sweep may reuse an index only when the manifest matches what
+    the sweep asked for, which is what stops a run from reporting one quantizer
+    while silently querying another.
+    """
     record = {
         "mode": mode,
         "algorithm": idx_type,
@@ -475,6 +483,14 @@ def write_index_mode(db_path: str, mode: str, idx_type: str, args) -> None:
         "quality": args.ef_construction,
         "metric": getattr(args, "metric", None),
         "dim": getattr(args, "dim", None),
+        "n_vectors": getattr(args, "n", None),
+        "dataset": getattr(args, "dataset", None),
+        "flush_every": getattr(args, "flush_every", None),
+        "parquet_page_bytes": parquet_page_bytes(),
+        "cache_gb": getattr(args, "cache_gb", None),
+        "index_compaction": bool(getattr(args, "index_compaction", False)),
+        "built_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "engine": git_state(),
     }
     with open(index_mode_marker(db_path), "w") as f:
         json.dump(record, f, indent=2, sort_keys=True)
@@ -508,8 +524,8 @@ def reindex_and_preload(bsdb, args, mode: str):
     # table. Which mode the index belongs to is recorded out of band.
     if not os.path.exists(base_db):
         raise RuntimeError(
-            f"DB '{base_db}' does not exist; run --stage ingest first "
-            "(or drop --stage query)"
+            f"DB '{base_db}' does not exist; run the ingest command first "
+            "(or drop the query subcommand)"
         )
     db_path = base_db
 
@@ -753,6 +769,72 @@ def _git(args: list) -> str:
         return "unknown"
 
 
+def git_state() -> dict:
+    """Revision and dirty state of the tree that produced a result.
+
+    Every artifact before this change recorded `git_rev: unknown` and
+    `git_dirty: true`, which made the numbers unverifiable: a result produced
+    from a modified tree cannot be reproduced from any commit. The harness now
+    resolves the revision, counts the modified paths, and refuses to write a
+    result from a dirty tree unless `--allow-dirty` marks the run as throwaway.
+    """
+    porcelain = _git(["status", "--porcelain"])
+    dirty_paths = [line for line in porcelain.splitlines() if line.strip()]
+    return {
+        "git_rev": _git(["rev-parse", "HEAD"]),
+        "git_rev_short": _git(["rev-parse", "--short", "HEAD"]),
+        "git_dirty": bool(dirty_paths),
+        "git_dirty_paths": 0 if porcelain == "unknown" else len(dirty_paths),
+    }
+
+
+def parquet_page_bytes() -> int:
+    """The Parquet data page size the writer will use for this run.
+
+    The default of 32 KB is what the rerank path is tuned for. The environment
+    override exists so the page size ablation can write the same corpus at
+    several page sizes and compare the physical bytes read per query, which is
+    the measurement the paper's central claim currently lacks.
+    """
+    raw = os.environ.get("BSDB_PARQUET_PAGE_BYTES", "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return 32 * 1024
+    return value if value >= 1024 else 32 * 1024
+
+
+def aggregate_repeats(runs: list) -> dict:
+    """Median with interquartile range across repeated measurements of one point.
+
+    A single run cannot separate a real difference from scheduling noise, and the
+    paper reports differences of a few percent. Repeats are recorded rather than
+    silently averaged: the report shows the median, and the interquartile range
+    stays in the JSON so a reader can see the spread.
+    """
+    import statistics
+
+    base = dict(runs[0])
+    base["repeat"] = len(runs)
+    if len(runs) == 1:
+        return base
+
+    def values(key):
+        return sorted(r[key] for r in runs if r.get(key) is not None)
+
+    for key in ("pure_qps", "p50_ms", "p99_ms", "recall_at_k"):
+        vals = values(key)
+        if not vals:
+            continue
+        base[key] = statistics.median(vals)
+        if len(vals) >= 4:
+            quartiles = statistics.quantiles(vals, n=4)
+            base[f"{key}_iqr"] = quartiles[2] - quartiles[0]
+        else:
+            base[f"{key}_iqr"] = max(vals) - min(vals)
+    return base
+
+
 def render_report(args, records, meta) -> str:
     """Markdown report for the paper: provenance, table, and the quotable points."""
     labels = {
@@ -782,11 +864,25 @@ def render_report(args, records, meta) -> str:
         ),
         f"- Envelope: hardware=`{env['hardware']}`, threads={env['threads']}, "
         f"BSDB_CACHE_GB={env['cache_gb']}, preload={env['preload_gb']:.1f} GiB",
+        f"- Storage: `{env.get('storage', {}).get('device', 'unknown')}` "
+        f"{env.get('storage', {}).get('model') or ''}, "
+        f"PCIe {env.get('storage', {}).get('pcie_generation', '?')} "
+        f"x{env.get('storage', {}).get('link_width', '?')} "
+        f"({env.get('storage', {}).get('link_speed') or 'unknown'}), "
+        f"rotational={env.get('storage', {}).get('rotational')}, "
+        f"{env.get('storage', {}).get('fstype') or 'fs?'} on "
+        f"`{env.get('storage', {}).get('source') or '?'}`"
+        + (f", declared `{env['storage_note']}`" if env.get("storage_note") else ""),
         f"- Index build: M={meta['harness']['m']}, ef_construction={meta['harness']['ef_construction']}",
         f"- Reindex cost: {records[0].get('reindex_s', 'n/a')} s, "
         f"index {records[0].get('index_size_mb', 0) / 1024:.2f} GB, "
         f"data {records[0].get('data_size_mb', 0) / 1024:.2f} GB, "
         f"table {records[0].get('db_size_mb', 0) / 1024:.2f} GB",
+        f"- Parquet data page size: {meta['harness'].get('parquet_page_bytes')} bytes"
+        + (" (index reused, not rebuilt)" if meta["harness"].get("reused_index") else ""),
+        f"- Repeats per operating point: {records[0].get('repeat', 1)}"
+        + (" (median shown, interquartile range in the JSON)"
+           if records[0].get("repeat", 1) > 1 else ""),
         "",
         "## Pareto curve",
         "",
@@ -865,6 +961,86 @@ def _read_sys(path: str) -> Optional[str]:
             return fh.read().strip()
     except OSError:
         return None
+
+
+def storage_envelope(path: str) -> dict:
+    """Describe the block device that holds `path`, including its PCIe generation.
+
+    Storage generation belongs in the measurement envelope rather than in a
+    footnote. A Gen3 x4 link caps sequential reads near 3.5 GB/s, so an out of
+    core result measured on one is not comparable to the same run on a Gen4
+    device. Recording the measured link speed, width, and rotational flag makes
+    that difference visible in the artifact instead of inferred from the host
+    name.
+    """
+    info: dict = {"path": os.path.abspath(path)}
+    try:
+        dev = os.stat(path).st_dev
+    except OSError:
+        return info
+
+    node = f"/sys/dev/block/{os.major(dev)}:{os.minor(dev)}"
+    if not os.path.exists(node):
+        return info
+
+    # A partition resolves to .../block/<disk>/<partition>, so the parent
+    # directory name is the whole device. Using the last component would leave
+    # every sysfs lookup below pointing at a partition node that has no model,
+    # no PCIe endpoint, and no rotational flag.
+    link = os.path.realpath(node)
+    disk = os.path.basename(link)
+    # /sys/block only lists whole devices, so testing /sys/block/<partition>
+    # always fails and leaves `disk` holding a partition name. The partition
+    # attribute lives in the device class directory, which does list partitions.
+    if os.path.exists(f"/sys/class/block/{disk}/partition"):
+        disk = os.path.basename(os.path.dirname(link))
+    info["device"] = disk
+
+    info["model"] = _read_sys(f"/sys/block/{disk}/device/model")
+    info["firmware"] = _read_sys(f"/sys/block/{disk}/device/firmware_rev")
+    rotational = _read_sys(f"/sys/block/{disk}/queue/rotational")
+    info["rotational"] = None if rotational is None else rotational == "1"
+
+    # The PCIe endpoint sits at different depths by transport: an NVMe
+    # namespace points at the controller, whose `device` link reaches the PCI
+    # function, while SCSI and virtio devices expose it one level up. Probe the
+    # candidates in order and take the first that reports a link speed.
+    speed = None
+    width = None
+    for ctrl in (
+        f"/sys/block/{disk}/device/device",
+        f"/sys/block/{disk}/device",
+    ):
+        speed = _read_sys(os.path.join(ctrl, "current_link_speed"))
+        if speed:
+            width = _read_sys(os.path.join(ctrl, "current_link_width"))
+            break
+    info["link_speed"] = speed
+    info["link_width"] = width
+    if speed:
+        rate = speed.split()[0].replace("GT/s", "")
+        try:
+            rate = f"{float(rate):.1f}"
+        except ValueError:
+            rate = ""
+        info["pcie_generation"] = {
+            "2.5": 1, "5.0": 2, "8.0": 3, "16.0": 4, "32.0": 5, "64.0": 6,
+        }.get(rate)
+
+    best = ""
+    try:
+        with open("/proc/mounts") as fh:
+            for line in fh:
+                # source, mount point, fstype, options
+                parts = line.split()
+                if len(parts) >= 3 and info["path"].startswith(parts[1]) and len(parts[1]) > len(best):
+                    best = parts[1]
+                    info["source"] = parts[0]
+                    info["fstype"] = parts[2]
+                    info["mount"] = parts[1]
+    except OSError:
+        pass
+    return info
 
 
 def cgroup_cpu_limit() -> Optional[int]:
@@ -955,7 +1131,7 @@ def apply_hardware(args) -> None:
     args.preload_gb = min(args.preload_gb, float(args.cache_gb))
 
     print("=" * 90)
-    print(f"HARDWARE ENVELOPE  (--hardware {args.hardware} -> {source})")
+    print(f"HARDWARE ENVELOPE  (profile hardware={args.hardware} -> {source})")
     if detected_cpus or detected_mem:
         mem_txt = "unlimit" if detected_mem is None else f"{detected_mem / GIB:.1f} GiB"
         print(f"  detected cgroup limits: cpus={detected_cpus} mem={mem_txt}")
@@ -967,7 +1143,7 @@ def apply_hardware(args) -> None:
     if args.hardware == "auto" and (detected_cpus is None or detected_mem is None):
         print(
             "  [!] NOT COMPARABLE: no cgroup limits detected, so this run uses the\n"
-            "      whole host. Leaderboard numbers need --hardware d8lds, or the\n"
+            "      whole host. Leaderboard numbers need --profile d8lds, or the\n"
             "      container in benchmarks/docker-compose.neurips.yml."
         )
     print("=" * 90 + "\n", flush=True)
@@ -978,93 +1154,148 @@ def apply_hardware(args) -> None:
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Profiles and operating point grids
+# --------------------------------------------------------------------------- #
+
+PROFILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
+
+# The machine settings a profile may supply, with the value used when neither the
+# profile nor the command line sets one.
+PROFILE_SETTINGS = {
+    "hardware": "auto",
+    "strict_hardware": False,
+    "threads": 0,
+    "cache_gb": 0,
+    "preload_gb": 0.0,
+    "batch_size": 100_000,
+    "flush_every": 5_000_000,
+    "warmup_queries": 500,
+    "scratch_dir": None,
+    "tmp_dir": None,
+    # Free text for the profile to declare the storage class it expects, for
+    # example "PCIe 3.0 x4 NVMe". Measured values are recorded separately.
+    "storage_note": None,
+}
+
+
+def load_profile(name: str) -> dict:
+    """Read an envelope profile from benchmarks/profiles/<name>.toml.
+
+    The profile holds the machine description: hardware label, thread count,
+    cache budget, preload, flush cadence, warmup, and scratch location. Keeping
+    it in a file is what lets the command line stay small, and it removes the
+    failure mode where a run silently used the wrong cache budget because one of
+    ten machine flags was mistyped.
+    """
+    path = name if os.path.sep in name or name.endswith(".toml") else os.path.join(PROFILES_DIR, f"{name}.toml")
+    if not os.path.exists(path):
+        available = sorted(f[:-5] for f in os.listdir(PROFILES_DIR) if f.endswith(".toml"))
+        raise SystemExit(f"[ERROR] no profile at {path}. Available: {', '.join(available)}")
+    import tomllib
+
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+    unknown = sorted(set(data) - set(PROFILE_SETTINGS) - {"label"})
+    if unknown:
+        raise SystemExit(f"[ERROR] {path}: unknown keys {', '.join(unknown)}")
+    return data
+
+
+def apply_profile(args) -> None:
+    """Fill every unset machine setting from the profile, then from the defaults.
+
+    A flag passed on the command line always wins, so a profile is a default
+    rather than a lock.
+    """
+    profile = load_profile(args.profile) if getattr(args, "profile", None) else {}
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for dest, default in PROFILE_SETTINGS.items():
+        if getattr(args, dest, None) is not None:
+            continue
+        # Inside a container the scratch volume is a mount path that no profile
+        # can know, so the environment wins over the profile for these two.
+        env_override = {
+            "scratch_dir": "BSDB_BENCH_SCRATCH",
+            "tmp_dir": "BSDB_BENCH_TMP",
+        }.get(dest)
+        if env_override and os.environ.get(env_override):
+            setattr(args, dest, os.environ[env_override])
+            continue
+        if dest == "scratch_dir":
+            value = profile.get(dest) or os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "scratch_10m"
+            )
+        else:
+            value = profile.get(dest, default)
+        if dest in ("scratch_dir", "tmp_dir") and isinstance(value, str) and not os.path.isabs(value):
+            value = os.path.join(repo_root, value)
+        setattr(args, dest, value)
+    args.profile_label = profile.get("label")
+
+
+def parse_grid(spec: str) -> list:
+    """Parse ``ef/np,ef/np,...`` into operating points."""
+    points = []
+    for chunk in spec.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if "/" not in chunk:
+            raise SystemExit(f"[ERROR] --grid entry {chunk!r} is not ef/np")
+        ef, np_ = chunk.split("/", 1)
+        points.append((int(ef), int(np_)))
+    if not points:
+        raise SystemExit("[ERROR] --grid is empty")
+    return points
+
+
 def main():
-    parser = argparse.ArgumentParser(description="NeurIPS BigANN benchmark for BenoStreamDB")
+    parser = argparse.ArgumentParser(
+        description="NeurIPS BigANN benchmark for BenoStreamDB",
+        epilog="Examples:  run_neurips_bigann.py ingest --dataset 10m --profile d8lds | "
+               "run_neurips_bigann.py query --dataset 10m --profile d8lds --modes tq8,sq8 "
+               "--grid 256/32,64/4 --repeat 3",
+    )
+    parser.add_argument("command", nargs="?", choices=["ingest", "query", "compact"], default=None,
+                        help="ingest writes the table, query measures it, compact builds the "
+                             "table level Puffin artifact. Omit to run ingest and query in one process.")
+    parser.add_argument("--profile", type=str, default=None,
+                        help="Envelope profile from benchmarks/profiles (d8lds, d8s, e8ds, local). "
+                             "Supplies hardware, threads, cache, preload, flush cadence, warmup, "
+                             "and scratch location.")
+    parser.add_argument("--grid", type=str, default=None,
+                        help="Operating points as ef/np pairs, e.g. 256/32,64/4.")
+    parser.add_argument("--reindex", action="store_true",
+                        help="Rebuild the index for each mode before measuring, instead of "
+                             "reusing the index already on disk.")
     parser.add_argument("--dataset", choices=sorted(DATASETS), default="10m",
                         help="NeurIPS BigANN dataset to run (selects base + queries + GT)")
-    parser.add_argument("--query-set", choices=sorted(QUERY_SETS), default="public",
-                        help="Which query split to evaluate")
     parser.add_argument("--limit", type=int, default=0,
                         help="Vectors to index; 0 (default) = the whole selected dataset")
     parser.add_argument("--queries", type=int, default=10_000)
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--m", type=int, default=16)
     parser.add_argument("--ef-construction", type=int, default=200)
-    parser.add_argument("--ef-search", type=int, default=200,
-                        help="ef_search for a single point (ignored with --sweep)")
-    parser.add_argument("--n-probe", type=int, default=8,
-                        help="IVF lists probed for a single point (ignored with --sweep)")
-    parser.add_argument("--sweep", action="store_true",
-                        help="Run the (ef_search x n_probe) Pareto grid instead of one point")
-    parser.add_argument("--ef-sweep", type=str, default="32,64,128,256")
-    parser.add_argument("--n-probe-sweep", type=str, default="4,8,16,32")
-    parser.add_argument("--threads", type=int, default=0,
-                        help="Query threads; 0 (default) = the envelope's CPU limit")
-    parser.add_argument("--batch-size", type=int, default=100_000)
-    parser.add_argument("--flush-every", type=int, default=5_000_000,
-                        help="Flush the write buffer every N vectors during ingest. "
-                             "0 disables it, which leaves RSS unbounded and OOMs a "
-                             "100M ingest under a 16 GiB envelope.")
-    parser.add_argument("--preload-gb", type=float, default=0.0,
-                        help="Preload budget; 0 (default) = half the memory envelope")
-    parser.add_argument("--cache-gb", type=int, default=0,
-                        help="Override BSDB_CACHE_GB; 0 (default) = half the memory "
-                             "envelope. Lower it to leave room for the index build.")
-    parser.add_argument("--hardware", choices=["auto", "local", "d8lds", "d8s", "e8ds"], default="auto",
-                        help="Evaluation envelope: auto = cgroup limits, d8lds = "
-                             "Azure Standard_D8lds_v5 (8 vCPU / 16 GiB), d8s = "
-                             "Azure Standard_D8s_v5 (8 vCPU / 32 GiB), e8ds = "
-                             "Azure Standard_E8ds_v5 (8 vCPU / 64 GiB), local = this host")
-    parser.add_argument("--strict-hardware", action="store_true",
-                        help="Fail unless the process really is constrained to the envelope")
-    parser.add_argument("--mode", type=str, choices=["f32", "tq8", "tq4", "sq8", "pq"], default="tq8")
     parser.add_argument("--modes", type=str, default=None,
                         help="Comma-separated list of modes to run (e.g. 'sq8,pq')")
-    parser.add_argument("--all-modes", action="store_true",
-                        help="Run the complete evaluation (f32, TQ8, TQ4, SQ8, PQ)")
-    parser.add_argument("--stage", choices=["both", "ingest", "query"], default="both",
-                        help="ingest: build the table only; query: reindex+query only; "
-                             "both: ingest if needed, then query")
     parser.add_argument("--db-dir", type=str, default=None,
                         help="Persistent DB directory (default: <scratch-dir>/bigann_db)")
-    parser.add_argument("--scratch-dir", type=str,
-                        default="/home/ralbright/projects/benostreamdb/benchmarks/scratch_10m")
-    parser.add_argument("--tmp-dir", type=str, default=None,
-                        help="Scratch dir for puffin materialization (default: <scratch-dir>/tmp)")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
-    parser.add_argument("--base", type=str, default=None,
-                        help="Explicit path to base.<N>.u8bin (overrides --dataset)")
-    parser.add_argument("--query", type=str, default=None,
-                        help="Explicit path to query.<split>.10K.u8bin")
-    parser.add_argument("--gt", type=str, default=None,
-                        help="Explicit path to the ground-truth file")
-    parser.add_argument("--rebuild-db", action="store_true",
-                        help="Delete and re-ingest an existing DB at --db-dir")
-    parser.add_argument("--skip-reindex", action="store_true",
-                        help="Skip table.rebuild_index('embedding') and use the existing index on disk")
-    parser.add_argument("--force-reindex", action="store_true",
-                        help="Force rebuilding index even if index files already exist on disk")
-    parser.add_argument("--auto-warmup", action="store_true",
-                        help="Enable Tier B asynchronous background centroid warmup on Table open")
-    parser.add_argument("--warmup-queries", type=int, default=500,
-                        help="Number of untimed warmup query probes to fault index shards into RAM (default: 500)")
-    parser.add_argument("--cleanup", action="store_true",
-                        help="Delete the DB directory when the run finishes")
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="Measure every operating point N times and report the median, "
+                             "with the interquartile range kept in the JSON (default: 1)")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="Permit a result from a modified working tree. For throwaway runs "
+                             "only: a dirty-tree result cannot be reproduced from a commit.")
     parser.add_argument("--refine-factor", type=int, default=None,
                         help="Two-stage exact F32 rescore factor (e.g. 4 or 5)")
-    parser.add_argument("--index-compaction", action="store_true",
-                        help="After the per-segment index is ready, run index-only "
-                             "compaction: build the table-level, cluster-keyed Puffin "
-                             "artifact (global k-means + per-cluster HNSW). The Parquet "
-                             "data files are read once and never rewritten.")
     parser.add_argument("--compaction-k", type=int, default=1024,
                         help="Global cluster count for --index-compaction (default: 1024)")
     parser.add_argument("--compaction-m", type=int, default=16,
                         help="HNSW graph degree for --index-compaction (default: 16)")
     parser.add_argument("--compaction-ef-construction", type=int, default=200,
                         help="HNSW construction beam for --index-compaction (default: 200)")
-    parser.add_argument("--compaction-target-shard-bytes", type=int, default=None,
-                        help="Target size in bytes per sequential Puffin shard (default: 512 MiB = 536870912)")
     parser.add_argument("--dim", type=int, default=None,
                         help="Vector dimension (overrides dataset default)")
     parser.add_argument("--metric", choices=["l2", "ip", "inner_product", "cosine"], default=None,
@@ -1074,6 +1305,49 @@ def main():
                                              "results", "neurips_bigann"),
                         help="Directory for the JSON/Markdown results and the ledger")
     args = parser.parse_args()
+
+    # Derived state. The command line no longer carries these: the subcommand
+    # decides the stage, --grid decides the operating points, --modes decides the
+    # quantizers, and the profile decides the machine. The attributes below keep
+    # the rest of the harness readable without reintroducing flags for them.
+    args.stage = {"ingest": "ingest", "query": "query", "compact": "query"}.get(
+        args.command, "both"
+    )
+    args.force_reindex = bool(args.reindex)
+    args.skip_reindex = args.command in ("query", "compact") and not args.reindex
+    args.rebuild_db = args.command == "ingest"
+    args.index_compaction = args.command == "compact"
+    args.sweep = False
+    args.ef_search = 256
+    args.n_probe = 32
+    args.ef_sweep = "32,64,128,256"
+    args.n_probe_sweep = "4,8,16,32"
+    args.all_modes = False
+    args.mode = None
+    args.auto_warmup = False
+    args.cleanup = False
+    args.base = None
+    args.query = None
+    args.gt = None
+    args.query_set = "public"
+    args.compaction_target_shard_bytes = None
+
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
+
+    apply_profile(args)
+
+    # Provenance gate. A result produced from a modified tree cannot be
+    # reproduced from any commit, which is the defect that made the previous
+    # artifact set unverifiable.
+    state = git_state()
+    if state["git_dirty"] and not args.allow_dirty:
+        print("[ERROR] the working tree has modified files, so this result cannot be "
+              "reproduced from a commit:")
+        for line in _git(["status", "--porcelain"]).splitlines()[:10]:
+            print(f"    {line}")
+        print("        Commit the changes, or pass --allow-dirty for a throwaway run.")
+        sys.exit(3)
 
     # Constrain threads/caches to the evaluation envelope before importing the
     # engine: BSDB_CACHE_GB is read once, when the caches are first built.
@@ -1097,6 +1371,11 @@ def main():
     args.tmp_dir = tmpdir
     args.db_dir = args.db_dir or os.path.join(args.scratch_dir, "bigann_db")
 
+    # Storage generation is part of the envelope. A Gen3 link bounds sequential
+    # read throughput, so the artifact records the device and its measured link
+    # rather than leaving a reader to infer it from the machine name.
+    args.storage = storage_envelope(args.scratch_dir)
+
     base_path, q_path, gt_path, n, tag, dataset_count, qfile_count, dim, dtype, metric = resolve_dataset(args)
     args.n = n
     args.dim = dim
@@ -1107,12 +1386,20 @@ def main():
 
     if args.modes:
         modes = [m.strip().lower() for m in args.modes.split(",") if m.strip()]
-    elif args.all_modes:
-        modes = ["f32", "tq8", "tq4", "sq8", "pq"]
     else:
-        modes = [args.mode]
+        modes = ["tq8"]
 
-    if args.sweep:
+    valid_modes = {"f32", "tq8", "tq4", "sq8", "pq"}
+    unknown_modes = sorted(set(modes) - valid_modes)
+    if unknown_modes:
+        parser.error(
+            f"unknown quantizer {', '.join(unknown_modes)}; "
+            f"valid: {', '.join(sorted(valid_modes))}"
+        )
+
+    if args.grid:
+        grid = parse_grid(args.grid)
+    elif args.sweep:
         efs = [int(v) for v in args.ef_sweep.split(",") if v.strip()]
         nps = [int(v) for v in args.n_probe_sweep.split(",") if v.strip()]
         grid = [(ef, npr) for ef in efs for npr in nps]
@@ -1128,6 +1415,16 @@ def main():
     print(f"Modes: {[m.upper() for m in modes]} | stage: {args.stage}")
     print(f"Raw data:  {base_path}")
     print(f"Table DB:  {args.db_dir}  (ingest once, reindex per mode)")
+    _st = args.storage
+    print(
+        f"Storage:   {_st.get('device', 'unknown')} {_st.get('model') or ''} | "
+        f"PCIe {_st.get('pcie_generation', '?')} x{_st.get('link_width', '?')} "
+        f"({_st.get('link_speed') or 'link speed unknown'}) | "
+        f"rotational={_st.get('rotational')} | "
+        f"{_st.get('fstype') or 'fs?'} on {_st.get('source') or '?'} "
+        f"at {_st.get('mount', '?')}"
+        + (f" | declared: {args.storage_note}" if getattr(args, "storage_note", None) else "")
+    )
     print("=" * 90 + "\n", flush=True)
 
     # Validate the inputs before doing any work: an incomplete dataset is the
@@ -1147,14 +1444,14 @@ def main():
             "\nDownload the NeurIPS BigANN tarball for this size and unpack it into\n"
             f"  {args.data_dir}\n"
             "expected files: base.<N>.u8bin, query.public.10K.u8bin, GT.<N>\n"
-            "Then:  --stage ingest   (once)   followed by   --stage query --sweep"
+            "Then:  ingest --dataset <n> --profile d8lds   followed by   query --grid 256/32,64/4"
         )
         sys.exit(2)
 
     if args.stage == "query" and not os.path.exists(os.path.join(args.db_dir, "_manifest")):
         print(
-            f"[ERROR] no table at {args.db_dir}; --stage query reuses an existing ingest.\n"
-            f"        Run:  --dataset {args.dataset} --stage ingest"
+            f"[ERROR] no table at {args.db_dir}; the query command reuses an existing ingest.\n"
+            f"        Run:  ingest --dataset {args.dataset} --profile d8lds"
         )
         sys.exit(2)
 
@@ -1197,6 +1494,29 @@ def main():
 
         for mode in modes:
             print(f"--- Stage: QUERY / {mode.upper()} ---", flush=True)
+
+            # Reuse is only safe when the index on disk is the index this run
+            # claims to measure. Without this check a `--skip-reindex` run can
+            # report TQ8 while querying whatever the last build left behind.
+            if args.skip_reindex and not args.force_reindex:
+                manifest = read_index_mode(args.db_dir)
+                mismatch = []
+                if not manifest:
+                    mismatch.append(f"no index manifest at {index_mode_marker(args.db_dir)}")
+                else:
+                    for key, want in (("mode", mode), ("complexity", args.m),
+                                      ("quality", args.ef_construction),
+                                      ("dim", dim), ("n_vectors", n)):
+                        got = manifest.get(key)
+                        if got is not None and got != want:
+                            mismatch.append(f"{key}={got!r} on disk, {want!r} requested")
+                if mismatch:
+                    print("[ERROR] refusing to reuse an index that does not match this run:")
+                    for problem in mismatch:
+                        print(f"    {problem}")
+                    print("        Pass --force-reindex to rebuild, or drop --skip-reindex.")
+                    sys.exit(4)
+
             t0 = time.time()
             table, meta = reindex_and_preload(bsdb, args, mode)
 
@@ -1223,7 +1543,11 @@ def main():
                     print(f"    -> Warmed in {time.time() - t_warm_start:.2f}s", flush=True)
 
             for ef, npr in grid:
-                rec = search_pass(table, args, test_queries, gt_indices, ef, npr, mode=mode)
+                runs = [
+                    search_pass(table, args, test_queries, gt_indices, ef, npr, mode=mode)
+                    for _ in range(args.repeat)
+                ]
+                rec = aggregate_repeats(runs)
                 rec.update(
                     {
                         "dataset": f"{args.dataset}-{n}",
@@ -1261,8 +1585,10 @@ def main():
             "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "engine": {
                 "version": getattr(bsdb, "__version__", "unknown"),
-                "git_rev": _git(["rev-parse", "--short", "HEAD"]),
-                "git_dirty": bool(_git(["status", "--porcelain"])),
+                "git_rev": state["git_rev"],
+                "git_rev_short": state["git_rev_short"],
+                "git_dirty": state["git_dirty"],
+                "git_dirty_paths": state["git_dirty_paths"],
             },
             "dataset": {
                 "name": f"{args.dataset}",
@@ -1287,6 +1613,10 @@ def main():
                 "flush_every": args.flush_every,
                 "k": args.k,
                 "queries": args.queries,
+                "repeat": args.repeat,
+                "parquet_page_bytes": parquet_page_bytes(),
+                "reused_index": bool(args.skip_reindex),
+                "allow_dirty": bool(args.allow_dirty),
             },
             "index_compaction": {
                 "enabled": bool(getattr(args, "index_compaction", False)),
@@ -1299,6 +1629,8 @@ def main():
                 "threads": args.threads,
                 "cache_gb": args.cache_gb,
                 "preload_gb": args.preload_gb,
+                "storage": args.storage,
+                "storage_note": getattr(args, "storage_note", None),
             },
             "grid": [{"ef_search": ef, "n_probe": npr} for ef, npr in grid],
         }

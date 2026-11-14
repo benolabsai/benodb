@@ -2,7 +2,7 @@
 #
 # The envelope is Azure Standard_D8lds_v5: 8 vCPU / 16 GiB RAM / local NVMe. It
 # is applied as cgroup limits, and the harness reads those limits itself
-# (`--hardware auto`) to size its thread count and cache budgets — a 48 GiB
+# (profile `hardware = "auto"`) to size its thread count and cache budgets. A 48 GiB
 # cache budget on a 16 GiB machine is not a faster engine, it is an OOM kill.
 #
 #   # 1. engine wheel (host)
@@ -52,18 +52,22 @@ services:
       # Puffin materialization and temp vector files go to the scratch volume,
       # never to the container's tmpfs (16 GiB is the whole budget).
       TMPDIR: /work/scratch/tmp
+      # The profile cannot know the mount path, so these two override whatever
+      # scratch location the profile names.
+      BSDB_BENCH_SCRATCH: /work/scratch
+      BSDB_BENCH_TMP: /work/scratch/tmp
 
-    # Passed to run_neurips_bigann.py by the entrypoint. `--strict-hardware`
-    # aborts if the cgroup limits are missing, so an unconstrained (meaningless)
-    # run cannot silently produce a number.
+    # Passed to run_neurips_bigann.py by the entrypoint. The envelope comes from
+    # the profile, whose strict preflight aborts when the cgroup limits are
+    # missing, so an unconstrained and therefore meaningless run cannot silently
+    # produce a number.
     command: >
+      ${COMMAND:-ingest}
       --dataset ${DATASET:-10m}
       --data-dir /data/bigann
-      --scratch-dir /work/scratch
       --out /work/scratch/results
       --limit ${LIMIT:-0}
       --queries ${QUERIES:-10000}
-      --stage ${STAGE:-both}
-      --all-modes
-      --sweep
-      --hardware d8lds --strict-hardware
+      --profile ${PROFILE:-d8lds}
+      --modes ${MODES:-f32,tq8,tq4,sq8,pq}
+      --grid ${GRID:-256/32,128/16,64/8,64/4}

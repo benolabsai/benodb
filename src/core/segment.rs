@@ -877,7 +877,7 @@ impl HybridSegmentWriter {
             // 40-candidate rerank touches ~40 pages (~1.3 MB) instead of a whole
             // row group, large enough that the page index stays ~3 MB/segment
             // rather than ~13 MB at 8 KB pages.
-            .set_data_page_size_limit(32 * 1024);
+            .set_data_page_size_limit(data_page_size_limit());
 
         // Enable Bloom Filters for Primary Keys if defined
         for pk in &self.primary_key {
@@ -1952,6 +1952,22 @@ impl HybridSegmentWriter {
 
         Ok(())
     }
+}
+
+/// Parquet data page size limit used when writing a segment.
+///
+/// The default of 32 KB is what the rerank path is tuned for: 64 rows at 128
+/// dimensions in f32, so a 40 candidate rescore touches about 40 pages rather
+/// than a whole row group. The environment override exists for the page size
+/// ablation, which writes one corpus at several page sizes and compares the
+/// physical bytes read per query. Values below 1 KiB are ignored so a typo
+/// cannot produce a pathological page index.
+fn data_page_size_limit() -> usize {
+    std::env::var("BSDB_PARQUET_PAGE_BYTES")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .filter(|bytes| *bytes >= 1024)
+        .unwrap_or(32 * 1024)
 }
 
 #[cfg(test)]

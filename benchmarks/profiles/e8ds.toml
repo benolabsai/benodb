@@ -1,0 +1,14 @@
+# Azure Standard_E8ds_v5. 8 vCPU, 64 GiB RAM, 40 GiB engine cache.
+# This is the Float32 baseline envelope, where the uncompressed index is held
+# resident to establish the recall ceiling.
+label = "Azure Standard_E8ds_v5 (8 vCPU / 64 GiB)"
+hardware = "e8ds"
+strict_hardware = true
+threads = 8
+cache_gb = 40
+preload_gb = 40.0
+batch_size = 100000
+flush_every = 5000000
+warmup_queries = 500
+scratch_dir = "benchmarks/scratch_e8ds"
+storage_note = "Azure local NVMe (Standard_E8ds_v5)"
