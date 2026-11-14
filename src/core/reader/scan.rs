@@ -3,6 +3,7 @@
 use crate::core::cache::CacheExt;
 use crate::core::index::bm25::Bm25Params;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 // use std::collections::HashSet;
 use crate::core::index::hnsw_ivf::HnswIvfIndex;
@@ -13,7 +14,9 @@ use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
 use futures::StreamExt;
 use object_store::{path::Path, ObjectMeta, ObjectStore};
-use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
+use parquet::arrow::arrow_reader::{
+    ArrowReaderMetadata, ArrowReaderOptions, RowSelection, RowSelector,
+};
 use parquet::arrow::async_reader::{ParquetObjectReader, ParquetRecordBatchStreamBuilder};
 use parquet::arrow::ProjectionMask;
 use parquet::file::statistics::Statistics as ParquetStats;
@@ -3009,10 +3012,23 @@ impl HybridReader {
         let arrow_meta = (*meta).clone();
         let mut builder = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, arrow_meta);
 
-        // Prune to the row groups covering the requested rows
+        // Prune to the row groups covering the requested rows.
+        //
+        // This is the read the refine path actually performs, so the counters
+        // live here as well as in `filter.rs`. Without them the ablation would
+        // record zeros and read as if nothing was selected.
         let groups = Self::row_groups_covering(builder.metadata(), &clamped_bitmap);
         let num_groups = builder.metadata().num_row_groups();
-        if !groups.is_empty() && groups.len() < num_groups {
+        stats::READS.fetch_add(1, Ordering::Relaxed);
+        stats::ROWS_REQUESTED.fetch_add(total_rows as u64, Ordering::Relaxed);
+        stats::ROWS_SELECTED.fetch_add(clamped_bitmap.len(), Ordering::Relaxed);
+        stats::ROW_GROUPS_TOTAL.fetch_add(num_groups as u64, Ordering::Relaxed);
+        if !stats::skip_enabled() {
+            stats::ROW_GROUPS_READ.fetch_add(num_groups as u64, Ordering::Relaxed);
+            builder = builder
+                .with_row_selection(RowSelection::from(vec![RowSelector::select(total_rows)]));
+        } else if !groups.is_empty() && groups.len() < num_groups {
+            stats::ROW_GROUPS_READ.fetch_add(groups.len() as u64, Ordering::Relaxed);
             let mut shifted = RoaringBitmap::new();
             let mut base: u32 = 0;
             for (rg, group_start) in &groups {
@@ -3029,6 +3045,7 @@ impl HybridReader {
             let selection = self.bitmap_to_row_selection(&shifted, base as usize);
             builder = builder.with_row_selection(selection);
         } else {
+            stats::ROW_GROUPS_READ.fetch_add(num_groups as u64, Ordering::Relaxed);
             let selection = self.bitmap_to_row_selection(&clamped_bitmap, total_rows);
             builder = builder.with_row_selection(selection);
         }
@@ -3047,6 +3064,7 @@ impl HybridReader {
         let mut arrays = Vec::new();
         while let Some(batch_result) = stream.next().await {
             let batch = batch_result?;
+            stats::ROWS_DECODED.fetch_add(batch.num_rows() as u64, Ordering::Relaxed);
             if let Some(c) = batch.column_by_name(column) {
                 arrays.push(c.clone());
             }
