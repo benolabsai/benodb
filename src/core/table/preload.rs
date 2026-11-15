@@ -673,11 +673,29 @@ impl Table {
 
     /// Best-effort size of an index file (or its multi-file family).
     async fn index_size_bytes(&self, full_path: &str, idx: &IndexFile) -> u64 {
-        // Puffin blob: the manifest records the exact length.
-        if let Some(len) = idx.blob_length {
-            if len > 0 {
-                return len as u64;
+        // A Puffin container carries one vector index split across many blobs,
+        // and `warm_in_memory` loads the container, not the blob. Charging the
+        // blob length to the budget is a thousandfold undercount: at 100M, 100
+        // containers of about 400 MB each were loaded against an 8 GiB budget,
+        // which pinned the cgroup at 16 GiB and made the kernel thrash mapped
+        // pages instead of letting the budget stop the pass. Size the container.
+        if idx.blob_offset.is_some() {
+            if let Ok(meta) = self
+                .store
+                .head(&object_store::path::Path::from(full_path))
+                .await
+            {
+                return meta.size;
             }
+            // Fall back to the blob length only if the container cannot be
+            // stat'ed, so a failed HEAD degrades to the old behaviour rather
+            // than disabling the budget entirely.
+            if let Some(len) = idx.blob_length {
+                if len > 0 {
+                    return len as u64;
+                }
+            }
+            return 0;
         }
         // Single-file index: HEAD the object.
         if let Ok(meta) = self
