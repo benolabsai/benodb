@@ -324,7 +324,7 @@ impl Table {
     pub async fn warmup_from_centroids_async(
         &self,
         n_probes: usize,
-        _max_memory_bytes: Option<u64>,
+        max_memory_bytes: Option<u64>,
     ) -> Result<WarmupStats> {
         let t0 = Instant::now();
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
@@ -359,6 +359,32 @@ impl Table {
             });
         }
 
+        // Total container bytes per column. The warmup used to accept a memory
+        // budget and ignore it, so a 20 probe pass over a 100 cluster index at
+        // 100M walked the whole 40 GB container set and spent hours faulting
+        // pages that the 8 GiB cache immediately evicted.
+        let mut column_bytes: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
+        {
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for e in &entries {
+                let rel_entry = crate::core::segment::relativize_against(&self.uri, &e.file_path);
+                for idx in &e.index_files {
+                    if idx.blob_offset.is_none() {
+                        continue;
+                    }
+                    let full =
+                        crate::core::segment::resolve_entry_index_path(&rel_entry, &idx.file_path);
+                    if !seen.insert(full.clone()) {
+                        continue;
+                    }
+                    if let Ok(meta) = self.store.head(&object_store::path::Path::from(full)).await {
+                        *column_bytes.entry(idx.column_name.clone()).or_insert(0) += meta.size;
+                    }
+                }
+            }
+        }
+
         let mut total_probes = 0;
         let mut total_clusters = 0;
 
@@ -371,12 +397,28 @@ impl Table {
                 }
 
                 // Sample up to n_probes centroids evenly across the centroid matrix
-                let probes_to_run = n_probes.min(n_centroids);
-                let stride = if n_centroids > probes_to_run {
-                    n_centroids / probes_to_run
+                let requested = n_probes.min(n_centroids);
+                let stride = if n_centroids > requested {
+                    n_centroids / requested
                 } else {
                     1
                 };
+
+                // Stop when the warmed clusters reach the memory budget. Per
+                // cluster bytes are estimated from the column's container total
+                // divided by its centroid count, which is the same uniform
+                // assumption the preload budget uses.
+                let per_cluster = column_bytes
+                    .get(&col)
+                    .copied()
+                    .unwrap_or(0)
+                    .checked_div(n_centroids as u64)
+                    .unwrap_or(0);
+                let budget_clusters = match (max_memory_bytes, per_cluster) {
+                    (Some(budget), pc) if pc > 0 => (budget / pc).max(1) as usize,
+                    _ => requested,
+                };
+                let probes_to_run = requested.min(budget_clusters);
 
                 for step in 0..probes_to_run {
                     let idx = step * stride;
@@ -387,9 +429,13 @@ impl Table {
                             10,
                         );
                         params.ef_search = Some(32);
+                        // One cluster per probe. Without this the default probe
+                        // count loads many clusters per centroid, so n_probes
+                        // understated the work by the probe width.
+                        params.probes = Some(1);
                         params.use_mmap = true;
-                        if let Ok(res) = self.execute_vector_search_as_scored(params).await {
-                            total_clusters += res.len();
+                        if self.execute_vector_search_as_scored(params).await.is_ok() {
+                            total_clusters += 1;
                         }
                         total_probes += 1;
                     }
