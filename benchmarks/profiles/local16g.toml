@@ -1,0 +1,21 @@
+# This workstation inside a 16 GiB systemd scope, which reproduces the paper's
+# memory envelope on hardware that is otherwise a developer machine.
+#
+# Launch it as:
+#   systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 \
+#     .venv/bin/python benchmarks/run_neurips_bigann.py --profile local16g ...
+#
+# strict_hardware stays off because the CPU limit is not set and the strict
+# preflight would refuse the run. threads is fixed at 8 so the number matches
+# the Azure Standard_D8lds_v5 envelope the paper reports against.
+label = "Local workstation in a 16 GiB scope (8 threads)"
+hardware = "local"
+strict_hardware = false
+threads = 8
+cache_gb = 8
+preload_gb = 8.0
+batch_size = 100000
+flush_every = 1000000
+warmup_queries = 500
+scratch_dir = "benchmarks/scratch_local16g"
+storage_note = "PCIe 3.0 x4 NVMe (Gen3), 16 GiB scope, 8 threads"
