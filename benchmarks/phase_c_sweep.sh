@@ -26,7 +26,10 @@ cd "$(dirname "$0")/.."
 
 PY=${PY:-.venv/bin/python}
 HARNESS=${HARNESS:-benchmarks/run_neurips_bigann.py}
-OUT=${OUT:-benchmarks/results/phase_c}
+# Written outside the repository on purpose: a result directory inside the tree
+# makes `git status` dirty, and the harness refuses to stamp a run from a dirty
+# tree. Copy an arm into the repository only when it is being published.
+OUT=${OUT:-/home/ralbright/data/benchmarks/phase_c}
 QUERIES=${QUERIES:-20}
 REPEATS=${REPEATS:-3}
 LIMIT=${LIMIT:-10000000}
@@ -68,20 +71,32 @@ COARSE_PAGE=134217728
 DEFAULT_RG=1048576
 SMALL_RG=983040
 
-rm -rf benchmarks/scratch_phasec/arms
+[ "${REUSE:-0}" = "1" ] || rm -rf benchmarks/scratch_phasec/arms
 
 # fine: the claim
-build_and_measure fine benchmarks/scratch_phasec/arms/fine "$FINE_PAGE" "$DEFAULT_RG" 4
+if [ "${REUSE:-0}" = "1" ]; then
+  query_only fine benchmarks/scratch_phasec/arms/fine "$FINE_PAGE" "$DEFAULT_RG" 4 1
+else
+  build_and_measure fine benchmarks/scratch_phasec/arms/fine "$FINE_PAGE" "$DEFAULT_RG" 4
+fi
 query_only fine benchmarks/scratch_phasec/arms/fine "$FINE_PAGE" "$DEFAULT_RG" 1 1
 query_only fine benchmarks/scratch_phasec/arms/fine "$FINE_PAGE" "$DEFAULT_RG" 16 1
 
 # coarse: control that still rescores
-build_and_measure coarse benchmarks/scratch_phasec/arms/coarse "$COARSE_PAGE" "$DEFAULT_RG" 4
+if [ "${REUSE:-0}" = "1" ]; then
+  query_only coarse benchmarks/scratch_phasec/arms/coarse "$COARSE_PAGE" "$DEFAULT_RG" 4 1
+else
+  build_and_measure coarse benchmarks/scratch_phasec/arms/coarse "$COARSE_PAGE" "$DEFAULT_RG" 4
+fi
 query_only coarse benchmarks/scratch_phasec/arms/coarse "$COARSE_PAGE" "$DEFAULT_RG" 1 1
 query_only coarse benchmarks/scratch_phasec/arms/coarse "$COARSE_PAGE" "$DEFAULT_RG" 16 1
 
 # smallrg: 128 MB row groups with fine pages
-build_and_measure smallrg benchmarks/scratch_phasec/arms/smallrg "$FINE_PAGE" "$SMALL_RG" 4
+if [ "${REUSE:-0}" = "1" ]; then
+  query_only smallrg benchmarks/scratch_phasec/arms/smallrg "$FINE_PAGE" "$SMALL_RG" 4 1
+else
+  build_and_measure smallrg benchmarks/scratch_phasec/arms/smallrg "$FINE_PAGE" "$SMALL_RG" 4
+fi
 query_only smallrg benchmarks/scratch_phasec/arms/smallrg "$FINE_PAGE" "$SMALL_RG" 1 1
 query_only smallrg benchmarks/scratch_phasec/arms/smallrg "$FINE_PAGE" "$SMALL_RG" 16 1
 
