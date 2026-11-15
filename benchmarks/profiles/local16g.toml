@@ -16,6 +16,11 @@ cache_gb = 8
 preload_gb = 8.0
 batch_size = 100000
 flush_every = 1000000
-warmup_queries = 500
+# The warmup loop multiplies this by the number of Voronoi clusters, so 500
+# probes over 100 clusters issues 50,000 cluster searches. At 100M that reads
+# terabytes and cannot fit an 8 GiB cache, so it never terminates in useful
+# time. Twenty probes give 2,000 cluster searches, which prefaults what the
+# budget can hold and finishes in minutes.
+warmup_queries = 20
 scratch_dir = "benchmarks/scratch_local16g"
 storage_note = "PCIe 3.0 x4 NVMe (Gen3), 16 GiB scope, 8 threads"
