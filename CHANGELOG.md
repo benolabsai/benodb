@@ -1,3 +1,49 @@
+## [0.16.2] - 2026-11-15
+
+### Fixed
+
+- **Index preload charged a thousandth of what it loaded**
+  (`src/core/table/preload.rs`): a Puffin container holds one vector index split
+  across many blobs, and `warm_in_memory` materialises the container, but
+  `index_size_bytes` returned `blob_length`. At 100M the manifest lists 40,100
+  blob records across 100 containers, so every container was charged at about
+  100 KB against an 8 GiB budget, the budget never tripped, and the pass warmed
+  40 GB of index. In a 16 GiB cgroup the kernel then spent the warmup reclaiming
+  mapped pages: 572 GB read before the run was stopped. A container backed index
+  is now charged at its container size. On the existing 100M table with an 8 GiB
+  budget the pass warms 19 containers, reports 8,233,029,099 bytes, and stops in
+  0.8 s. Any 100M result recorded before this commit measured an unbounded
+  preload and is not comparable to one taken after it, whatever its record says
+  about `BSDB_CACHE_GB`.
+
+### Added
+
+- **Reader counters for the candidate read path** (`src/core/reader/stats.rs`,
+  `bsdb.reader_stats()` and `bsdb.reset_reader_stats()`): `rows_requested`,
+  `rows_selected`, `rows_decoded`, `row_groups_read`, `row_groups_total`, and
+  `decoded_fraction`. The pair that matters is decoded against selected: a
+  reader that skipped pages keeps them equal, a reader that filtered after the
+  read shows the file row count in both. On BigANN 10M at 160 candidates the
+  skip arm decoded 3,200 rows against 3,200 selected.
+
+- **Writer and reader controls for the rerank ablation**:
+  `BSDB_PARQUET_PAGE_BYTES` (default 32 KiB),
+  `BSDB_PARQUET_ROW_GROUP_ROWS` (default 1,048,576, arrow-rs's own default), and
+  `BSDB_READER_SKIP=0` to force a full selection as the control arm. All three
+  default to the previous behaviour, so an unset environment writes byte
+  identical Parquet and reads it the same way.
+
+### Benchmarks
+
+- **Cold rerank measurement in the BigANN harness**
+  (`benchmarks/run_neurips_bigann.py`, `benchmarks/phase_c_sweep.sh`): each
+  record now carries cgroup memory counters, physical and logical bytes read,
+  input file digests, and the reader counters above. `BSDB_BENCH_EVICT=query`
+  drops the Parquet pages before every timed query and forces one query worker,
+  because a resident table makes the physical counters flat. Measured cold on
+  10M, 40 candidates, recall 0.910: 3.80 MB per query with 32 KiB pages against
+  380.55 MB with 128 MB pages, 100.2 times fewer bytes at identical recall.
+
 ## [0.16.1] - 2026-11-13
 
 ### Fixed
