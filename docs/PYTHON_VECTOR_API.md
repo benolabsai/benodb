@@ -791,6 +791,42 @@ table.rollback_to_snapshot(snapshot_id)
 
 See [Iceberg V2/V3 API Guide](ICEBERG_V2_V3_API.md) for complete reference.
 
+## Reading a past version
+
+`rollback_to_snapshot` moves the table back. When a reader needs an older version
+without disturbing the writers, pin the handle instead.
+
+```python
+version = table.snapshot_version()   # the version the last commit wrote
+table.checkpoint()                   # publish a version that pins data and indexes
+
+table.at_version(version)            # every read resolves this version
+print(table.pinned_version())        # the pinned version, None at the head
+rows = table.read()                  # data files and index artifacts of that version
+table.unpin()                        # return to the head
+```
+
+The pin is verified before it takes effect, so a version that no longer exists
+raises at the call rather than at the first query. While the handle is pinned
+every write path refuses: `write`, `commit`, `flush`, `truncate`, and `checkpoint`
+raise `RuntimeError`. That is deliberate. A read view that could commit would
+advance the head it is ignoring.
+
+The index follows the data. The version carries each segment's `index_files` and
+the table's `table_indexes`, so a vector search at a pinned version probes the
+artifact set built at or before that version. Three conditions have to hold: the
+artifact files still exist, which the orphan sweep preserves for every retained
+version; the artifact's source segments are present in the pinned version; and
+the artifact was built at or before it. A version older than the index resolves
+no index and falls back to a full scan, which is the correct answer.
+
+Two boundaries. `at_version` is a Rust and Python API. The Spark, Trino, and
+Flight SQL connectors do not expose it: those engines resolve a snapshot through
+catalog metadata instead of holding a handle, and the SQL surface has no `AS OF`
+clause. And a pin can be outlived by maintenance. `vacuum` and
+`expire_snapshots` delete old versions and files, so a pinned reader has to
+finish before retention removes what it resolves.
+
 ## Spark Connector
 
 ```scala

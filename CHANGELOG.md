@@ -1,4 +1,4 @@
-## [0.16.2] - 2026-11-16
+## [0.17.0] - 2026-11-16
 
 ### Fixed
 
@@ -50,7 +50,10 @@
   cannot advance the head it is ignoring. `unpin()` returns the handle to the
   head. `test_at_version_pins_index_set_and_refuses_writes` reads 20 rows at the
   checkpoint and 40 at the head through one handle, and gets an error from the
-  write issued while pinned.
+  write issued while pinned. `at_version` is exposed on the Rust and Python
+  surfaces only: the Spark, Trino, and Flight SQL connectors resolve a snapshot
+  through catalog metadata instead of holding a handle, and the SQL surface has
+  no `AS OF` clause, so a pinned read is unavailable from those three.
 
 - **True LSM vector retrieval and post-ingest index compaction**
   (`src/core/manifest/manager/commit.rs`, `src/core/manifest/types.rs`,

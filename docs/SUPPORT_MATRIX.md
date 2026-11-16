@@ -37,7 +37,7 @@ These surfaces are covered by CI and are the ones we stand behind:
 
 - **Engine** — Iceberg-format tables (V2/V3 subset), WAL + MVCC commits, indexes
   (HNSW/IVF, TurboQuant variants, inverted/BM25, bitmap, CSR graph), compaction,
-  vacuum, time travel, schema evolution, multi-writer OCC, and Iceberg catalogs
+  vacuum, snapshot rollback, pinned read views, schema evolution, multi-writer OCC, and Iceberg catalogs
   ([`docs/CATALOG_USAGE.md`](CATALOG_USAGE.md) — `TableRequirement` validation + HTTP-409 CAS retry across `rest` [Bearer/OAuth2/SigV4], `s3tables`, `memory`, `jdbc` [PostgreSQL/SQLite], `glue` [SDK `version_id` & `mode="rest"`], `hive` [`expected_parameter`], `unity` [Unity Tables & Iceberg REST], and `nessie` [`expectedHash`]).
 - **SQL** — the full DataFusion surface plus the engine's UDFs (vector distance,
   pgvector operators, JSON path, graph UDAFs) and the catalog DDL layer

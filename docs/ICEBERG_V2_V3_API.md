@@ -237,7 +237,13 @@ recent_clicks = table.to_pandas(
 # first-row-id), not as queryable data columns.
 print(table.format_version)
 
-# Time Travel: Rollback to previous state
+# Time travel by moving the table back
 table.rollback_to_snapshot(123456789)
+
+# Time travel by pinning a handle, which leaves the head alone
+version = table.snapshot_version()
+table.at_version(version)
+rows = table.read()          # data and index artifacts of that version
+table.unpin()
 ```
 
