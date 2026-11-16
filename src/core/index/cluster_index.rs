@@ -122,6 +122,64 @@ mod bucket_count_tests {
     }
 }
 
+/// Root directory for the bucket and shard spill of a table level build.
+///
+/// At 100M the builder passes about 90 GB through this directory, so the system
+/// temp directory is a poor default on hosts where `/tmp` is a sized tmpfs.
+/// `BSDB_CLUSTER_BUILD_TMPDIR` points it at the storage volume instead.
+fn build_spill_root() -> std::path::PathBuf {
+    std::env::var_os("BSDB_CLUSTER_BUILD_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+/// Remove spill directories left behind by a build that was killed outright.
+///
+/// The index deletes its own temporary directory on drop, but an OOM kill or a
+/// SIGKILL leaves it in place, and at 100M each one is tens of GB.
+fn sweep_stale_spill_dirs(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("bsdb-cluster-")
+        {
+            continue;
+        }
+        let age = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| now.duration_since(m).ok());
+        if age.map(|a| a.as_secs() > 6 * 3600).unwrap_or(false) {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Free bytes available to this user on the filesystem holding `path`.
+#[cfg(unix)]
+fn available_spill_bytes(path: &std::path::Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c_path` is a valid NUL terminated path and `stat` is writable.
+    if unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) } != 0 {
+        return None;
+    }
+    Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+}
+
+/// Free space is not read on non unix hosts; the caller then skips the check.
+#[cfg(not(unix))]
+fn available_spill_bytes(_path: &std::path::Path) -> Option<u64> {
+    None
+}
+
 fn build_bucket_count(total_vector_bytes: usize) -> usize {
     if let Some(n) = std::env::var("BSDB_CLUSTER_BUILD_BUCKETS")
         .ok()
@@ -408,7 +466,31 @@ impl ClusterIndex {
 
         // ---- Pass 2: assign every row, range-bucket to disk ----
         let buckets = build_bucket_count(total_rows.saturating_mul(dim).saturating_mul(4));
-        let tmp_dir = std::env::temp_dir().join(format!("bsdb-cluster-{}", uuid::Uuid::new_v4()));
+        let spill_root = build_spill_root();
+        std::fs::create_dir_all(&spill_root)
+            .with_context(|| format!("creating build spill root {}", spill_root.display()))?;
+        sweep_stale_spill_dirs(&spill_root);
+
+        // Buckets and the final shards both pass through the spill directory, so
+        // the peak is roughly twice the raw vector bytes. Refuse before writing
+        // anything: a 100M build that fills a sized tmpfs dies with EDQUOT hours
+        // in, and the partial buckets are useless.
+        let raw_vector_bytes = total_rows.saturating_mul(dim).saturating_mul(4);
+        if let Some(free) = available_spill_bytes(&spill_root) {
+            let needed = raw_vector_bytes.saturating_mul(22) / 10;
+            if free < needed as u64 {
+                anyhow::bail!(
+                    "cluster build spills buckets and shards through {} and needs about {} \
+                     bytes, but only {} is available. Set BSDB_CLUSTER_BUILD_TMPDIR to a \
+                     directory on a filesystem with room, about 100 GB at 100M.",
+                    spill_root.display(),
+                    needed,
+                    free
+                );
+            }
+        }
+
+        let tmp_dir = spill_root.join(format!("bsdb-cluster-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir)
             .with_context(|| format!("creating build temp dir {}", tmp_dir.display()))?;
 

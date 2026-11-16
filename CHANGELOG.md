@@ -2,6 +2,17 @@
 
 ### Fixed
 
+- **Table level index builds spilled into the system temp directory**
+  (`src/core/index/cluster_index.rs`): the builder writes its buckets and final
+  shards through `std::env::temp_dir()`, which is a sized tmpfs on many hosts. At
+  100M that is about 90 GB, so the build died with `Disk quota exceeded` after
+  filling a 61 GB tmpfs that was already 73% used, two hours in. The spill
+  directory is now `BSDB_CLUSTER_BUILD_TMPDIR` when set, the builder refuses up
+  front when the target filesystem cannot hold about twice the raw vector bytes,
+  and it removes spill directories older than six hours at start, which is what
+  an OOM killed build leaves behind. Two such directories held 32 GB on this
+  host.
+
 - **`compact_indexes` reported shards it never wrote**
   (`src/core/table/maintenance.rs`): the function counted indexed segments,
   estimated a shard count from 134 bytes per vector, rebuilt the vector router,
