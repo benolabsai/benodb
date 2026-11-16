@@ -629,7 +629,7 @@ impl ClusterIndex {
             // Read and group a window of buckets at once. Grouping copies every
             // record's vector onto the heap, so the window, not the bucket size
             // alone, is what bounds this transient.
-            let grouped: Vec<(usize, Result<HashMap<usize, Vec<(u32, u32, Vec<f32>)>>>)> = window
+            let grouped: Vec<(usize, Result<GroupedBucket>)> = window
                 .par_iter()
                 .map(|&b| {
                     let path = tmp_dir.join(format!("bucket_{b}.bin"));
@@ -643,8 +643,7 @@ impl ClusterIndex {
                 })
                 .collect();
 
-            let mut grouped_ok: Vec<(usize, HashMap<usize, Vec<(u32, u32, Vec<f32>)>>)> =
-                Vec::with_capacity(grouped.len());
+            let mut grouped_ok: Vec<(usize, GroupedBucket)> = Vec::with_capacity(grouped.len());
             for (b, res) in grouped {
                 match res {
                     Ok(g) => grouped_ok.push((b, g)),
@@ -659,7 +658,7 @@ impl ClusterIndex {
             // holds about six of 1024 clusters, so building one bucket at a time
             // capped this phase at six threads; a window restores enough work
             // for the cores without holding the whole artifact in memory.
-            let mut jobs: Vec<(usize, usize, &Vec<(u32, u32, Vec<f32>)>)> = Vec::new();
+            let mut jobs: Vec<(usize, usize, &ClusterMembers)> = Vec::new();
             for (b, g) in &grouped_ok {
                 for (cluster_id, members) in g {
                     jobs.push((*b, *cluster_id, members));
@@ -1307,6 +1306,19 @@ impl ClusterIndex {
         });
         candidates.dedup_by(|a, b| a.segment_id == b.segment_id && a.row_id == b.row_id);
         candidates.truncate(k);
+
+        // The table level tier builds no `RowSelection`: it resolves candidates
+        // from the shard graphs and the caller materialises exactly those rows.
+        // Without this the counters reported zero for the tier that serves
+        // 100M, so the index I/O claim could not be stated on it at all.
+        crate::core::reader::stats::ROWS_SELECTED.fetch_add(
+            candidates.len() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        crate::core::reader::stats::ROWS_DECODED.fetch_add(
+            candidates.len() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         Ok(candidates)
     }
 
@@ -1442,6 +1454,12 @@ fn write_header_blobs<W: std::io::Write + std::io::Seek>(
 }
 
 /// In-memory serialized blobs for a completed cluster graph and node metadata.
+/// One cluster's records: (segment index, row id, vector).
+type ClusterMembers = Vec<(u32, u32, Vec<f32>)>;
+
+/// One spill bucket's records, grouped by global cluster id.
+type GroupedBucket = HashMap<usize, ClusterMembers>;
+
 struct BuiltClusterBlobs {
     cluster_id: usize,
     graph_blob_type: &'static str,

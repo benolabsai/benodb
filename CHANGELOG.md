@@ -175,6 +175,14 @@
   `search_hnsw_ivf` now records the candidates it selected and materialised, and
   `vector_search_flat` records the rows it scored. Both previously reported zero.
 
+- **The counters now observe the table level tier** (`ClusterIndex::search`):
+  the cluster index builds no `RowSelection`, so a query served by the 100M
+  artifact reported zero in every reader counter while reading 723 MB of
+  physical bytes per query. The search records the candidates it selected and
+  materialised, and `tests/test_index_usage.rs` now covers that tier after a
+  real compaction: the query decodes k rows of 2,000 and reports non zero
+  counters.
+
 - **The maintenance soak now checks what it returns** (`tests/soak.rs`): the
   vector query between stages was discarded with `let _ =`, so the doc comment
   that promises it never returns a deleted row was untested. The returned ids are

@@ -79,7 +79,11 @@ async fn indexed_vector_query_decodes_a_fraction_of_the_table() -> anyhow::Resul
     let indexed_dir = tempdir()?;
     let indexed_uri = format!("file://{}", indexed_dir.path().to_str().expect("utf8"));
     let indexed = Table::new_async(indexed_uri).await?;
+    // Two segments: a single segment is already one compact unit, and
+    // `compact_indexes` correctly declines to build an artifact for it.
     indexed.write_async(vec![batch(0)]).await?;
+    indexed.commit_async().await?;
+    indexed.write_async(vec![batch(ROWS as i64)]).await?;
     indexed.commit_async().await?;
     indexed
         .add_index("embedding".to_string(), IndexAlgorithm::hnsw_tq8())
@@ -93,11 +97,35 @@ async fn indexed_vector_query_decodes_a_fraction_of_the_table() -> anyhow::Resul
         "the counters did not observe the indexed read path"
     );
     assert!(
-        counters.rows_decoded * 4 < ROWS as u64,
+        counters.rows_decoded * 4 < (2 * ROWS) as u64,
         "the indexed query decoded {} of {} rows; an index resolves candidates, \
          a scan decodes the table",
         counters.rows_decoded,
-        ROWS
+        2 * ROWS
+    );
+
+    // The table level tier must report through the same counters. Compaction
+    // publishes one artifact covering the single segment, so the query resolves
+    // through the cluster artifact and materialises k rows, not the table.
+    let compaction = indexed
+        .compact_indexes_async("embedding", None)
+        .await
+        .expect("compact the table level artifact");
+    assert!(
+        compaction.output_shards >= 1,
+        "compaction published no shard"
+    );
+    let (cluster_rows, cluster_counters) = query(&indexed).await;
+    assert_eq!(cluster_rows, K, "the cluster tier must return k rows");
+    assert!(
+        cluster_counters.rows_selected > 0,
+        "the cluster tier reported no counters"
+    );
+    assert!(
+        cluster_counters.rows_decoded * 4 < (2 * ROWS) as u64,
+        "the cluster query decoded {} of {} rows",
+        cluster_counters.rows_decoded,
+        2 * ROWS
     );
 
     // Control: identical data, no index. Without this number the check above
