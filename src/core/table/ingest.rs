@@ -256,9 +256,54 @@ impl Table {
         let planned = self.plan_ingest(paths, options.chunk_rows)?;
         let report = self.ingest_units_async(planned, &options).await?;
         if options.compact_after {
-            self.rewrite_data_files_async(None).await?;
+            self.compact_after_ingest_async().await?;
         }
         Ok(report)
+    }
+
+    /// Post-ingest compaction pass when `compact_after` is set.
+    ///
+    /// 1. Rewrites and bin-packs data files to target size (512 MiB).
+    /// 2. Compacts index sidecars across all vector columns.
+    /// 3. If a table-level cluster index exists on a vector column, rebuilds it
+    ///    so that newly ingested delta rows are reorganized into the Voronoi base tier.
+    pub async fn compact_after_ingest_async(&self) -> Result<()> {
+        // 1. Check existing cluster indexes and their cluster counts prior to data file rewrite
+        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let existing_cluster_indexes: Vec<(String, usize)> = match manager.load_latest_direct().await {
+            Ok((manifest, _)) => manifest
+                .table_indexes
+                .into_iter()
+                .filter(|idx| idx.index_category == "vector")
+                .map(|idx| {
+                    (
+                        idx.column_name,
+                        if idx.cluster_count > 0 {
+                            idx.cluster_count
+                        } else {
+                            1024
+                        },
+                    )
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+        // 2. Binpack data files
+        self.rewrite_data_files_async(None).await?;
+
+        // 3. Compact per-segment index sidecars across vector columns
+        for col in self.vector_columns() {
+            let _ = self.compact_indexes_async(&col, None).await;
+        }
+
+        // 4. Rebuild table-level cluster index for vector columns that had one,
+        //    reorganizing base + delta into refreshed Voronoi clusters.
+        for (col, k) in existing_cluster_indexes {
+            let _ = self.rebuild_cluster_index(col, k, 16, 100).await;
+        }
+
+        Ok(())
     }
 
     /// Ingest a single explicit row range — the serverless thin-runner entry
@@ -274,7 +319,7 @@ impl Table {
             .ingest_units_async(vec![(path.to_string(), row_start, row_end)], &options)
             .await?;
         if options.compact_after {
-            self.rewrite_data_files_async(None).await?;
+            self.compact_after_ingest_async().await?;
         }
         Ok(report)
     }
@@ -316,7 +361,7 @@ impl Table {
             .ingest_coordinated_units_async(&options, coordinator)
             .await?;
         if options.compact_after {
-            self.rewrite_data_files_async(None).await?;
+            self.compact_after_ingest_async().await?;
         }
         Ok(report)
     }

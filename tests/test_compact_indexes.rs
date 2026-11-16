@@ -743,3 +743,146 @@ async fn test_sql_execute_cluster_index_and_warmup() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_true_lsm_cluster_index_preservation_and_two_tier_query() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let uri = dir.path().to_str().unwrap().to_string();
+    let dim = 8;
+    let s = schema(dim);
+
+    let table = Table::create_async(uri.clone(), s.clone()).await?;
+    table.set_autocommit(false);
+    table
+        .add_index(
+            "embedding".to_string(),
+            IndexAlgorithm::hnsw()
+                .with_metric("l2".to_string())
+                .with_complexity(16)
+                .with_quality(100),
+        )
+        .await?;
+    let store = create_object_store(&uri)?;
+    let manager = ManifestManager::new(store.clone(), "", &uri);
+
+    // 1. Initial base segments
+    let b1 = cluster_batch(s.clone(), 0, 50, 10.0, dim)?;
+    let b2 = cluster_batch(s.clone(), 50, 50, 50.0, dim)?;
+    table.write_async(vec![b1]).await?;
+    table.commit_async().await?;
+    table.write_async(vec![b2]).await?;
+    table.commit_async().await?;
+    table.wait_for_background_tasks_async().await?;
+
+    // 2. Build table-level cluster index over base segments
+    table
+        .rebuild_cluster_index("embedding".to_string(), 2, 16, 100)
+        .await?;
+
+    let (manifest_base, _) = manager.load_latest_direct().await?;
+    assert_eq!(manifest_base.table_indexes.len(), 1);
+    assert_eq!(manifest_base.table_indexes[0].source_segments.len(), 2);
+
+    // 3. Append new delta segment (simulating ongoing ingestion)
+    // Note: ID 100..150 with center 10.0 (same cluster as b1)
+    let b3 = cluster_batch(s.clone(), 100, 50, 10.0, dim)?;
+    table.write_async(vec![b3]).await?;
+    table.commit_async().await?;
+    table.wait_for_background_tasks_async().await?;
+
+    // 4. Verify TRUE LSM contract: table_indexes is NOT dropped on append commit!
+    let (manifest_after_append, _ver_after) = manager.load_latest_direct().await?;
+    let entries_after = manager.load_all_entries(&manifest_after_append).await?;
+    assert_eq!(
+        entries_after.len(),
+        3,
+        "Table should now have 3 data segments"
+    );
+    assert_eq!(
+        manifest_after_append.table_indexes.len(),
+        1,
+        "True LSM: table_indexes must be preserved across append commits!"
+    );
+    assert_eq!(
+        manifest_after_append.table_indexes[0].source_segments.len(),
+        2,
+        "Base index covers historical base segments"
+    );
+
+    // 5. Query: Two-tier retrieval must search base Voronoi index AND delta segment, returning combined top-k
+    let q = vec![10.0; dim];
+    let vp = VectorSearchParams::new("embedding", VectorValue::Float32(q), 20)
+        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_probes(2);
+
+    let res = table
+        .read_expr_with_config_async(
+            None,
+            Some(vec![vp.clone()]),
+            Some(&["id"]),
+            table.query_config().clone(),
+            None,
+        )
+        .await?;
+
+    assert!(!res.is_empty(), "Query must return hits");
+    let returned_ids: Vec<i32> = res
+        .iter()
+        .flat_map(|b| {
+            b.column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .values()
+                .to_vec()
+        })
+        .collect();
+
+    // Verify hits include items from BOTH the base tier (0..50) and the delta tier (100..150)
+    let base_hits: Vec<i32> = returned_ids
+        .iter()
+        .copied()
+        .filter(|&id| id < 50)
+        .collect();
+    let delta_hits: Vec<i32> = returned_ids
+        .iter()
+        .copied()
+        .filter(|&id| id >= 100)
+        .collect();
+
+    assert!(
+        !base_hits.is_empty(),
+        "Must return hits from base tier (0..50)"
+    );
+    assert!(
+        !delta_hits.is_empty(),
+        "Must return hits from delta tier (100..150)"
+    );
+
+    // 6. Test Option 3: Post-ingest compaction reorganizes base + delta into refreshed Voronoi clusters
+    table.compact_after_ingest_async().await?;
+
+    let (manifest_compacted, _) = manager.load_latest_direct().await?;
+    let entries_compacted = manager.load_all_entries(&manifest_compacted).await?;
+    assert_eq!(
+        manifest_compacted.table_indexes.len(),
+        1,
+        "Compacted table must have rebuilt cluster index"
+    );
+    // After compact_after_ingest, all current segments are now covered in the rebuilt base index
+    let current_segs: Vec<String> = entries_compacted
+        .iter()
+        .map(|e| {
+            let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+            let name = name.strip_suffix(".puffin").unwrap_or(name);
+            name.strip_suffix(".parquet").unwrap_or(name).to_string()
+        })
+        .collect();
+    assert!(
+        manifest_compacted.table_indexes[0].covers_segments(&current_segs),
+        "Cluster index should now cover all compacted segments"
+    );
+
+    Ok(())
+}

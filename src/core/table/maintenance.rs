@@ -1536,7 +1536,7 @@ impl Table {
     }
 
     /// Vector columns known to the table, from index configs and manifest entries.
-    fn vector_columns(&self) -> Vec<String> {
+    pub(crate) fn vector_columns(&self) -> Vec<String> {
         let mut columns: Vec<String> = Vec::new();
         for (name, config) in self.indexing.index_configs.read().iter() {
             if config.algorithms.iter().any(is_vector_algorithm) && !columns.contains(name) {

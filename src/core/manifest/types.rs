@@ -84,16 +84,15 @@ fn default_index_compression() -> String {
 /// vector index spans every data file in the table, so it has no single file to
 /// bind to.
 ///
-/// The lineage contract for this type is deliberately different, and it is the
-/// answer ADR_001 requires for a table-level index:
+/// The lineage contract for this type supports a two-tier LSM architecture:
 ///
 /// * `source_manifest_version` binds the artifact to the manifest version it was
 ///   built from.
-/// * `source_segments` records the exact set of data files it covers.
-/// * Any commit that changes the data files drops `Manifest::table_indexes`
-///   (the field is rebuilt from scratch by [`Manifest::new`] and friends), so a
-///   stale artifact can never be served against newer data. Rebuilding is the
-///   only way to re-register one.
+/// * `source_segments` records the exact set of base data files it covers.
+/// * Commits that append data files retain `Manifest::table_indexes` so that the
+///   compacted base tier can be queried alongside uncompacted delta segments.
+/// * Any commit that removes or rewrites data files prunes `TableIndexFile`
+///   entries whose `source_segments` were deleted.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct TableIndexFile {
     /// Format version of the serialized artifact.
@@ -176,6 +175,20 @@ impl TableIndexFile {
         a.sort_unstable();
         b.sort_unstable();
         a == b
+    }
+
+    /// Whether all source segments covered by this artifact are present in the
+    /// given segment set (and this artifact covers at least one segment).
+    ///
+    /// In a two-tier LSM model, this artifact covers the historical base tier
+    /// (S_base). Uncompacted delta segments (S_delta = segments \ S_base) are
+    /// queried independently and merged at retrieval time.
+    pub fn is_valid_base_for(&self, segments: &[String]) -> bool {
+        if self.source_segments.is_empty() {
+            return false;
+        }
+        let set: std::collections::HashSet<&String> = segments.iter().collect();
+        self.source_segments.iter().all(|s| set.contains(s))
     }
 }
 

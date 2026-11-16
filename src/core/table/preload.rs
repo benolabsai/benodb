@@ -655,8 +655,11 @@ impl Table {
         // own commits; another process may have compacted since. Loading the
         // manifest is cheap (it is already cached) — only the artifact bytes are
         // expensive, and those stay cached when the lineage still matches.
+        // Validate a cached artifact against the current segment set.
+        // In a true LSM model, the artifact covers the base tier and remains valid
+        // as long as all its indexed base segments still exist in the table.
         if let Some(index) = self.indexing.cluster_indexes.read().get(column).cloned() {
-            if index.segment_table.len() == current_segments.len()
+            if !index.segment_table.is_empty()
                 && index
                     .segment_table
                     .iter()
@@ -668,7 +671,7 @@ impl Table {
                 column = %column,
                 artifact_segments = index.segment_table.len(),
                 current_segments = current_segments.len(),
-                "ensure_cluster_index: cached artifact does not cover the current data files; dropping"
+                "ensure_cluster_index: cached artifact base segments missing from current data files; dropping"
             );
             self.indexing.cluster_indexes.write().remove(column);
         }
@@ -681,13 +684,13 @@ impl Table {
             return Ok(None);
         };
 
-        // Reject an artifact that does not cover exactly the current data files.
-        if !entry.covers_segments(&current_segments) {
+        // Reject an artifact if any of its source segments are no longer in the active table.
+        if !entry.is_valid_base_for(&current_segments) {
             tracing::warn!(
                 column = %column,
                 artifact_segments = entry.source_segments.len(),
                 current_segments = current_segments.len(),
-                "ensure_cluster_index: artifact does not cover the current data files; ignoring"
+                "ensure_cluster_index: artifact base segments missing from current data files; ignoring"
             );
             return Ok(None);
         }

@@ -749,7 +749,58 @@ impl Table {
                                 let probes = vp
                                     .probes
                                     .unwrap_or_else(|| default_probes(index.centroids.len()));
-                                let scored = index.search(q, vp.k, probes, vp.ef_search)?;
+                                let base_scored = index.search(q, vp.k, probes, vp.ef_search)?;
+
+                                let base_seg_set: HashSet<&str> =
+                                    index.segment_table.iter().map(|s| s.as_str()).collect();
+                                let delta_entries: Vec<ManifestEntry> = all_entries
+                                    .iter()
+                                    .filter(|e| {
+                                        let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                                        let name = name.strip_suffix(".puffin").unwrap_or(name);
+                                        let seg_id = name.strip_suffix(".parquet").unwrap_or(name);
+                                        !base_seg_set.contains(seg_id)
+                                    })
+                                    .cloned()
+                                    .collect();
+
+                                let scored = if delta_entries.is_empty() {
+                                    base_scored
+                                } else {
+                                    let delta_request = crate::core::query::VectorSearchRequest::new(
+                                        vp.column.clone(),
+                                        vp.query.clone(),
+                                        vp.k,
+                                        vp.metric,
+                                        vp.use_mmap,
+                                    )
+                                    .with_filter(None)
+                                    .with_ef_search(vp.ef_search)
+                                    .with_probes(vp.probes)
+                                    .with_iceberg_schema(iceberg_schema.clone())
+                                    .with_config(config.clone());
+
+                                    let delta_scored = crate::core::query::execute_vector_search_raw_with_config(
+                                        delta_entries,
+                                        self.store.clone(),
+                                        self.data_store.clone(),
+                                        &self.uri,
+                                        delta_request,
+                                    )
+                                    .await?;
+
+                                    let mut combined = base_scored;
+                                    combined.extend(delta_scored);
+                                    combined.sort_by(|a, b| {
+                                        a.score
+                                            .partial_cmp(&b.score)
+                                            .unwrap_or(std::cmp::Ordering::Equal)
+                                    });
+                                    combined.dedup_by(|a, b| a.segment_id == b.segment_id && a.row_id == b.row_id);
+                                    combined.truncate(vp.k);
+                                    combined
+                                };
+
                                 tracing::info!(
                                     column = %vp.column,
                                     probes = probes,
@@ -1637,10 +1688,64 @@ impl Table {
                     let probes = params
                         .probes
                         .unwrap_or_else(|| default_probes(index.centroids.len()));
-                    let scored = index.search(q, params.k, probes, params.ef_search)?;
+                    let base_scored = index.search(q, params.k, probes, params.ef_search)?;
+
+                    // Check for uncompacted delta segments (LSM two-tier retrieval)
+                    let base_seg_set: HashSet<&str> =
+                        index.segment_table.iter().map(|s| s.as_str()).collect();
+                    let delta_entries: Vec<ManifestEntry> = all_entries
+                        .iter()
+                        .filter(|e| {
+                            let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                            let name = name.strip_suffix(".puffin").unwrap_or(name);
+                            let seg_id = name.strip_suffix(".parquet").unwrap_or(name);
+                            !base_seg_set.contains(seg_id)
+                        })
+                        .cloned()
+                        .collect();
+
+                    if delta_entries.is_empty() {
+                        crate::telemetry::metrics::SEARCH_LATENCY_SECONDS
+                            .observe(start_time.elapsed().as_secs_f64());
+                        return Ok(base_scored);
+                    }
+
+                    // Delta segments exist: search delta tier and merge results
+                    let delta_request = VectorSearchRequest::new(
+                        params.column.clone(),
+                        params.query.clone(),
+                        params.k,
+                        params.metric,
+                        params.use_mmap,
+                    )
+                    .with_filter(None)
+                    .with_ef_search(params.ef_search)
+                    .with_probes(params.probes)
+                    .with_iceberg_schema(iceberg_schema)
+                    .with_config(self.query_config.clone());
+
+                    let delta_scored = crate::core::query::execute_vector_search_raw_with_config(
+                        delta_entries,
+                        self.store.clone(),
+                        self.data_store.clone(),
+                        &self.uri,
+                        delta_request,
+                    )
+                    .await?;
+
+                    let mut combined = base_scored;
+                    combined.extend(delta_scored);
+                    combined.sort_by(|a, b| {
+                        a.score
+                            .partial_cmp(&b.score)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    combined.dedup_by(|a, b| a.segment_id == b.segment_id && a.row_id == b.row_id);
+                    combined.truncate(params.k);
+
                     crate::telemetry::metrics::SEARCH_LATENCY_SECONDS
                         .observe(start_time.elapsed().as_secs_f64());
-                    return Ok(scored);
+                    return Ok(combined);
                 }
             }
         }

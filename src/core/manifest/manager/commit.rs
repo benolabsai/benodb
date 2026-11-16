@@ -556,6 +556,26 @@ impl ManifestManager {
             );
             new_manifest.delete_files = global_delete_files;
 
+            // LSM index preservation: Retain table-level indexes whose source
+            // segments remain 100% active in `new_entries`.
+            let active_seg_ids: HashSet<String> = new_entries
+                .iter()
+                .map(|e| {
+                    let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                    let name = name.strip_suffix(".puffin").unwrap_or(name);
+                    name.strip_suffix(".parquet").unwrap_or(name).to_string()
+                })
+                .collect();
+
+            new_manifest.table_indexes = current_manifest
+                .table_indexes
+                .into_iter()
+                .filter(|tidx| {
+                    !tidx.source_segments.is_empty()
+                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                })
+                .collect();
+
             new_manifest.sort_orders = final_sort_orders;
             new_manifest.default_sort_order_id = final_default_sort_order_id;
             new_manifest.format_version = metadata
@@ -754,6 +774,27 @@ impl ManifestManager {
             // Carry the authoritative, partition-scoped delete list forward.
             new_manifest.delete_files = current_manifest.delete_files.clone();
 
+            // LSM index preservation: Retain table-level indexes whose source
+            // segments remain 100% active in `merged_entries`.
+            let active_seg_ids: HashSet<String> = new_manifest
+                .entries
+                .iter()
+                .map(|e| {
+                    let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                    let name = name.strip_suffix(".puffin").unwrap_or(name);
+                    name.strip_suffix(".parquet").unwrap_or(name).to_string()
+                })
+                .collect();
+
+            new_manifest.table_indexes = current_manifest
+                .table_indexes
+                .into_iter()
+                .filter(|tidx| {
+                    !tidx.source_segments.is_empty()
+                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                })
+                .collect();
+
             // Write to storage with conflict detection
             let filename = format!("v{}.json", new_ver);
             let path = self.manifest_dir.child(filename);
@@ -851,6 +892,27 @@ impl ManifestManager {
             new_manifest.manifest_list_path = current_manifest.manifest_list_path.clone();
             new_manifest.format_version = current_manifest.format_version;
             new_manifest.delete_files = current_manifest.delete_files.clone();
+
+            // LSM index preservation: Retain table-level indexes whose source
+            // segments remain 100% active in `new_manifest.entries`.
+            let active_seg_ids: HashSet<String> = new_manifest
+                .entries
+                .iter()
+                .map(|e| {
+                    let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                    let name = name.strip_suffix(".puffin").unwrap_or(name);
+                    name.strip_suffix(".parquet").unwrap_or(name).to_string()
+                })
+                .collect();
+
+            new_manifest.table_indexes = current_manifest
+                .table_indexes
+                .into_iter()
+                .filter(|tidx| {
+                    !tidx.source_segments.is_empty()
+                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                })
+                .collect();
 
             let filename = format!("v{}.json", new_ver);
             let path = self.manifest_dir.child(filename);

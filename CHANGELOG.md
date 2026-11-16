@@ -18,6 +18,25 @@
 
 ### Added
 
+- **True LSM vector retrieval and post-ingest index compaction**
+  (`src/core/manifest/manager/commit.rs`, `src/core/manifest/types.rs`,
+  `src/core/table/read.rs`, `src/core/table/preload.rs`,
+  `src/core/table/ingest.rs`): table-level Voronoi cluster indexes
+  (`table_indexes`) are now preserved across data append commits whenever all
+  base segments ($S_{\text{base}}$) remain active in the table, rather than
+  being aggressively discarded on every append. `TableIndexFile::is_valid_base_for`
+  relaxes preload cache checks to accept valid historical base subsets. Query
+  retrieval in `read_expr_stream_async` and `execute_vector_search_as_scored_filtered`
+  operates as a two-tier LSM search: the coarse Voronoi index probes
+  $S_{\text{base}}$ while uncompacted delta segments
+  ($S_{\text{delta}} = S_{\text{current}} \setminus S_{\text{base}}$) are searched
+  via per-segment readers, merging and deduplicating both candidate sets into
+  the final top-$k$. `compact_after_ingest_async()` automates background
+  compaction when `compact_after` is set: it snapshots active cluster index
+  metadata, binpacks small Parquet data files to 512 MiB, compacts per-segment
+  index sidecars, and rebuilds the Voronoi cluster index so newly ingested delta
+  rows fold into refreshed base centroids.
+
 - **Reader counters for the candidate read path** (`src/core/reader/stats.rs`,
   `bsdb.reader_stats()` and `bsdb.reset_reader_stats()`): `rows_requested`,
   `rows_selected`, `rows_decoded`, `row_groups_read`, `row_groups_total`, and

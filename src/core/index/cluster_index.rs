@@ -2081,6 +2081,30 @@ mod tests {
     }
 
     #[test]
+    fn table_index_file_is_valid_base_for() {
+        let index = ClusterIndex::build_from_records(
+            blob(30, 4, 0.0),
+            segments(),
+            "embedding",
+            &IndexAlgorithm::hnsw().with_complexity(16).with_quality(50),
+            4,
+            8,
+            50,
+        )
+        .unwrap();
+        let file = index.to_table_index_file("idx/cluster.puffin", 7, "cluster_hnsw");
+        // Exact match is valid
+        assert!(file.is_valid_base_for(&segments()));
+        // Superset (new delta segment added) is valid in LSM model
+        let mut superset = segments();
+        superset.push("seg_new_delta".to_string());
+        assert!(file.is_valid_base_for(&superset));
+        // Subset (one base segment missing/deleted) is invalid
+        assert!(!file.is_valid_base_for(&["seg_0".to_string()]));
+        assert!(!file.is_valid_base_for(&[]));
+    }
+
+    #[test]
     fn quantized_cluster_index_calibrated_search_round_trip() {
         let records: Vec<(u32, u32, Vec<f32>)> = (0..120usize)
             .map(|i| {
