@@ -20,6 +20,7 @@ BenoStreamDB is designed to be highly configurable through environment variables
 | `BSDB_TARGET_PARTITIONS` | DataFusion target partition count for query execution. | Effective CPU budget (respects cgroup limits) |
 | `BSDB_INDEX_BUILD_CONCURRENCY` | Maximum concurrent background index builds. Non-positive values are ignored. | One build per ~8 GB RAM, capped at CPU count, min 1 |
 | `BSDB_MIN_FREE_DISK_GB` | Refuse a local flush that would drop free disk below this many GB. | `1.0` |
+| `BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS` | How many spill buckets the table level build reads, groups, and builds together. The graph build is the long pole and a 256 MB bucket holds only a handful of clusters, so one bucket at a time leaves most cores idle. Clamped to 1 through 8. | `3` |
 | `BSDB_CLUSTER_BUILD_TMPDIR` | Directory for the table level index build's bucket and shard spill. Point it at the storage volume: a 100M build passes about 90 GB through it, and the builder refuses to start when the filesystem cannot hold roughly twice the raw vector bytes. Spill directories older than six hours are removed at start, which is what a killed build leaves behind. | `$TMPDIR` |
 
 #### Concurrency Tuning: `BSDB_MAX_CONCURRENCY` vs `RAYON_NUM_THREADS`

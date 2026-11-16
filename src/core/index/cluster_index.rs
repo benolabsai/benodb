@@ -120,6 +120,15 @@ mod bucket_count_tests {
         // Very large tables are capped so the loop stays bounded.
         assert_eq!(build_bucket_count(1usize << 42), 1024);
     }
+
+    #[test]
+    fn bucket_parallelism_stays_within_bounds() {
+        // Reading the environment in a test is racy, so this asserts only the
+        // bounds the parser enforces, which is what protects the build from a
+        // window that would hold the whole artifact in memory.
+        let n = bucket_parallelism();
+        assert!((1..=8).contains(&n), "window {n} outside 1..=8");
+    }
 }
 
 /// Root directory for the bucket and shard spill of a table level build.
@@ -195,6 +204,21 @@ fn build_bucket_count(total_vector_bytes: usize) -> usize {
     // keeps that transient to a few hundred megabytes regardless of table size.
     let target = 256 * 1024 * 1024;
     total_vector_bytes.div_ceil(target).clamp(64, 1024)
+}
+
+/// Number of buckets read, grouped, and built together.
+///
+/// The graph build is the long pole, and a bucket holds only
+/// `centroids / buckets` clusters, so one bucket at a time caps the phase at
+/// that many threads. Three buckets in flight gives the cores work while
+/// holding a few GB of grouped vectors, not the whole artifact.
+fn bucket_parallelism() -> usize {
+    std::env::var("BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(3)
+        .clamp(1, 8)
 }
 
 /// Per-node locator: which data file, and which row inside it.
@@ -594,57 +618,91 @@ impl ClusterIndex {
         )?;
 
         let mut build_result: Result<()> = Ok(());
-        for b in 0..buckets {
-            let path = tmp_dir.join(format!("bucket_{b}.bin"));
-            let bytes = match std::fs::read(&path) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    build_result = Err(anyhow::Error::from(e)
-                        .context(format!("reading bucket {}", path.display())));
-                    break;
-                }
-            };
-            let grouped = match group_bucket(&bytes, dim) {
-                Ok(grouped) => grouped,
-                Err(e) => {
-                    build_result = Err(e);
-                    break;
-                }
-            };
-            let mut cluster_ids: Vec<usize> = grouped.keys().copied().collect();
-            cluster_ids.sort_unstable();
+        let parallel_buckets = bucket_parallelism();
+        let mut next_bucket = 0usize;
 
-            let built_results: Vec<Result<Option<BuiltClusterBlobs>>> = cluster_ids
+        'windows: while next_bucket < buckets {
+            let window_end = (next_bucket + parallel_buckets).min(buckets);
+            let window: Vec<usize> = (next_bucket..window_end).collect();
+            next_bucket = window_end;
+
+            // Read and group a window of buckets at once. Grouping copies every
+            // record's vector onto the heap, so the window, not the bucket size
+            // alone, is what bounds this transient.
+            let grouped: Vec<(usize, Result<HashMap<usize, Vec<(u32, u32, Vec<f32>)>>>)> = window
                 .par_iter()
-                .map(|&cluster_id| {
-                    let members = &grouped[&cluster_id];
+                .map(|&b| {
+                    let path = tmp_dir.join(format!("bucket_{b}.bin"));
+                    let res = std::fs::read(&path)
+                        .map_err(|e| {
+                            anyhow::Error::from(e)
+                                .context(format!("reading bucket {}", path.display()))
+                        })
+                        .and_then(|bytes| group_bucket(&bytes, dim));
+                    (b, res)
+                })
+                .collect();
+
+            let mut grouped_ok: Vec<(usize, HashMap<usize, Vec<(u32, u32, Vec<f32>)>>)> =
+                Vec::with_capacity(grouped.len());
+            for (b, res) in grouped {
+                match res {
+                    Ok(g) => grouped_ok.push((b, g)),
+                    Err(e) => {
+                        build_result = Err(e);
+                        break 'windows;
+                    }
+                }
+            }
+
+            // Build every cluster in the window in parallel. A 256 MB bucket
+            // holds about six of 1024 clusters, so building one bucket at a time
+            // capped this phase at six threads; a window restores enough work
+            // for the cores without holding the whole artifact in memory.
+            let mut jobs: Vec<(usize, usize, &Vec<(u32, u32, Vec<f32>)>)> = Vec::new();
+            for (b, g) in &grouped_ok {
+                for (cluster_id, members) in g {
+                    jobs.push((*b, *cluster_id, members));
+                }
+            }
+            // Bucket order, then cluster order. A bucket owns a contiguous label
+            // range, so this is globally ascending and the shard slices stay
+            // ordered.
+            jobs.sort_by_key(|(b, cluster_id, _)| (*b, *cluster_id));
+
+            let built: Vec<Result<(usize, usize, Option<BuiltClusterBlobs>)>> = jobs
+                .par_iter()
+                .map(|(b, cluster_id, members)| {
                     build_cluster_blobs(
-                        cluster_id,
+                        *cluster_id,
                         members,
                         quantizer.as_ref(),
                         metric,
                         m,
                         ef_construction,
                     )
+                    .map(|opt| (*b, *cluster_id, opt))
                 })
                 .collect();
 
-            let mut built_clusters = Vec::with_capacity(built_results.len());
-            for res in built_results {
-                match res {
-                    Ok(Some(blobs)) => built_clusters.push(blobs),
-                    Ok(None) => {}
+            let mut current_bucket: Option<usize> = None;
+            for res in built {
+                let (b, _cluster_id, blobs_opt) = match res {
+                    Ok(v) => v,
                     Err(e) => {
                         build_result = Err(e);
-                        break;
+                        break 'windows;
                     }
+                };
+                if current_bucket != Some(b) {
+                    if let Some(prev) = current_bucket {
+                        let _ = std::fs::remove_file(tmp_dir.join(format!("bucket_{prev}.bin")));
+                    }
+                    current_bucket = Some(b);
                 }
-            }
-            if build_result.is_err() {
-                break;
-            }
-
-            for blobs in built_clusters {
+                let Some(blobs) = blobs_opt else {
+                    continue;
+                };
                 let cluster_id = blobs.cluster_id;
 
                 // If current shard has reached target size, seal it and roll to the next sequential shard
@@ -658,14 +716,14 @@ impl ClusterIndex {
                         Err(e) => {
                             build_result = Err(anyhow::Error::from(e)
                                 .context(format!("creating shard file {}", next_path.display())));
-                            break;
+                            break 'windows;
                         }
                     };
                     let new_writer = match PuffinWriter::new(std::io::BufWriter::new(next_file)) {
                         Ok(w) => w,
                         Err(e) => {
                             build_result = Err(e);
-                            break;
+                            break 'windows;
                         }
                     };
                     let old_shard = std::mem::replace(
@@ -683,7 +741,7 @@ impl ClusterIndex {
                         Ok(s) => s,
                         Err(e) => {
                             build_result = Err(e);
-                            break;
+                            break 'windows;
                         }
                     };
                     shards_out.push(sealed);
@@ -691,7 +749,7 @@ impl ClusterIndex {
 
                 if let Err(e) = write_cluster_blobs_to_puffin(&mut current_shard.writer, &blobs) {
                     build_result = Err(e);
-                    break;
+                    break 'windows;
                 }
 
                 if current_shard.cluster_start == usize::MAX {
@@ -700,12 +758,9 @@ impl ClusterIndex {
                 current_shard.cluster_end = cluster_id;
                 current_shard.cluster_count += 1;
             }
-
-            if build_result.is_err() {
-                break;
+            if let Some(last) = current_bucket {
+                let _ = std::fs::remove_file(tmp_dir.join(format!("bucket_{last}.bin")));
             }
-            // Free the bucket as soon as it is consumed.
-            let _ = std::fs::remove_file(&path);
         }
 
         if let Err(e) = build_result {

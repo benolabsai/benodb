@@ -2,6 +2,15 @@
 
 ### Fixed
 
+- **Table level index builds used six threads of thirty two**
+  (`src/core/index/cluster_index.rs`): the cluster graph build parallelised with
+  `cluster_ids.par_iter()` inside a sequential loop over spill buckets. After the
+  bucket sizing change a 256 MB bucket held about six of 1024 clusters, so the
+  phase that dominates a 100M build ran at roughly 400% CPU while 32 cores sat
+  idle. The builder now reads, groups, and builds a window of buckets together
+  (`BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS`, default 3, clamped 1 through 8) and
+  keeps the shard writer ordered, so cluster slices still ascend.
+
 - **Table level index builds spilled into the system temp directory**
   (`src/core/index/cluster_index.rs`): the builder writes its buckets and final
   shards through `std::env::temp_dir()`, which is a sized tmpfs on many hosts. At
