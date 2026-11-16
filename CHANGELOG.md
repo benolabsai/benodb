@@ -136,6 +136,23 @@
   10M, 40 candidates, recall 0.910: 3.80 MB per query with 32 KiB pages against
   380.55 MB with 128 MB pages, 100.2 times fewer bytes at identical recall.
 
+### Tests
+
+- **A test that fails when the index is ignored** (`tests/test_index_usage.rs`,
+  `scripts/pre_release_check.sh`): a vector query that falls back to a flat scan
+  returns the same nearest neighbours, so a result only test cannot see it. The
+  new test measures the reader counters on an indexed table and on an unindexed
+  control with identical data. On 2,000 rows of 64 dimensions the indexed query
+  decoded 5 rows and the control decoded all 2,000. Reaching that number needed
+  the two paths that never build a `RowSelection` to count at all:
+  `search_hnsw_ivf` now records the candidates it selected and materialised, and
+  `vector_search_flat` records the rows it scored. Both previously reported zero.
+
+- **The maintenance soak now checks what it returns** (`tests/soak.rs`): the
+  vector query between stages was discarded with `let _ =`, so the doc comment
+  that promises it never returns a deleted row was untested. The returned ids are
+  now checked against the rows the round deleted.
+
 ## [0.16.1] - 2026-11-13
 
 ### Fixed

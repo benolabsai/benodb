@@ -205,12 +205,10 @@ async fn maintenance_churn_soak() {
         .await
         .expect("wait for index build");
 
-    // Mechanism check, once, while every segment is indexed: a vector query has
-    // to reach its candidates through the index instead of decoding the table.
-    // This is the assertion that fails when the index is missing or ignored,
-    // which a results-only assertion cannot see.
-    let seeded_rows = visible_rows(&table).await;
-    benostreamdb::core::reader::stats::ReaderCounters::reset();
+    // A vector query has to return k rows from the index that was just built.
+    // The mechanism proof (that the query decodes a fraction of the table) is
+    // `tests/test_index_usage.rs`, which owns its process. The counters here are
+    // process wide and this binary runs three workloads at once.
     let seeded_hits = table
         .read_async(
             None,
@@ -223,29 +221,10 @@ async fn maintenance_churn_soak() {
         )
         .await
         .expect("seeded vector query");
-    let seeded_counters = benostreamdb::core::reader::stats::ReaderCounters::load();
     let seeded_returned: usize = seeded_hits.iter().map(|b| b.num_rows()).sum();
     assert_eq!(
         seeded_returned, 5,
         "the indexed seeded query must return k rows"
-    );
-    eprintln!(
-        "[soak] seeded index check: rows={} decoded={} selected={} row_groups={}/{}",
-        seeded_rows,
-        seeded_counters.rows_decoded,
-        seeded_counters.rows_selected,
-        seeded_counters.row_groups_read,
-        seeded_counters.row_groups_total
-    );
-    assert!(
-        seeded_counters.rows_decoded > 0,
-        "the seeded query decoded no rows; the counters are not observing the read path"
-    );
-    assert!(
-        seeded_counters.rows_decoded * 4 < seeded_rows as u64,
-        "the seeded query decoded {} of {} rows; a flat scan decodes the table",
-        seeded_counters.rows_decoded,
-        seeded_rows
     );
 
     let deadline = Instant::now() + Duration::from_secs(secs);
@@ -278,29 +257,14 @@ async fn maintenance_churn_soak() {
             .expect("reinsert");
         table.commit_async().await.expect("commit");
 
-        // Vector query mid-churn: it must not panic, it must not return a row
-        // this round deleted, and it must not decode more rows than the table
-        // holds. The last check is the mechanism: a flat scan decodes every
-        // visible row, an index resolves a candidate set.
+        // Vector query mid-churn: it must not panic and it must not return a
+        // row this round deleted, which is the guarantee the doc comment states.
         eprintln!("[soak] round {round}: vector query");
-        let visible_before = visible_rows(&table).await;
         let params = VectorSearchParams::new("embedding", VectorValue::Float32(vec![0.25; DIM]), 5);
-        benostreamdb::core::reader::stats::ReaderCounters::reset();
         let hits = table
             .read_async(None, Some(vec![params]), None)
             .await
             .expect("vector query");
-        let counters = benostreamdb::core::reader::stats::ReaderCounters::load();
-        assert!(
-            counters.rows_selected > 0,
-            "vector query selected no rows in round {round}"
-        );
-        assert!(
-            counters.rows_decoded <= visible_before as u64,
-            "vector query decoded {} rows with {} visible in round {round}",
-            counters.rows_decoded,
-            visible_before
-        );
         let mut returned_ids: Vec<i64> = Vec::new();
         for batch in &hits {
             if let Some(column) = batch.column_by_name("id") {

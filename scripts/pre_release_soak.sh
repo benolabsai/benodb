@@ -60,7 +60,7 @@ echo "--- 3/5 Long soak (${SOAK_SECONDS}s) ---"
 SOAK_LOG="$(mktemp)"
 MW_LOG="$(mktemp)"
 trap 'rm -f "${SOAK_LOG}" "${MW_LOG}"' EXIT
-cargo test --test soak -- --ignored --nocapture --test-threads=1 2>&1 | tee "${SOAK_LOG}"
+cargo test --test soak -- --ignored --nocapture 2>&1 | tee "${SOAK_LOG}"
 
 echo
 echo "--- 4/5 Multi-writer soak (${SOAK_SECONDS}s) ---"

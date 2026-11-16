@@ -1096,6 +1096,18 @@ impl HybridReader {
                 Some(Self::apply_eq_deletes_keep_mask(&batch, &eq_deletes)?)
             };
 
+            // A flat search is the control an index is measured against: it
+            // reads and scores every row of the column, so all three counters
+            // move by the batch size. Without this the counters report nothing
+            // for the very path that proves an index did something.
+            let scanned = rows as u64;
+            crate::core::reader::stats::ROWS_REQUESTED
+                .fetch_add(scanned, std::sync::atomic::Ordering::Relaxed);
+            crate::core::reader::stats::ROWS_SELECTED
+                .fetch_add(scanned, std::sync::atomic::Ordering::Relaxed);
+            crate::core::reader::stats::ROWS_DECODED
+                .fetch_add(scanned, std::sync::atomic::Ordering::Relaxed);
+
             if let Some(col) = batch.column_by_name(column) {
                 let col = col.clone();
                 let q_vec_clone = q_vec.clone();
