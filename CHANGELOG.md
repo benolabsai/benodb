@@ -2,6 +2,13 @@
 
 ### Fixed
 
+- **The Python `manifest()` reported the head while the handle was pinned**
+  (`src/core/table/stats.rs`): `get_snapshot_segments` and
+  `get_snapshot_segments_with_version` built their own `ManifestManager`, so
+  `table.manifest()` returned the head version even after `at_version`. Both now
+  resolve through `Table::manifest_manager`, which carries the pin. At 100M,
+  pinned to v107, the handle reports v107 while the head is v109.
+
 - **Table level index builds used six threads of thirty two**
   (`src/core/index/cluster_index.rs`): the cluster graph build parallelised with
   `cluster_ids.par_iter()` inside a sequential loop over spill buckets. After the
