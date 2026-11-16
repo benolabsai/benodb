@@ -924,15 +924,23 @@ impl Table {
     // Snapshot segments
     // -----------------------------------------------------------------------
 
+    /// Segment entries of the snapshot this handle reads.
+    ///
+    /// Resolved through [`Table::manifest_manager`] so a pinned handle reports
+    /// the pinned version's segment set, the same one its queries read.
     pub async fn get_snapshot_segments(&self) -> Result<Vec<ManifestEntry>> {
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
-        let (_, all_entries, _) = manifest_manager.load_latest_full().await?;
+        let (_, all_entries, _) = self.manifest_manager().load_latest_full().await?;
         Ok(all_entries)
     }
 
+    /// The manifest and version this handle reads.
+    ///
+    /// `Table::manifest()` returns the manifest alone; the Python `manifest()`
+    /// and `compaction` use this for the version as well. Building the manager
+    /// here rather than through `ManifestManager::new` is what makes a pinned
+    /// handle report the pinned version instead of the head.
     pub async fn get_snapshot_segments_with_version(&self) -> Result<(Manifest, u64)> {
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
-        manifest_manager.load_latest().await
+        self.manifest_manager().load_latest().await
     }
 
     // -----------------------------------------------------------------------
