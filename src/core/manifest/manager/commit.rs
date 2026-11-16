@@ -572,7 +572,10 @@ impl ManifestManager {
                 .into_iter()
                 .filter(|tidx| {
                     !tidx.source_segments.is_empty()
-                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                        && tidx
+                            .source_segments
+                            .iter()
+                            .all(|s| active_seg_ids.contains(s))
                 })
                 .collect();
 
@@ -791,7 +794,10 @@ impl ManifestManager {
                 .into_iter()
                 .filter(|tidx| {
                     !tidx.source_segments.is_empty()
-                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                        && tidx
+                            .source_segments
+                            .iter()
+                            .all(|s| active_seg_ids.contains(s))
                 })
                 .collect();
 
@@ -910,7 +916,10 @@ impl ManifestManager {
                 .into_iter()
                 .filter(|tidx| {
                     !tidx.source_segments.is_empty()
-                        && tidx.source_segments.iter().all(|s| active_seg_ids.contains(s))
+                        && tidx
+                            .source_segments
+                            .iter()
+                            .all(|s| active_seg_ids.contains(s))
                 })
                 .collect();
 

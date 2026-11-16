@@ -270,24 +270,25 @@ impl Table {
     pub async fn compact_after_ingest_async(&self) -> Result<()> {
         // 1. Check existing cluster indexes and their cluster counts prior to data file rewrite
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
-        let existing_cluster_indexes: Vec<(String, usize)> = match manager.load_latest_direct().await {
-            Ok((manifest, _)) => manifest
-                .table_indexes
-                .into_iter()
-                .filter(|idx| idx.index_category == "vector")
-                .map(|idx| {
-                    (
-                        idx.column_name,
-                        if idx.cluster_count > 0 {
-                            idx.cluster_count
-                        } else {
-                            1024
-                        },
-                    )
-                })
-                .collect(),
-            Err(_) => Vec::new(),
-        };
+        let existing_cluster_indexes: Vec<(String, usize)> =
+            match manager.load_latest_direct().await {
+                Ok((manifest, _)) => manifest
+                    .table_indexes
+                    .into_iter()
+                    .filter(|idx| idx.index_category == "vector")
+                    .map(|idx| {
+                        (
+                            idx.column_name,
+                            if idx.cluster_count > 0 {
+                                idx.cluster_count
+                            } else {
+                                1024
+                            },
+                        )
+                    })
+                    .collect(),
+                Err(_) => Vec::new(),
+            };
 
         // 2. Binpack data files
         self.rewrite_data_files_async(None).await?;

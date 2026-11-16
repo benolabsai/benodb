@@ -840,11 +840,7 @@ async fn test_true_lsm_cluster_index_preservation_and_two_tier_query() -> anyhow
         .collect();
 
     // Verify hits include items from BOTH the base tier (0..50) and the delta tier (100..150)
-    let base_hits: Vec<i32> = returned_ids
-        .iter()
-        .copied()
-        .filter(|&id| id < 50)
-        .collect();
+    let base_hits: Vec<i32> = returned_ids.iter().copied().filter(|&id| id < 50).collect();
     let delta_hits: Vec<i32> = returned_ids
         .iter()
         .copied()

@@ -756,7 +756,8 @@ impl Table {
                                 let delta_entries: Vec<ManifestEntry> = all_entries
                                     .iter()
                                     .filter(|e| {
-                                        let name = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+                                        let name =
+                                            e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
                                         let name = name.strip_suffix(".puffin").unwrap_or(name);
                                         let seg_id = name.strip_suffix(".parquet").unwrap_or(name);
                                         !base_seg_set.contains(seg_id)
@@ -767,27 +768,29 @@ impl Table {
                                 let scored = if delta_entries.is_empty() {
                                     base_scored
                                 } else {
-                                    let delta_request = crate::core::query::VectorSearchRequest::new(
-                                        vp.column.clone(),
-                                        vp.query.clone(),
-                                        vp.k,
-                                        vp.metric,
-                                        vp.use_mmap,
-                                    )
-                                    .with_filter(None)
-                                    .with_ef_search(vp.ef_search)
-                                    .with_probes(vp.probes)
-                                    .with_iceberg_schema(iceberg_schema.clone())
-                                    .with_config(config.clone());
+                                    let delta_request =
+                                        crate::core::query::VectorSearchRequest::new(
+                                            vp.column.clone(),
+                                            vp.query.clone(),
+                                            vp.k,
+                                            vp.metric,
+                                            vp.use_mmap,
+                                        )
+                                        .with_filter(None)
+                                        .with_ef_search(vp.ef_search)
+                                        .with_probes(vp.probes)
+                                        .with_iceberg_schema(iceberg_schema.clone())
+                                        .with_config(config.clone());
 
-                                    let delta_scored = crate::core::query::execute_vector_search_raw_with_config(
-                                        delta_entries,
-                                        self.store.clone(),
-                                        self.data_store.clone(),
-                                        &self.uri,
-                                        delta_request,
-                                    )
-                                    .await?;
+                                    let delta_scored =
+                                        crate::core::query::execute_vector_search_raw_with_config(
+                                            delta_entries,
+                                            self.store.clone(),
+                                            self.data_store.clone(),
+                                            &self.uri,
+                                            delta_request,
+                                        )
+                                        .await?;
 
                                     let mut combined = base_scored;
                                     combined.extend(delta_scored);
@@ -796,7 +799,9 @@ impl Table {
                                             .partial_cmp(&b.score)
                                             .unwrap_or(std::cmp::Ordering::Equal)
                                     });
-                                    combined.dedup_by(|a, b| a.segment_id == b.segment_id && a.row_id == b.row_id);
+                                    combined.dedup_by(|a, b| {
+                                        a.segment_id == b.segment_id && a.row_id == b.row_id
+                                    });
                                     combined.truncate(vp.k);
                                     combined
                                 };
