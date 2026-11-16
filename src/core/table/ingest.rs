@@ -293,8 +293,14 @@ impl Table {
         // 2. Binpack data files
         self.rewrite_data_files_async(None).await?;
 
-        // 3. Compact per-segment index sidecars across vector columns
+        // 3. Consolidate per segment sidecars into a table level artifact for
+        //    every vector column that did not already carry one. A column that
+        //    had an artifact is rebuilt in step 4 with its own cluster count, so
+        //    skipping it here avoids building the same column twice.
         for col in self.vector_columns() {
+            if existing_cluster_indexes.iter().any(|(c, _)| c == &col) {
+                continue;
+            }
             let _ = self.compact_indexes_async(&col, None).await;
         }
 

@@ -2,6 +2,22 @@
 
 ### Fixed
 
+- **`compact_indexes` reported shards it never wrote**
+  (`src/core/table/maintenance.rs`): the function counted indexed segments,
+  estimated a shard count from 134 bytes per vector, rebuilt the vector router,
+  and returned. It wrote no shard, dropped no sidecar, and published no table
+  artifact. On the 100M table it answered in 201 ms with `output_shards: 24`
+  while the measured build at the same 512 MiB target produced 77 shards and
+  40.30 GB, so a caller that logged the statistic recorded 53 shards that did
+  not exist. It now delegates to `rebuild_cluster_index_with_target` at the
+  documented defaults (k=1024, m=16, ef=200) and reads the result back from the
+  manifest and from a HEAD per shard, so `output_shards`, the new `output_bytes`,
+  and the new `source_manifest_version` describe files that exist. Per segment
+  retirement stays a separate call, and post ingest compaction no longer builds
+  a column twice. `test_manual_index_compaction_sidecars_only` now reloads the
+  manifest, counts the shards that exist, and compares the byte total to the
+  store.
+
 - **Orphan cleanup deleted table level index artifacts**
   (`src/core/maintenance.rs`): the live set was built from segment entries and
   ignored `Manifest::table_indexes`, so a table artifact looked like garbage.

@@ -1248,26 +1248,34 @@ impl Table {
             .block_on(self.compact_indexes_async(column, target_size_bytes))
     }
 
-    /// Asynchronously compacts index sidecars into Voronoi-clustered Puffin files.
+    /// Consolidate the per segment index sidecars of `column` into a table level
+    /// Voronoi artifact whose shards respect `target_size_bytes`.
+    ///
+    /// The work is a build, not a rewrite of any Parquet file: every vector is
+    /// read once, clustered against global centroids, and written into Puffin
+    /// shards that hold complete cluster graphs, so a query reads complete
+    /// clusters instead of fanning out across segment sidecars. The statistics
+    /// are read back from the manifest and from the shard objects after the
+    /// build, so `output_shards` and `output_bytes` describe files that exist.
+    ///
+    /// Per segment sidecars are left in place. Dropping them is
+    /// [`Table::retire_covered_vector_indexes`], kept separate because that is
+    /// the operation that can lose the serving tier when the artifact is gone.
     pub async fn compact_indexes_async(
         &self,
         column: &str,
         target_size_bytes: Option<usize>,
     ) -> Result<IndexCompactionStats> {
         let start_time = std::time::Instant::now();
-        let _maintenance_guard = self.maintenance_lock.write().await;
-        let _ = self.wait_for_background_tasks_async().await;
-
         let target_bytes = target_size_bytes.unwrap_or(536_870_912); // 512 MiB default (matches Apache Iceberg target file size)
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
-        let (_manifest, all_entries, _) = manager.load_latest_full().await?;
 
-        // Filter entries that actually have an index for this column
+        // Count what a build would consume before starting it. The builder takes
+        // the maintenance lock itself, so this pass must not hold it.
+        let (_, all_entries, _) = self.manifest_manager().load_latest_full().await?;
         let indexed_entries: Vec<_> = all_entries
             .iter()
             .filter(|e| e.index_files.iter().any(|idx| idx.column_name == column))
             .collect();
-
         let input_segments = indexed_entries.len();
         let total_records: usize = indexed_entries
             .iter()
@@ -1278,9 +1286,11 @@ impl Table {
             return Ok(IndexCompactionStats {
                 column: column.to_string(),
                 input_segments,
-                output_shards: input_segments,
+                output_shards: 0,
+                output_bytes: 0,
                 total_records,
                 target_shard_bytes: target_bytes,
+                source_manifest_version: 0,
                 duration_ms: start_time.elapsed().as_millis() as u64,
             });
         }
@@ -1290,41 +1300,73 @@ impl Table {
             input_segments = input_segments,
             total_records = total_records,
             target_shard_bytes = target_bytes,
-            "compact_indexes: clustering advisory sidecars into Voronoi Puffin shards (Parquet data files untouched)"
+            "compact_indexes: building the table level Voronoi artifact (Parquet data files untouched)"
         );
 
-        // Estimate shard count based on target_bytes and vector volume
-        // e.g. for 100M SQ8 vectors (12.8 GB total data), 512 MiB per shard -> ~26 shards
-        let estimated_bytes_per_vector = 128 + 6; // 128 bytes SQ8 + 6 bytes posting
-        let estimated_total_bytes = total_records * estimated_bytes_per_vector;
-        let num_shards = (estimated_total_bytes / target_bytes).max(1);
+        // k, m, and ef match the Python defaults, so a compaction and a manual
+        // rebuild produce the same artifact shape for the same target.
+        self.rebuild_cluster_index_with_target(
+            column.to_string(),
+            1024,
+            16,
+            200,
+            Some(target_bytes),
+        )
+        .await?;
 
-        // Perform sidecar compaction pass:
-        // 1. Ensure global vector router is built across existing segments
-        let _ = self.ensure_vector_router(column).await?;
+        // Read back what was published. Reporting a computed shard count here is
+        // what made the previous implementation look successful while writing
+        // nothing: 100M rows "compacted" into 24 shards in 201 ms.
+        let (manifest, _, _) = self.manifest_manager().load_latest_full().await?;
+        let artifact = manifest
+            .table_indexes
+            .iter()
+            .find(|idx| idx.column_name == column && idx.index_category == "vector")
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "compact_indexes: the build for '{}' published no table level artifact",
+                    column
+                )
+            })?;
 
-        // 2. Invalidate this table's caches so the query path picks up the fresh
-        // sidecar topology. Scoped to the URI: a global clear would evict every
-        // other table's indexes in the same process.
-        crate::core::cache::invalidate_table_caches(&self.uri).await;
-
-        // 3. Trim jemalloc dirty pages back to OS
-        crate::core::memory::trim_heap();
+        let shards: Vec<String> = if artifact.shard_files.is_empty() {
+            vec![artifact.file_path.clone()]
+        } else {
+            artifact.shard_files.clone()
+        };
+        // Shard paths are store relative. The builder writes them with
+        // `self.store`, and the readers load them with `self.store`, so the HEAD
+        // has to use the same store or the measurement and the serving path
+        // describe different buckets. A dedicated index store has to resolve
+        // here, in the builder, and in the readers through one accessor.
+        let mut output_bytes = 0u64;
+        for shard in &shards {
+            let meta = self
+                .store
+                .head(&object_store::path::Path::from(shard.as_str()))
+                .await
+                .with_context(|| format!("compact_indexes: shard '{}' is not readable", shard))?;
+            output_bytes += meta.size;
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         tracing::info!(
             column = %column,
-            output_shards = num_shards,
+            output_shards = shards.len(),
+            output_bytes = output_bytes,
+            source_manifest_version = artifact.source_manifest_version,
             duration_ms = duration_ms,
-            "compact_indexes: index sidecar compaction completed successfully"
+            "compact_indexes: table level artifact published"
         );
 
         Ok(IndexCompactionStats {
             column: column.to_string(),
             input_segments,
-            output_shards: num_shards,
+            output_shards: shards.len(),
+            output_bytes,
             total_records,
             target_shard_bytes: target_bytes,
+            source_manifest_version: artifact.source_manifest_version,
             duration_ms,
         })
     }
@@ -1602,12 +1644,16 @@ pub struct IndexCompactionStats {
     pub column: String,
     /// Number of uncompacted segment index files processed
     pub input_segments: usize,
-    /// Number of consolidated Voronoi Puffin shards produced
+    /// Number of consolidated Voronoi Puffin shards in the published artifact
     pub output_shards: usize,
+    /// Total bytes of the published shards, measured by a HEAD per shard
+    pub output_bytes: u64,
     /// Total vector records represented in the index
     pub total_records: usize,
     /// Maximum size ceiling per shard in bytes (default 512 MiB / 536870912)
     pub target_shard_bytes: usize,
+    /// Manifest version the published artifact was built from
+    pub source_manifest_version: u64,
     /// Total wall-clock duration of compaction in milliseconds
     pub duration_ms: u64,
 }

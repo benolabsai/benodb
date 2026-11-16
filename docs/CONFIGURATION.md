@@ -141,7 +141,7 @@ backward compatibility but ignored.
 
 For massive datasets exceeding RAM (such as 10M–100M+ vectors):
 
-* **`Table.compact_indexes(column: str, target_shard_bytes: int = 536870912)`**: Compacts scattered segment index sidecars into contiguous, clustered Voronoi Puffin shards (512 MB default target), eliminating small-file fragmentation and enabling streaming sequential NVMe reads during deep queries.
+* **`Table.compact_indexes(column: str, target_shard_bytes: int = 536870912)`**: Builds the table level Voronoi artifact at the requested shard size (512 MiB default), reading every vector once and writing shards that hold complete cluster graphs, so a deep query streams whole clusters instead of fanning out across segment sidecars. Returns the shard count, the bytes on disk, and the manifest version the build read. Per segment sidecars are left in place; `retire_covered_vector_indexes` removes them.
 * **`Table.preload_indexes(max_memory_bytes: int, spill_to_disk: bool = False)`**: Preloads Voronoi centroids and top-layer graphs up to an advisory RAM budget, keeping inverted lists on disk.
 * **`benostreamdb.clear_cache(all: bool = False)`**: Programmatically invalidates all engine index, metadata, block, and byte caches.
 

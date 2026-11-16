@@ -689,8 +689,16 @@ table.rebuild_cluster_index(
     target_shard_bytes=536870912  # 512 MiB rolling shard target for S3 single-PUT compliance
 )
 
-# 2. Segment-level Voronoi index compaction
-table.compact_indexes("text_embedding", target_shard_bytes=536870912)
+# 2. The same build through the compaction entry point, which uses the
+#    defaults above and returns the shard count, the bytes on disk, and the
+#    manifest version the build read. Both calls build the artifact, so run
+#    one or the other, not both in sequence.
+stats = table.compact_indexes("text_embedding", target_shard_bytes=536870912)
+print(stats["output_shards"], stats["output_bytes"], stats["source_manifest_version"])
+
+# 3. Per segment sidecars stay until the artifact is verified. Dropping them
+#    is what removes the fallback when the table tier is missing.
+table.retire_covered_vector_indexes("text_embedding")
 
 # 3. Data compaction and manifest vacuum
 table.compact()

@@ -177,6 +177,45 @@ async fn test_manual_index_compaction_sidecars_only() -> anyhow::Result<()> {
     assert_eq!(stats.total_records, 150, "Should reflect all 150 records");
     assert_eq!(stats.target_shard_bytes, 50_000_000);
 
+    // The statistics must describe the artifact that was published. Reload the
+    // manifest and measure the shards, so an estimate cannot pass this test.
+    let store = create_object_store(&uri)?;
+    let manager = ManifestManager::new(store.clone(), "", &uri);
+    let (manifest, _, _) = manager.load_latest_full().await?;
+    let artifact = manifest
+        .table_indexes
+        .iter()
+        .find(|idx| idx.column_name == "embedding" && idx.index_category == "vector")
+        .expect("compaction must publish a table level artifact");
+
+    let shards: Vec<&String> = if artifact.shard_files.is_empty() {
+        vec![&artifact.file_path]
+    } else {
+        artifact.shard_files.iter().collect()
+    };
+    assert_eq!(
+        stats.output_shards,
+        shards.len(),
+        "reported shards must be the shards that were written"
+    );
+    assert_eq!(
+        stats.source_manifest_version, artifact.source_manifest_version,
+        "reported version must be the version the artifact was built from"
+    );
+
+    let mut measured_bytes = 0u64;
+    for shard in &shards {
+        let meta = store
+            .head(&object_store::path::Path::from(shard.as_str()))
+            .await?;
+        assert!(meta.size > 0, "shard must not be empty: {shard}");
+        measured_bytes += meta.size;
+    }
+    assert_eq!(
+        stats.output_bytes, measured_bytes,
+        "reported bytes must be the bytes on disk"
+    );
+
     // Verify invariant: Underlying Parquet data files MUST be 100% untouched
     let mut data_files_after = table.list_data_files_async().await?;
     data_files_after.sort_by(|a, b| a.file_path.cmp(&b.file_path));

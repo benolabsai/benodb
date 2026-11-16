@@ -1489,8 +1489,10 @@ impl PyTable {
         dict.set_item("column", stats.column)?;
         dict.set_item("input_segments", stats.input_segments)?;
         dict.set_item("output_shards", stats.output_shards)?;
+        dict.set_item("output_bytes", stats.output_bytes)?;
         dict.set_item("total_records", stats.total_records)?;
         dict.set_item("target_shard_bytes", stats.target_shard_bytes)?;
+        dict.set_item("source_manifest_version", stats.source_manifest_version)?;
         dict.set_item("duration_ms", stats.duration_ms)?;
         Ok(dict.into())
     }
