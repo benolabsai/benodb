@@ -269,6 +269,75 @@ fn test_sync_compact_indexes_api() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A pinned read view must resolve the checkpoint's index set, and must not be
+/// able to write and advance the head it is ignoring.
+#[test]
+fn test_at_version_pins_index_set_and_refuses_writes() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let uri = format!("file://{}", dir.path().to_str().unwrap());
+    let dim = 8usize;
+
+    let table = Table::new(uri)?;
+    table.set_autocommit(false);
+    table.runtime().block_on(table.add_index(
+        "embedding".to_string(),
+        IndexAlgorithm::HnswTq8 {
+            metric: "l2".to_string(),
+            complexity: 8,
+            quality: 8,
+        },
+    ))?;
+
+    let s = schema(dim);
+    table.write(vec![cluster_batch(s.clone(), 0, 20, 1.0, dim)?])?;
+    table.commit()?;
+    table.wait_for_background_tasks()?;
+
+    // The checkpoint is the version that pins data and indexes together.
+    table.checkpoint()?;
+    let checkpoint = table.runtime().block_on(table.snapshot_version())?;
+
+    // Advance the table so the pinned view differs from the head.
+    table.write(vec![cluster_batch(s.clone(), 20, 20, 9.0, dim)?])?;
+    table.commit()?;
+
+    table.runtime().block_on(table.at_version(checkpoint))?;
+    let pinned = table.runtime().block_on(table.manifest())?;
+    assert_eq!(pinned.version, checkpoint, "read view is the checkpoint");
+    assert_eq!(table.pinned_version(), Some(checkpoint));
+
+    let refused = table.write(vec![cluster_batch(s.clone(), 40, 5, 1.0, dim)?]);
+    assert!(
+        refused.is_err(),
+        "a pinned read view must refuse writes, got {refused:?}"
+    );
+
+    // The data read must follow the same pin as the manifest, otherwise the
+    // index would resolve one version and the rows another.
+    let pinned_rows: usize = table
+        .read(None, None)?
+        .iter()
+        .map(|batch| batch.num_rows())
+        .sum();
+    assert_eq!(
+        pinned_rows, 20,
+        "the pinned read sees the checkpoint's segment set, not the head"
+    );
+
+    table.unpin();
+    assert_eq!(table.pinned_version(), None);
+    let head_rows: usize = table
+        .read(None, None)?
+        .iter()
+        .map(|batch| batch.num_rows())
+        .sum();
+    assert_eq!(head_rows, 40, "unpinning returns the handle to the head");
+
+    table.write(vec![cluster_batch(s, 40, 5, 1.0, dim)?])?;
+    table.commit()?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_contiguous_clusters_in_index_after_compaction() -> anyhow::Result<()> {
     let dir = tempdir()?;

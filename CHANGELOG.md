@@ -36,6 +36,22 @@
 
 ### Added
 
+- **A pinned read view makes the index follow the data through time**
+  (`src/core/table/state.rs`, `src/core/manifest/manager.rs`,
+  `src/core/manifest/manager/load.rs`): `table.at_version(N)` pins a handle to
+  version N for reads. Every reader builds its manifest manager through
+  `Table::manifest_manager`, which stamps the pin, so `load_latest`,
+  `load_latest_direct`, and `load_latest_full` resolve `vN.json` and its entries
+  instead of the head. A query at a checkpoint therefore resolves that version's
+  segment `index_files` and `table_indexes`, which is the artifact set built at
+  or before the checkpoint. The version is verified before the pin takes effect.
+  Every write entry point refuses a pinned handle, `write`, `commit`,
+  `flush_async`, `truncate_async`, and both checkpoint calls, so a read view
+  cannot advance the head it is ignoring. `unpin()` returns the handle to the
+  head. `test_at_version_pins_index_set_and_refuses_writes` reads 20 rows at the
+  checkpoint and 40 at the head through one handle, and gets an error from the
+  write issued while pinned.
+
 - **True LSM vector retrieval and post-ingest index compaction**
   (`src/core/manifest/manager/commit.rs`, `src/core/manifest/types.rs`,
   `src/core/table/read.rs`, `src/core/table/preload.rs`,

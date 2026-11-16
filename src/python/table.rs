@@ -1326,11 +1326,36 @@ impl PyTable {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
-    /// Compact the WAL (consolidate log entries into single batch)
+    /// Flush the WAL and publish a metadata version that pins the indexes.
+    ///
+    /// The version is the checkpoint. Data files, per segment index files, and
+    /// the table level artifact all resolve from it, so a later `at_version()`
+    /// or rollback sees a consistent pair rather than head data with head
+    /// indexes.
     fn checkpoint(&self, py: Python<'_>) -> PyResult<()> {
         // Release GIL during checkpoint to allow other Python threads to run
         py.allow_threads(|| self.table.checkpoint())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err((e.to_string(),)))
+    }
+
+    /// Pin this handle to a historical manifest version for reads.
+    ///
+    /// Reads resolve that version's data files and index artifacts, including
+    /// `table_indexes`, so time travel carries the indexes with the data. Writes
+    /// are refused while pinned; call `unpin()` to return to the head.
+    fn at_version(&self, py: Python<'_>, version: u64) -> PyResult<()> {
+        py.allow_threads(|| TOKIO_RUNTIME.block_on(self.table.at_version(version)))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// The version this handle is pinned to, or `None` when reading the head.
+    fn pinned_version(&self) -> Option<u64> {
+        self.table.pinned_version()
+    }
+
+    /// Return this handle to the head after `at_version()`.
+    fn unpin(&self) {
+        self.table.unpin();
     }
 
     /// Remove orphaned files

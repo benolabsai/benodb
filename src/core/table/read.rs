@@ -9,7 +9,7 @@ use std::sync::Arc;
 use super::fluent::TableQuery;
 use crate::core::index::gpu::get_thread_gpu_context;
 use crate::core::index::VectorValue;
-use crate::core::manifest::{IndexAlgorithm, IndexFile, ManifestEntry, ManifestManager};
+use crate::core::manifest::{IndexAlgorithm, IndexFile, ManifestEntry};
 use crate::core::planner::{FilterExpr, QueryFilter, QueryPlanner, VectorSearchParams};
 use crate::core::query::{QueryConfig, VectorSearchRequest};
 use arrow::datatypes::Schema;
@@ -330,8 +330,7 @@ impl Table {
         filter_str: Option<&str>,
         vector_params: Option<Vec<VectorSearchParams>>,
     ) -> String {
-        let manifest_manager =
-            crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, version) = manifest_manager
             .load_latest_full()
             .await
@@ -612,7 +611,7 @@ impl Table {
     ) -> Result<BoxStream<'static, Result<RecordBatch>>> {
         use futures::StreamExt;
 
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let need_mem_index = vector_filters.is_some();
         // Read the durable head, not `load_latest`'s cached version. The epoch pair
         // below only detects a `Staging → ManifestCommitted` transition that happens
@@ -1269,7 +1268,7 @@ impl Table {
             return Ok(Vec::new());
         }
 
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, version) = manifest_manager.load_latest_full().await?;
 
         // Single-column PK: a plain IN list is already index-accelerated.
@@ -1352,7 +1351,7 @@ impl Table {
         let iceberg_schema = if let Some(schema) = cached_iceberg_schema {
             Some(schema.clone())
         } else {
-            let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+            let manifest_manager = self.manifest_manager();
             let (manifest, _, _) = manifest_manager
                 .load_latest_full()
                 .await
@@ -1671,7 +1670,7 @@ impl Table {
     ) -> Result<Vec<ScoredResult>> {
         let start_time = std::time::Instant::now();
 
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
         let iceberg_schema = manifest
             .schemas
@@ -1848,7 +1847,7 @@ impl Table {
         filter: Option<FilterExpr>,
     ) -> Result<Vec<ScoredResult>> {
         let start_time = std::time::Instant::now();
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
         let iceberg_schema = manifest
             .schemas
@@ -1930,7 +1929,7 @@ impl Table {
         filter: Option<FilterExpr>,
     ) -> Result<Vec<ScoredResult>> {
         let start_time = std::time::Instant::now();
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
         let iceberg_schema = manifest
             .schemas
@@ -2027,7 +2026,7 @@ impl Table {
         }
 
         let mut final_batches = Vec::new();
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
         let iceberg_schema = manifest
             .schemas
@@ -2172,7 +2171,7 @@ impl Table {
     /// Verifies the data integrity of all segments in the table by comparing
     /// their actual file checksums against the ones stored in the manifest.
     pub async fn verify_integrity_async(&self) -> Result<()> {
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manifest_manager = self.manifest_manager();
         let (_manifest, all_entries, _version) = manifest_manager.load_latest_full().await?;
 
         for entry in all_entries {

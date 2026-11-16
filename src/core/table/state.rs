@@ -209,12 +209,56 @@ impl Table {
         self.schema.read().clone()
     }
 
+    /// A manifest manager bound to the version this handle reads.
+    ///
+    /// Every read path builds its manager here, so a pinned handle resolves
+    /// the pinned version in the segment loads and index lookups as well as
+    /// in [`Table::manifest`].
+    pub(crate) fn manifest_manager(&self) -> crate::core::manifest::ManifestManager {
+        crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri)
+            .with_pinned_version(self.pinned_version())
+    }
+
     pub async fn manifest(&self) -> Result<crate::core::manifest::Manifest> {
-        let (manifest, _) =
-            crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri)
-                .load_latest()
-                .await?;
+        // A pinned handle answers from the version it was pinned to, which is
+        // what makes the index follow the data through time travel: the
+        // artifact set lives in `table_indexes` and in each segment's
+        // `index_files`, both carried by that version.
+        let (manifest, _) = self.manifest_manager().load_latest().await?;
         Ok(manifest)
+    }
+
+    /// Pin this handle to a historical manifest version for reads.
+    ///
+    /// Every subsequent read resolves that version, including its index
+    /// artifacts. Writes are refused while the handle is pinned. The version is
+    /// verified to exist before the pin takes effect, so a typo fails here
+    /// rather than at the first query.
+    pub async fn at_version(&self, version: u64) -> Result<()> {
+        let _ = self.manifest_at_version(version).await?;
+        *self.pinned_version.write() = Some(version);
+        Ok(())
+    }
+
+    /// The version this handle is pinned to, if any.
+    pub fn pinned_version(&self) -> Option<u64> {
+        *self.pinned_version.read()
+    }
+
+    /// Return the handle to the head.
+    pub fn unpin(&self) {
+        *self.pinned_version.write() = None;
+    }
+
+    /// Error unless the handle is unpinned, used by every write path.
+    pub fn ensure_writable(&self) -> Result<()> {
+        if let Some(version) = self.pinned_version() {
+            anyhow::bail!(
+                "table handle is pinned to version {} for reads; call unpin() before writing",
+                version
+            );
+        }
+        Ok(())
     }
 
     /// MVCC snapshot version: the latest committed manifest version.
@@ -224,10 +268,7 @@ impl Table {
     /// reader can pin it and later read exactly that snapshot via
     /// [`Table::manifest_at_version`].
     pub async fn snapshot_version(&self) -> Result<u64> {
-        let (_, version) =
-            crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri)
-                .load_latest_direct()
-                .await?;
+        let (_, version) = self.manifest_manager().load_latest_direct().await?;
         Ok(version)
     }
 

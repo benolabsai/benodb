@@ -38,6 +38,11 @@ pub struct ManifestManager {
     pub(crate) store: Arc<dyn ObjectStore>,
     pub(crate) manifest_dir: Path,
     pub(crate) root_uri: String,
+    /// When set, every `load_latest*` call resolves this version instead of
+    /// the head. A pinned table handle stamps this, so a reader sees one
+    /// point in time: the segment set together with the index artifacts
+    /// that version carries.
+    pub(crate) pinned_version: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -100,7 +105,19 @@ impl ManifestManager {
             store,
             manifest_dir,
             root_uri: root_uri.trim_end_matches('/').to_string(),
+            pinned_version: None,
         }
+    }
+
+    /// Resolve `load_latest*` to a fixed version.
+    ///
+    /// This is the read half of time travel. The version carries each
+    /// segment's `index_files` and the table's `table_indexes`, so pinning
+    /// the data pins the index set that belongs to it rather than the one
+    /// the head happens to point at.
+    pub fn with_pinned_version(mut self, version: Option<u64>) -> Self {
+        self.pinned_version = version;
+        self
     }
 
     /// Construct a full object store path for a file within the manifest directory.

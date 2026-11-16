@@ -33,6 +33,9 @@ fn relativize_file_path(root_uri: &str, file_path: &str) -> String {
 impl ManifestManager {
     /// Load the latest manifest bypassing LATEST_VERSION_CACHE.
     pub async fn load_latest_direct(&self) -> Result<(Manifest, u64)> {
+        if let Some(version) = self.pinned_version {
+            return Ok((self.load_version(version).await?, version));
+        }
         let mut max_ver = 0;
         let mut latest_loc = None;
 
@@ -66,6 +69,9 @@ impl ManifestManager {
     /// Load the latest manifest. Returns (Manifest, version_number).
     /// If no manifest exists, returns an empty Manifest with version 0.
     pub async fn load_latest(&self) -> Result<(Manifest, u64)> {
+        if let Some(version) = self.pinned_version {
+            return Ok((self.load_version(version).await?, version));
+        }
         let cache_key = self.get_dir_cache_key();
 
         // 1. Check Version Cache (Fast Path)
@@ -151,9 +157,24 @@ impl ManifestManager {
 
     /// Load the latest manifest and ALL its entries (including sharded ones)
     pub async fn load_latest_full(&self) -> Result<(Manifest, Vec<ManifestEntry>, u64)> {
+        if let Some(version) = self.pinned_version {
+            return self.load_version_full(version).await;
+        }
         let (manifest, ver) = self.load_latest().await?;
         let entries = self.load_all_entries(&manifest).await?;
         Ok((manifest, entries, ver))
+    }
+
+    /// Load a specific version with all of its entries, including sharded
+    /// manifests. This is what a pinned read needs: the segment rows and the
+    /// index artifacts of one version, not of the head.
+    pub async fn load_version_full(
+        &self,
+        version: u64,
+    ) -> Result<(Manifest, Vec<ManifestEntry>, u64)> {
+        let manifest = self.load_version(version).await?;
+        let entries = self.load_all_entries(&manifest).await?;
+        Ok((manifest, entries, version))
     }
 
     /// Load a specific version of the manifest

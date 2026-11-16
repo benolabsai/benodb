@@ -57,17 +57,22 @@ impl Table {
     /// 1. The buffer exceeds `BSDB_CACHE_GB`
     /// 2. `commit()` is called explicitly
     pub fn write(&self, batches: Vec<RecordBatch>) -> Result<()> {
+        // A pinned handle is a read view. Refuse before entering the runtime
+        // so the caller learns the view is frozen rather than racing a commit.
+        self.ensure_writable()?;
         self.runtime().block_on(self.write_async(batches))
     }
 
     /// Commit buffered writes to disk
     pub fn commit(&self) -> Result<()> {
+        self.ensure_writable()?;
         self.runtime().block_on(self.flush_async())
     }
 
     /// Async commit
     #[tracing::instrument(skip(self))]
     pub async fn commit_async(&self) -> Result<()> {
+        self.ensure_writable()?;
         self.flush_async().await?;
         Ok(())
     }
@@ -80,6 +85,7 @@ impl Table {
     /// Async implementation of truncate
     #[tracing::instrument(skip(self))]
     pub async fn truncate_async(&self) -> Result<()> {
+        self.ensure_writable()?;
         let _maintenance_guard = self.maintenance_lock.write().await;
         let _commit_guard = self.commit_lock.lock().await;
 
@@ -150,6 +156,7 @@ impl Table {
     /// segment `index_files` as they stand, which is the set that belongs to
     /// this point in time.
     pub async fn checkpoint_async(&self) -> Result<()> {
+        self.ensure_writable()?;
         {
             let wal = self.wal.lock().await;
             wal.compact_async().await?;
@@ -163,6 +170,7 @@ impl Table {
     /// version, so an empty checkpoint does not advance time for tables that
     /// only carry data.
     pub async fn checkpoint_index_async(&self) -> Result<()> {
+        self.ensure_writable()?;
         let manager =
             crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri);
         let (manifest, entries, _version) = manager.load_latest_full().await?;
@@ -182,6 +190,7 @@ impl Table {
     /// Async implementation of write using the table's configured durability mode.
     #[tracing::instrument(skip(self, batches))]
     pub async fn write_async(&self, batches: Vec<RecordBatch>) -> Result<()> {
+        self.ensure_writable()?;
         self.write_with_durability_async(batches, self.durability)
             .await
     }
@@ -207,6 +216,7 @@ impl Table {
         batches: Vec<RecordBatch>,
         durability: crate::core::table::WalDurability,
     ) -> Result<()> {
+        self.ensure_writable()?;
         // Reject vectors that do not match the table's declared dimension.
         // This is the shared choke point for Python, SQL/Flight SQL, MCP, and
         // any other connector that writes through the engine. The pre-check
@@ -920,6 +930,7 @@ impl Table {
     /// Flush buffer to disk (protected by maintenance read barrier)
     #[tracing::instrument(skip(self))]
     pub async fn flush_async(&self) -> Result<()> {
+        self.ensure_writable()?;
         let _maintenance_guard = self.maintenance_lock.read().await;
         self.flush_unlocked_async().await
     }

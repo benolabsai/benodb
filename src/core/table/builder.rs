@@ -497,6 +497,7 @@ impl TableBuilder {
             data_store: self.data_store,
             rt: self.runtime,
             query_config: self.query_config,
+            pinned_version: Arc::new(parking_lot::RwLock::new(None)),
 
             indexing: crate::core::table::TableIndexState {
                 index_all: self.index_all,

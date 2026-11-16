@@ -32,7 +32,7 @@ use std::time::Instant;
 
 use super::Table;
 use crate::core::cache::{DiskCache, INVERTED_INDEX_CACHE};
-use crate::core::manifest::{IndexFile, ManifestManager};
+use crate::core::manifest::IndexFile;
 
 /// Options controlling an index preload pass.
 #[derive(Debug, Clone)]
@@ -130,7 +130,7 @@ impl Table {
         let t0 = Instant::now();
         let mut stats = PreloadStats::default();
 
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manager = self.manifest_manager();
         let (_manifest, entries, _version) = manager.load_latest_full().await?;
 
         // Collect (rel_entry_path, index_file) pairs. The index file path may be
@@ -307,7 +307,7 @@ impl Table {
     /// If false, the table is a generic tabular/relational Iceberg table and all vector
     /// warming/allocation is bypassed.
     pub async fn has_vector_or_graph_indices(&self) -> Result<bool> {
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manager = self.manifest_manager();
         let (_manifest, entries, _version) = manager.load_latest_full().await?;
         Ok(entries.iter().any(|e| {
             e.index_files
@@ -327,7 +327,7 @@ impl Table {
         max_memory_bytes: Option<u64>,
     ) -> Result<WarmupStats> {
         let t0 = Instant::now();
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manager = self.manifest_manager();
         let (_manifest, entries, _version) = match manager.load_latest_full().await {
             Ok(v) => v,
             Err(_) => {
@@ -469,7 +469,7 @@ impl Table {
         &self,
         column: &str,
     ) -> Result<Option<Arc<crate::core::index::TableVectorRouter>>> {
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manager = self.manifest_manager();
         let (_manifest, entries, _version) = manager.load_latest_full().await?;
 
         // The router is only valid for the exact set of segments that carry a
@@ -635,7 +635,7 @@ impl Table {
         &self,
         column: &str,
     ) -> Result<Option<Arc<crate::core::index::ClusterIndex>>> {
-        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let manager = self.manifest_manager();
         let (manifest, entries, version) = manager.load_latest_full().await?;
 
         // The set of live data files, normalised to bare segment ids. Both the

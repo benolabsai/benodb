@@ -170,6 +170,14 @@ pub struct Table {
     pub data_store: Option<Arc<dyn ObjectStore>>,
     pub rt: Option<Arc<Runtime>>,
     pub(crate) query_config: QueryConfig,
+    /// When set, every read resolves this manifest version instead of the head.
+    ///
+    /// Time travel needs the index to follow the data. The index artifact set
+    /// lives in the manifest version that referenced it, so pinning the version
+    /// pins the data files, the per segment index files, and `table_indexes`
+    /// together. Writes are refused while pinned, because a read view that also
+    /// wrote would advance the head it is supposed to ignore.
+    pub(crate) pinned_version: Arc<parking_lot::RwLock<Option<u64>>>,
 
     // Sub-modules (Internal State Groups)
     pub(crate) indexing: TableIndexState,
@@ -318,6 +326,8 @@ impl Clone for Table {
             data_store: self.data_store.clone(),
             rt: self.rt.clone(),
             query_config: self.query_config.clone(),
+            // A clone is the same view, so it keeps the pinned version.
+            pinned_version: self.pinned_version.clone(),
             indexing: self.indexing.clone(),
             catalog_state: self.catalog_state.clone(),
             schema: self.schema.clone(),
