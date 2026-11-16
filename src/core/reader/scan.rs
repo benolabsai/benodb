@@ -3379,6 +3379,15 @@ impl HybridReader {
             );
         }
 
+        // The index path does not build a `RowSelection`, so without this the
+        // counters report zero for an indexed query. Record the candidates the
+        // index selected and the rows materialised for them, which is the pair
+        // the rerank claim is stated in.
+        crate::core::reader::stats::ROWS_SELECTED
+            .fetch_add(matches.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        crate::core::reader::stats::ROWS_DECODED
+            .fetch_add(matches.len() as u64, std::sync::atomic::Ordering::Relaxed);
+
         Ok(matches)
     }
 }
