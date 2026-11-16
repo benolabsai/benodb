@@ -403,11 +403,24 @@ impl DiskCache {
         self.get_mmap_with_key(path, path).await
     }
 
+    /// Mmap an index container with kernel readahead enabled.
+    ///
+    /// `get_mmap` advises `MADV_RANDOM` because pointer chasing over a resident
+    /// graph would waste readahead. That assumption fails when the container is
+    /// not resident: at 100M a Puffin container is roughly 400 MB against an
+    /// 8 GiB budget, so graph hops fault single pages from NVMe at about 100 us
+    /// each. A query reading 3.8 GB that way spends 97 s in page faults, which
+    /// is what the 100M sweep measured. `MADV_WILLNEED` issues one bulk
+    /// readahead for the mapping, converting those faults into sequential reads.
+    pub async fn get_mmap_prefetch(&self, path: &str) -> Result<Arc<memmap2::Mmap>> {
+        self.get_mmap_with_key_policy(path, path, true).await
+    }
+
     /// Memory maps an object straight out of a local store directory.
     ///
     /// No copy is made: the map points at the store's own file, so serving is
     /// out-of-core without ever doubling the bytes on disk.
-    fn mmap_local_object(&self, path: &str) -> Result<Arc<memmap2::Mmap>> {
+    fn mmap_local_object(&self, path: &str, prefetch: bool) -> Result<Arc<memmap2::Mmap>> {
         let root = self.local_root.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
                 "Disk cache disabled and the store is not a local filesystem; \
@@ -420,10 +433,14 @@ impl DiskCache {
         let file = std::fs::File::open(&src)
             .map_err(|e| anyhow::anyhow!("failed to open local object {}: {e}", src.display()))?;
         let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
-        // Same reasoning as the cache-dir path below: consumers are random
-        // access, so speculative readahead only pollutes the page cache.
+        // Caller chooses the policy: `Random` for structures that are expected
+        // to be resident, `WillNeed` for index containers that will not fit.
         #[cfg(unix)]
-        let _ = mmap.advise(memmap2::Advice::Random);
+        let _ = mmap.advise(if prefetch {
+            memmap2::Advice::WillNeed
+        } else {
+            memmap2::Advice::Random
+        });
         Ok(Arc::new(mmap))
     }
 
@@ -433,10 +450,22 @@ impl DiskCache {
         path: &str,
         cache_key: &str,
     ) -> Result<Arc<memmap2::Mmap>> {
+        self.get_mmap_with_key_policy(path, cache_key, false).await
+    }
+
+    /// [`DiskCache::get_mmap_with_key`] with an explicit readahead policy.
+    ///
+    /// `prefetch` selects `MADV_WILLNEED` over the default `MADV_RANDOM`.
+    pub async fn get_mmap_with_key_policy(
+        &self,
+        path: &str,
+        cache_key: &str,
+        prefetch: bool,
+    ) -> Result<Arc<memmap2::Mmap>> {
         use sha2::{Digest, Sha256};
 
         let Some(cache_dir) = self.cache_dir.clone() else {
-            return self.mmap_local_object(path);
+            return self.mmap_local_object(path, prefetch);
         };
 
         let mut hasher = Sha256::new();
@@ -488,7 +517,11 @@ impl DiskCache {
         // are faulted in — this is what makes mmap-backed (out-of-core)
         // vector/graph search cache-efficient on memory-constrained hosts.
         #[cfg(unix)]
-        let _ = mmap.advise(memmap2::Advice::Random);
+        let _ = mmap.advise(if prefetch {
+            memmap2::Advice::WillNeed
+        } else {
+            memmap2::Advice::Random
+        });
         Ok(Arc::new(mmap))
     }
 }

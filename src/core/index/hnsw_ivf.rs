@@ -3128,7 +3128,10 @@ impl HnswIvfIndex {
         // One read of the container: mmap it when the store is local (the page
         // cache then serves the blobs actually touched), else fetch the bytes.
         let container: bytes::Bytes = if use_mmap {
-            match DiskCache::new(store.clone()).get_mmap(puffin_path).await {
+            match DiskCache::new(store.clone())
+                .get_mmap_prefetch(puffin_path)
+                .await
+            {
                 Ok(mmap) => bytes::Bytes::from_owner(MmapOwner(mmap)),
                 Err(_) => {
                     store
@@ -3187,7 +3190,10 @@ impl HnswIvfIndex {
         // One read of the container: mmap it when the store is local (the page
         // cache then serves only the blob actually touched), else fetch bytes.
         let container: bytes::Bytes = if use_mmap {
-            match DiskCache::new(store.clone()).get_mmap(puffin_path).await {
+            match DiskCache::new(store.clone())
+                .get_mmap_prefetch(puffin_path)
+                .await
+            {
                 Ok(mmap) => bytes::Bytes::from_owner(MmapOwner(mmap)),
                 Err(_) => {
                     store
