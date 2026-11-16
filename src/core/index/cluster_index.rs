@@ -144,6 +144,29 @@ pub struct ClusterShard {
 
 struct MmapOwner(Arc<memmap2::Mmap>);
 
+/// Open one Puffin shard as a byte view the kernel can reclaim.
+///
+/// `load_sharded` used to read every shard into owned `Bytes`, so a 40 GB
+/// table level index became 40 GB of anonymous memory before the first query.
+/// Under any cache budget smaller than the artifact that is an OOM kill, which
+/// is exactly what a 16 GiB scope did at 100M. Mapping the shard keeps the
+/// bytes file backed and evictable, and the prefetch advice issues the
+/// readahead that a graph traversal would otherwise turn into 4 KB faults.
+async fn open_shard_container(
+    store: Arc<dyn object_store::ObjectStore>,
+    path: &str,
+) -> anyhow::Result<Bytes> {
+    use crate::core::cache::DiskCache;
+    match DiskCache::new(store.clone()).get_mmap_prefetch(path).await {
+        Ok(mmap) => Ok(Bytes::from_owner(MmapOwner(mmap))),
+        Err(_) => Ok(store
+            .get(&object_store::path::Path::from(path))
+            .await?
+            .bytes()
+            .await?),
+    }
+}
+
 impl AsRef<[u8]> for MmapOwner {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
@@ -870,14 +893,9 @@ impl ClusterIndex {
 
         // Shard 0 always contains the global centroids and segment table.
         let shard0_path = &shard_paths[0];
-        let shard0_obj = object_store::path::Path::from(shard0_path.as_str());
-        let shard0_container = store
-            .get(&shard0_obj)
+        let shard0_container = open_shard_container(store.clone(), shard0_path)
             .await
-            .with_context(|| format!("opening shard 0 '{shard0_path}'"))?
-            .bytes()
-            .await
-            .with_context(|| format!("reading shard 0 bytes '{shard0_path}'"))?;
+            .with_context(|| format!("opening shard 0 '{shard0_path}'"))?;
 
         let (centroids, metric, quantizer) = read_centroids_blob(&shard0_container)?;
         let segment_table = read_segments_blob(&shard0_container)?;
@@ -896,14 +914,9 @@ impl ClusterIndex {
         });
 
         for (i, path) in shard_paths.iter().enumerate().skip(1) {
-            let obj_path = object_store::path::Path::from(path.as_str());
-            let container = store
-                .get(&obj_path)
+            let container = open_shard_container(store.clone(), path)
                 .await
-                .with_context(|| format!("opening shard {i} '{path}'"))?
-                .bytes()
-                .await
-                .with_context(|| format!("reading shard {i} bytes '{path}'"))?;
+                .with_context(|| format!("opening shard {i} '{path}'"))?;
             let slices = cluster_slices_from_container(&container)?;
             let s_min = slices.keys().copied().min().unwrap_or(0);
             let s_max = slices.keys().copied().max().unwrap_or(0);
