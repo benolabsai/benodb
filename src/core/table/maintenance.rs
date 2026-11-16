@@ -1393,6 +1393,19 @@ impl Table {
         )
         .await?;
 
+        // An index belongs to the checkpoint it was built from. If the table
+        // advanced while the build ran, the artifact describes a data set that
+        // no longer matches the head, so refuse rather than publish an index
+        // whose `source_manifest_version` is a lie. Rerun against the new head.
+        let (_, _, current_version) = manager.load_latest_full().await?;
+        if current_version != version {
+            anyhow::bail!(
+                "rebuild_cluster_index: the table advanced from version {} to {} during the build; the artifact would not match its checkpoint",
+                version,
+                current_version
+            );
+        }
+
         let new_version = version + 1;
         let safe_column: String = column
             .chars()
@@ -1429,7 +1442,10 @@ impl Table {
             .push(index.to_table_index_file_with_shards(
                 &primary_path,
                 saved_paths,
-                new_version,
+                // The base version, not the version this artifact is published
+                // in. `source_manifest_version` is the checkpoint the build read,
+                // which is what rollback and validation compare against.
+                version,
                 algo.name(),
             ));
 
@@ -1594,4 +1610,97 @@ pub struct IndexCompactionStats {
     pub target_shard_bytes: usize,
     /// Total wall-clock duration of compaction in milliseconds
     pub duration_ms: u64,
+}
+
+impl Table {
+    /// Drop per segment vector sidecars that a table level artifact covers.
+    ///
+    /// Serving reads the table tier for covered segments, so the per segment
+    /// containers are duplicate bytes. At 100M that is 100 files of 413.2 MB
+    /// beside 77 table shards, which roughly doubles storage and the index to
+    /// cache ratio for no serving benefit.
+    ///
+    /// This rewrites the manifest only. Parquet data files, scalar indexes, and
+    /// the table level artifact stay untouched, and the column's index
+    /// configuration remains in place so the table tier keeps being loaded.
+    /// Returns the number of per segment index entries removed.
+    pub async fn retire_covered_vector_indexes(&self, column: String) -> Result<usize> {
+        let _guard = self.maintenance_lock.write().await;
+        let _ = self.wait_for_background_tasks_async().await;
+
+        let manager =
+            crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri);
+        let (manifest, entries, _version) = manager.load_latest_full().await?;
+
+        let all_segments: Vec<String> = entries
+            .iter()
+            .map(|e| crate::core::segment::segment_id_from_path(&e.file_path).to_string())
+            .collect();
+        let covered: std::collections::HashSet<String> = manifest
+            .table_indexes
+            .iter()
+            .filter(|t| t.column_name == column && t.index_category == "vector")
+            .filter(|t| t.is_valid_base_for(&all_segments))
+            .flat_map(|t| t.source_segments.iter().cloned())
+            .collect();
+        if covered.is_empty() {
+            return Ok(0);
+        }
+
+        let mut removed = 0usize;
+        let mut cache_keys = Vec::new();
+        let mut updated = Vec::with_capacity(entries.len());
+        for mut entry in entries {
+            let segment = crate::core::segment::segment_id_from_path(&entry.file_path).to_string();
+            if !covered.contains(&segment) {
+                updated.push(entry);
+                continue;
+            }
+            let rel_entry_path =
+                crate::core::segment::relativize_against(&self.uri, &entry.file_path);
+            let mut keep = Vec::with_capacity(entry.index_files.len());
+            for idx in &entry.index_files {
+                let covered_vector = idx.column_name == column
+                    && idx.index_category == "vector"
+                    && idx.blob_offset.is_some();
+                if covered_vector {
+                    removed += 1;
+                    let resolved = crate::core::segment::resolve_entry_index_path(
+                        &rel_entry_path,
+                        &idx.file_path,
+                    );
+                    cache_keys.push(format!("{}/{}", self.uri, resolved));
+                } else {
+                    keep.push(idx.clone());
+                }
+            }
+            entry.index_files = keep;
+            updated.push(entry);
+        }
+
+        if removed == 0 {
+            return Ok(0);
+        }
+        manager.commit_imported_entries(updated).await?;
+
+        // Fail closed if the commit dropped the table artifact. Retiring the per
+        // segment tier while the table tier is gone leaves the table with no
+        // vector index at all, and the next orphan sweep has nothing to protect.
+        let (reloaded, _, _) = manager.load_latest_full().await?;
+        let survived = reloaded
+            .table_indexes
+            .iter()
+            .any(|t| t.column_name == column && t.index_category == "vector");
+        if !survived {
+            anyhow::bail!(
+                "retire_covered_vector_indexes: the table level artifact for '{}' is no longer referenced after the entry commit; rebuild the table index before retiring anything",
+                column
+            );
+        }
+
+        for key in cache_keys {
+            crate::core::cache::HNSW_IVF_CACHE.invalidate(&key).await;
+        }
+        Ok(removed)
+    }
 }

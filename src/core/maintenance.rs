@@ -164,6 +164,17 @@ impl Maintenance {
             for del in &m.delete_files {
                 all_valid_files.insert(del.file_path.clone());
             }
+            // Table level index artifacts are referenced from the manifest, not
+            // from a segment entry. Omitting them made a routine orphan sweep
+            // delete a 40 GB table index: at 100M, `remove_orphan_files(0)`
+            // unlinked all 77 shards because nothing in the live set mentioned
+            // them, leaving the table with no vector index at all.
+            for table_index in &m.table_indexes {
+                all_valid_files.insert(table_index.file_path.clone());
+                for shard in &table_index.shard_files {
+                    all_valid_files.insert(shard.clone());
+                }
+            }
         }
 
         tracing::debug!("Valid files in history: {}", all_valid_files.len());

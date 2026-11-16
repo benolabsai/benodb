@@ -1,6 +1,24 @@
-## [0.16.2] - 2026-11-15
+## [0.16.2] - 2026-11-16
 
 ### Fixed
+
+- **Orphan cleanup deleted table level index artifacts**
+  (`src/core/maintenance.rs`): the live set was built from segment entries and
+  ignored `Manifest::table_indexes`, so a table artifact looked like garbage.
+  At 100M, `remove_orphan_files(0)` unlinked all 77 shards of a 40.30 GB table
+  index and left the table with no vector index in either tier. Table index
+  paths and their `shard_files` now join the live set for every manifest version
+  in history, which is what makes rollback to a checkpoint resolve its artifact.
+
+- **The table index builder was killed by its own spill**
+  (`src/core/index/cluster_index.rs`): assigning 100M vectors spills about 51 GB
+  through bucket files, and the builder never synced them. Dirty page cache is
+  charged to the memory cgroup and cannot be reclaimed before writeback, so a
+  build under `memory.max` hit the OOM killer with under 1 GB of anonymous
+  memory. Bucket files now sync once per segment, bounding the dirty window to
+  one segment's spill, and the bucket count is derived from the vector bytes at
+  a 256 MB target instead of a fixed 64. `BSDB_CLUSTER_BUILD_BUCKETS` still
+  overrides.
 
 - **Index preload charged a thousandth of what it loaded**
   (`src/core/table/preload.rs`): a Puffin container holds one vector index split
@@ -36,6 +54,26 @@
   metadata, binpacks small Parquet data files to 512 MiB, compacts per-segment
   index sidecars, and rebuilds the Voronoi cluster index so newly ingested delta
   rows fold into refreshed base centroids.
+
+- **Checkpoints now publish an index version** (`src/core/table/write.rs`):
+  `checkpoint()` compacted the WAL and left index artifacts without a metadata
+  version to belong to, so time travel could recover data but not the index that
+  makes it queryable. It now commits a version with no data change that pins
+  `Manifest::table_indexes` and the segment `index_files` as they stand, and
+  returns without writing when the table has no indexes.
+
+- **Index builds are bound to the checkpoint they read**
+  (`src/core/table/maintenance.rs`): a table level artifact records
+  `source_manifest_version` as the base version the build read, not the version
+  it is published into. The build reloads the head before publishing and refuses
+  if the table advanced, so an artifact cannot claim a checkpoint it never saw.
+
+- **Retiring covered per segment sidecars**
+  (`Table::retire_covered_vector_indexes`): drops per segment vector entries for
+  segments a valid table artifact covers, rewriting the manifest only. It reloads
+  the manifest after the commit and fails closed if the table artifact is no
+  longer referenced, so the per segment tier cannot be removed while the serving
+  tier has already vanished.
 
 - **Reader counters for the candidate read path** (`src/core/reader/stats.rs`,
   `bsdb.reader_stats()` and `bsdb.reset_reader_stats()`): `rows_requested`,

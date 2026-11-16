@@ -140,10 +140,41 @@ impl Table {
             .and_then(|res| res)
     }
 
-    /// Async WAL checkpoint, safe to call from within a Tokio runtime.
+    /// Async checkpoint: flush the WAL, then publish a metadata version that
+    /// pins the current index artifacts.
+    ///
+    /// The metadata commit is the point. A WAL checkpoint alone leaves the index
+    /// artifacts without a version to belong to, so a rollback has no artifact
+    /// set to resolve, and time travel can only recover the data. Committing a
+    /// version with no data change records `Manifest::table_indexes` and the
+    /// segment `index_files` as they stand, which is the set that belongs to
+    /// this point in time.
     pub async fn checkpoint_async(&self) -> Result<()> {
-        let wal = self.wal.lock().await;
-        wal.compact_async().await
+        {
+            let wal = self.wal.lock().await;
+            wal.compact_async().await?;
+        }
+        self.checkpoint_index_async().await
+    }
+
+    /// Publish a metadata version that pins the current index artifacts.
+    ///
+    /// Safe to call when the table has no indexes: it returns without writing a
+    /// version, so an empty checkpoint does not advance time for tables that
+    /// only carry data.
+    pub async fn checkpoint_index_async(&self) -> Result<()> {
+        let manager =
+            crate::core::manifest::ManifestManager::new(self.store.clone(), "", &self.uri);
+        let (manifest, entries, _version) = manager.load_latest_full().await?;
+        let has_indexes =
+            !manifest.table_indexes.is_empty() || entries.iter().any(|e| !e.index_files.is_empty());
+        if !has_indexes {
+            return Ok(());
+        }
+        manager
+            .commit(&[], &[], crate::core::manifest::CommitMetadata::default())
+            .await?;
+        Ok(())
     }
 
     // Schema evolution logic moved to schema.rs

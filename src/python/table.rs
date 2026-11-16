@@ -498,6 +498,20 @@ impl PyTable {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
+    /// Drop per segment vector sidecars that a table level artifact covers.
+    ///
+    /// Serving reads the table tier for those segments, so the per segment
+    /// containers are duplicate bytes. The manifest is rewritten; Parquet data
+    /// files, scalar indexes, and the table level artifact are untouched, and
+    /// the column's index configuration stays in place. Returns the number of
+    /// per segment index entries removed.
+    fn retire_covered_vector_indexes(&self, py: Python<'_>, column: String) -> PyResult<usize> {
+        py.allow_threads(|| {
+            TOKIO_RUNTIME.block_on(self.table.retire_covered_vector_indexes(column))
+        })
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
     /// Rebuild a column's index from the data already stored in the table.
     ///
     /// Drops the existing index artifacts and rebuilds them by streaming the

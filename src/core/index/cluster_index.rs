@@ -103,12 +103,40 @@ pub fn target_shard_bytes() -> usize {
 pub const DEFAULT_SAMPLE_BUDGET: usize = 200_000;
 
 /// Number of on-disk hash buckets used to bound build memory.
-fn build_bucket_count() -> usize {
-    std::env::var("BSDB_CLUSTER_BUILD_BUCKETS")
+#[cfg(test)]
+mod bucket_count_tests {
+    use super::*;
+
+    #[test]
+    fn bucket_count_bounds_each_spill_to_256_mb() {
+        // 100M rows at 128 dimensions of f32 is about 51 GB of spilled records.
+        let bytes = 100_000_000usize * 128 * 4;
+        let buckets = build_bucket_count(bytes);
+        assert!(buckets >= 64, "at least the floor");
+        assert_eq!(buckets, bytes.div_ceil(256 * 1024 * 1024).clamp(64, 1024));
+        assert!(buckets > 64, "100M vectors must exceed the fixed 64 of old");
+        // Small tables keep the floor rather than spilling a single tiny file.
+        assert_eq!(build_bucket_count(1_000_000), 64);
+        // Very large tables are capped so the loop stays bounded.
+        assert_eq!(build_bucket_count(1usize << 42), 1024);
+    }
+}
+
+fn build_bucket_count(total_vector_bytes: usize) -> usize {
+    if let Some(n) = std::env::var("BSDB_CLUSTER_BUILD_BUCKETS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
-        .unwrap_or(64)
+    {
+        return n;
+    }
+    // Pass 3 reads one bucket file whole and then groups it, which duplicates
+    // its vectors on the heap. A fixed count of 64 put about 800 MB in each
+    // bucket for 100M x 128 dimensions, and the grouped copy doubled that on top
+    // of the graph builds. Sizing buckets to roughly 256 MB of spilled records
+    // keeps that transient to a few hundred megabytes regardless of table size.
+    let target = 256 * 1024 * 1024;
+    total_vector_bytes.div_ceil(target).clamp(64, 1024)
 }
 
 /// Per-node locator: which data file, and which row inside it.
@@ -379,7 +407,7 @@ impl ClusterIndex {
         let metric = metric_for_algo(algo);
 
         // ---- Pass 2: assign every row, range-bucket to disk ----
-        let buckets = build_bucket_count();
+        let buckets = build_bucket_count(total_rows.saturating_mul(dim).saturating_mul(4));
         let tmp_dir = std::env::temp_dir().join(format!("bsdb-cluster-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir)
             .with_context(|| format!("creating build temp dir {}", tmp_dir.display()))?;
@@ -411,6 +439,15 @@ impl ClusterIndex {
             {
                 assign_result = Err(e);
                 break;
+            }
+            // Bound dirty page cache. Assigning 100M vectors spills about 51 GB
+            // through the bucket files, and without a sync the dirty pages are
+            // charged to the cgroup faster than writeback retires them: at 100M
+            // under a 16 GiB cap the kernel OOM killed the build while anonymous
+            // memory was still under 1 GB. Syncing once per segment caps the
+            // dirty window at one segment's spill.
+            for file in bucket_files.iter() {
+                let _ = file.sync_data();
             }
         }
         drop(bucket_files);
