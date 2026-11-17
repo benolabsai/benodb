@@ -5,7 +5,6 @@ edition = "2021"
 license = "MIT AND Apache-2.0"
 description = "BenoStreamDB Flight SQL - Arrow Flight SQL gateway over BenoStreamDB"
 repository = "https://github.com/benolabsai/benostreamdb"
-homepage = "https://github.com/benolabsai/benostreamdb"
 keywords = ["database", "arrow", "flight-sql", "vector-search", "iceberg"]
 categories = ["database-implementations"]
 

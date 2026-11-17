@@ -11,7 +11,6 @@ license = "MIT AND Apache-2.0"
 authors = ["Richard Albright and BenoStreamDB Contributors"]
 description = "BenoStreamDB - Serverless Index-Streaming Database with Overlay Indexing and Vector Search"
 repository = "https://github.com/benolabsai/benostreamdb"
-homepage = "https://github.com/benolabsai/benostreamdb"
 readme = "README.md"
 keywords = ["database", "vector-search", "iceberg", "parquet", "indexing"]
 categories = ["database-implementations", "data-structures", "concurrency"]

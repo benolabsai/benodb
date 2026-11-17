@@ -1655,8 +1655,7 @@ impl Table {
                         total_uploaded += n;
                         part.extend_from_slice(&buf[..n]);
                         if part.len() >= part_bytes {
-                            let full =
-                                std::mem::replace(&mut part, Vec::with_capacity(part_bytes));
+                            let full = std::mem::replace(&mut part, Vec::with_capacity(part_bytes));
                             upload.put_part(full.into()).await.with_context(|| {
                                 format!("Failed to upload part to {}", remote_path_str)
                             })?;

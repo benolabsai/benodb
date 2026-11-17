@@ -73,8 +73,7 @@ pub const MAX_MULTIPART_PARTS: u64 = 10_000;
 /// Part size to use when uploading an object of `object_len` bytes.
 pub fn multipart_part_bytes(object_len: u64) -> usize {
     let by_count = object_len.div_ceil(MAX_MULTIPART_PARTS);
-    by_count
-        .clamp(MIN_MULTIPART_PART_BYTES, MAX_MULTIPART_PART_BYTES) as usize
+    by_count.clamp(MIN_MULTIPART_PART_BYTES, MAX_MULTIPART_PART_BYTES) as usize
 }
 
 static SSRF_ALLOW_WARNED: std::sync::Once = std::sync::Once::new();
