@@ -62,6 +62,37 @@ fn convert_iceberg_type_to_arrow(type_json: &serde_json::Value) -> Result<DataTy
             let len: i32 = inner.trim().parse().context("Invalid fixed length")?;
             return Ok(DataType::FixedSizeBinary(len));
         }
+        let lower = type_str.to_ascii_lowercase();
+        if (lower.starts_with("fixedsizelist(") || lower.starts_with("fixed_list("))
+            && lower.ends_with(')')
+        {
+            let open = lower.find('(').unwrap_or(0);
+            let inner = &lower[open + 1..lower.len() - 1];
+            let dim = inner
+                .split(|c: char| !c.is_ascii_digit())
+                .find(|p| !p.is_empty())
+                .and_then(|p| p.parse::<i32>().ok())
+                .context("Invalid fixedsizelist dimension")?;
+            let elem_dt = if inner.contains("float16") {
+                DataType::Float16
+            } else if inner.contains("float64") || inner.contains("double") {
+                DataType::Float64
+            } else if inner.contains("uint8") {
+                DataType::UInt8
+            } else if inner.contains("int8") {
+                DataType::Int8
+            } else if inner.contains("int32") {
+                DataType::Int32
+            } else if inner.contains("int64") || inner.contains("long") {
+                DataType::Int64
+            } else {
+                DataType::Float32
+            };
+            return Ok(DataType::FixedSizeList(
+                Arc::new(Field::new("item", elem_dt, true)),
+                dim,
+            ));
+        }
 
         match type_str {
             "boolean" => Ok(DataType::Boolean),

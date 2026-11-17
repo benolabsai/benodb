@@ -187,13 +187,23 @@ pub(crate) async fn resolve_iceberg_metadata_uri(
     Ok((metadata_file_uri, store_uri, filename))
 }
 
+/// Normalize a bare absolute filesystem path (`/path/to/table`) into a `file://`
+/// URI so callers do not have to remember the scheme prefix.
+fn normalize_uri(uri: &str) -> String {
+    if uri.starts_with('/') {
+        format!("file://{uri}")
+    } else {
+        uri.to_string()
+    }
+}
+
 /// Derive the object-store root that can resolve the absolute data-file paths
 /// recorded in an upstream Iceberg table's manifests.
 ///
 /// Iceberg manifests store absolute URIs, so the data store must be rooted at
 /// the bucket (or filesystem root) rather than the table directory.
 pub(crate) fn upstream_data_store_uri(location: &str) -> Result<String> {
-    if location.starts_with("file://") {
+    if location.starts_with("file://") || location.starts_with('/') {
         Ok("file:///".to_string())
     } else if location.starts_with("s3://") {
         let url = url::Url::parse(location)?;
@@ -218,6 +228,9 @@ impl Table {
         table_uri: String,
         overlay_storage_uri: String,
     ) -> Result<Self> {
+        let table_uri = normalize_uri(&table_uri);
+        let overlay_storage_uri = normalize_uri(&overlay_storage_uri);
+
         let (metadata_uri, meta_store_uri, filename) =
             resolve_iceberg_metadata_uri(&table_uri).await?;
         let meta_store = create_object_store(&meta_store_uri)?;
@@ -263,31 +276,55 @@ impl Table {
             &iceberg_meta.location,
         )?)?);
 
-        // Import the current upstream snapshot (incremental indexing trigger).
-        if let Some(snapshot_id) = iceberg_meta.current_snapshot_id {
-            table
-                .import_iceberg_snapshot(snapshot_id, &iceberg_meta, meta_store)
-                .await?;
-        }
-
-        let catalog = DetachedOverlayCatalog {
-            format_version: default_catalog_format_version(),
-            upstream_table_uri: table_uri,
-            upstream_metadata_uri: metadata_uri,
-            overlay_storage_uri: overlay_storage_uri.clone(),
-            upstream_snapshot_id: iceberg_meta.current_snapshot_id,
-            upstream_schema_id: iceberg_meta.current_schema_id,
-            last_synced_at_ms: Utc::now().timestamp_millis(),
-            last_synced_manifest_version: table.snapshot_version().await.unwrap_or(0),
+        // If this overlay already synced the current upstream snapshot, keep
+        // reopening strictly read-only (no redundant manifest version bump).
+        let existing_catalog = if version > 0 {
+            DetachedOverlayCatalog::load(&overlay_store)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
         };
-        catalog.save(&overlay_store).await?;
+        let already_synced = version > 0
+            && existing_catalog
+                .as_ref()
+                .is_some_and(|c| c.upstream_snapshot_id == iceberg_meta.current_snapshot_id);
 
-        tracing::info!(
-            upstream = %catalog.upstream_table_uri,
-            overlay = %overlay_storage_uri,
-            snapshot = ?catalog.upstream_snapshot_id,
-            "Mounted detached overlay catalog"
-        );
+        if !already_synced {
+            // Import the current upstream snapshot (incremental indexing trigger).
+            if let Some(snapshot_id) = iceberg_meta.current_snapshot_id {
+                table
+                    .import_iceberg_snapshot(snapshot_id, &iceberg_meta, meta_store)
+                    .await?;
+            }
+
+            let catalog = DetachedOverlayCatalog {
+                format_version: default_catalog_format_version(),
+                upstream_table_uri: table_uri.clone(),
+                upstream_metadata_uri: metadata_uri,
+                overlay_storage_uri: overlay_storage_uri.clone(),
+                upstream_snapshot_id: iceberg_meta.current_snapshot_id,
+                upstream_schema_id: iceberg_meta.current_schema_id,
+                last_synced_at_ms: Utc::now().timestamp_millis(),
+                last_synced_manifest_version: table.snapshot_version().await.unwrap_or(0),
+            };
+            catalog.save(&overlay_store).await?;
+
+            tracing::info!(
+                upstream = %catalog.upstream_table_uri,
+                overlay = %overlay_storage_uri,
+                snapshot = ?catalog.upstream_snapshot_id,
+                "Mounted detached overlay catalog"
+            );
+        } else {
+            tracing::info!(
+                upstream = %table_uri,
+                overlay = %overlay_storage_uri,
+                snapshot = ?iceberg_meta.current_snapshot_id,
+                "Reopened detached overlay catalog (already synced)"
+            );
+        }
 
         Ok(table)
     }
@@ -444,8 +481,265 @@ mod tests {
             "file:///"
         );
         assert_eq!(
+            upstream_data_store_uri("/tmp/warehouse").unwrap(),
+            "file:///"
+        );
+        assert_eq!(
             upstream_data_store_uri("s3://enterprise-data/warehouse").unwrap(),
             "s3://enterprise-data/"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_overlays_isolate_per_quantizer_cluster_indexes() {
+        use crate::core::index::{QuantizerImpl, VectorMetric, VectorValue};
+        use crate::core::manifest::IndexAlgorithm;
+        use crate::core::planner::VectorSearchParams;
+        use arrow::array::{FixedSizeListArray, Float32Array, Int64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use futures::StreamExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let upstream_dir = root.path().join("upstream_db");
+        let overlay_tq8_dir = root.path().join("overlay_tq8");
+        let overlay_sq8_dir = root.path().join("overlay_sq8");
+        std::fs::create_dir_all(&upstream_dir).unwrap();
+        std::fs::create_dir_all(&overlay_tq8_dir).unwrap();
+        std::fs::create_dir_all(&overlay_sq8_dir).unwrap();
+
+        let dim = 32usize;
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new(
+                "embedding",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    dim as i32,
+                ),
+                true,
+            ),
+        ]));
+
+        let make_batch = |start_id: i64, count: usize| -> RecordBatch {
+            let ids: Vec<i64> = (start_id..start_id + count as i64).collect();
+            let mut flat = Vec::with_capacity(count * dim);
+            for i in 0..count {
+                let cluster = (i % 4) as f32;
+                for d in 0..dim {
+                    let base = if d == (i % 4) * 8 { 10.0 } else { 0.0 };
+                    flat.push(base + cluster * 0.1 + ((i * 7 + d) % 13) as f32 * 0.01);
+                }
+            }
+            let values = Float32Array::from(flat);
+            let field = Arc::new(Field::new("item", DataType::Float32, true));
+            let fsl = FixedSizeListArray::new(field, dim as i32, Arc::new(values), None);
+            RecordBatch::try_new(
+                schema.clone(),
+                vec![Arc::new(Int64Array::from(ids)), Arc::new(fsl)],
+            )
+            .unwrap()
+        };
+
+        // 1. Create upstream BenoStreamDB table with two segments and an upstream TQ8 index.
+        let upstream_uri = format!("file://{}", upstream_dir.display());
+        let upstream = Table::create_async(upstream_uri.clone(), schema.clone())
+            .await
+            .unwrap();
+        upstream.write_async(vec![make_batch(0, 64)]).await.unwrap();
+        upstream.flush_async().await.unwrap();
+        upstream
+            .write_async(vec![make_batch(64, 64)])
+            .await
+            .unwrap();
+        upstream.flush_async().await.unwrap();
+        upstream
+            .add_index(
+                "embedding".to_string(),
+                IndexAlgorithm::HnswTq8 {
+                    metric: "l2".to_string(),
+                    complexity: 8,
+                    quality: 32,
+                },
+            )
+            .await
+            .unwrap();
+        upstream.wait_for_background_tasks_async().await.unwrap();
+        let upstream_version_before = upstream.snapshot_version().await.unwrap();
+        drop(upstream);
+
+        // 2. Mount two independent overlays using bare filesystem paths.
+        let upstream_path = upstream_dir.to_string_lossy().to_string();
+        let tq8_path = overlay_tq8_dir.to_string_lossy().to_string();
+        let sq8_path = overlay_sq8_dir.to_string_lossy().to_string();
+
+        let tq8 = Table::mount_external_iceberg(upstream_path.clone(), tq8_path.clone())
+            .await
+            .unwrap();
+        tq8.add_index(
+            "embedding".to_string(),
+            IndexAlgorithm::HnswTq8 {
+                metric: "l2".to_string(),
+                complexity: 8,
+                quality: 32,
+            },
+        )
+        .await
+        .unwrap();
+        tq8.wait_for_background_tasks_async().await.unwrap();
+        tq8.rebuild_index("embedding".to_string()).await.unwrap();
+        tq8.rebuild_cluster_index("embedding".to_string(), 4, 8, 32)
+            .await
+            .unwrap();
+        let tq8_ver_after_build = tq8.snapshot_version().await.unwrap();
+        drop(tq8);
+
+        let sq8 = Table::mount_external_iceberg(upstream_path.clone(), sq8_path.clone())
+            .await
+            .unwrap();
+        sq8.add_index(
+            "embedding".to_string(),
+            IndexAlgorithm::HnswSq8 {
+                metric: "l2".to_string(),
+                complexity: 8,
+                quality: 32,
+            },
+        )
+        .await
+        .unwrap();
+        sq8.wait_for_background_tasks_async().await.unwrap();
+        sq8.rebuild_index("embedding".to_string()).await.unwrap();
+        sq8.rebuild_cluster_index("embedding".to_string(), 4, 8, 32)
+            .await
+            .unwrap();
+        let sq8_ver_after_build = sq8.snapshot_version().await.unwrap();
+        drop(sq8);
+
+        // 3. Reopen both overlays: version must NOT bump, each keeps its own quantizer,
+        //    and vector queries hydrate upstream Parquet rows through ClusterIndex.
+        let tq8_reopen = Table::mount_external_iceberg(upstream_path.clone(), tq8_path)
+            .await
+            .unwrap();
+        assert_eq!(
+            tq8_reopen.snapshot_version().await.unwrap(),
+            tq8_ver_after_build,
+            "reopening synced overlay must not bump manifest version"
+        );
+        let tq8_ci = tq8_reopen
+            .ensure_cluster_index("embedding")
+            .await
+            .unwrap()
+            .expect("tq8 overlay must load its own ClusterIndex");
+        assert!(matches!(
+            tq8_ci.quantizer,
+            Some(QuantizerImpl::BenoQuant(_))
+        ));
+
+        let sq8_reopen = Table::mount_external_iceberg(upstream_path.clone(), sq8_path)
+            .await
+            .unwrap();
+        assert_eq!(
+            sq8_reopen.snapshot_version().await.unwrap(),
+            sq8_ver_after_build,
+            "reopening synced overlay must not bump manifest version"
+        );
+        let sq8_ci = sq8_reopen
+            .ensure_cluster_index("embedding")
+            .await
+            .unwrap()
+            .expect("sq8 overlay must load its own ClusterIndex");
+        assert!(matches!(sq8_ci.quantizer, Some(QuantizerImpl::Sq(_))));
+
+        // Query both overlays end-to-end (ClusterIndex search + fetch_results_by_id from upstream).
+        let mut query_vec = vec![0.0f32; dim];
+        query_vec[0] = 10.0;
+        let vp = VectorSearchParams {
+            column: "embedding".to_string(),
+            query: VectorValue::Float32(query_vec),
+            k: 5,
+            metric: VectorMetric::L2,
+            stats_only: false,
+            use_mmap: true,
+            ef_search: Some(32),
+            probes: Some(2),
+            radius: None,
+            candidate_segments: None,
+            routed_segments: None,
+            targeted_clusters: None,
+            refine_factor: None,
+        };
+
+        for (label, tbl) in [("tq8", &tq8_reopen), ("sq8", &sq8_reopen)] {
+            // Preload segment-tier overlay Puffins from the overlay store.
+            let warm = tbl
+                .preload_indexes_async(crate::core::table::PreloadOptions::default())
+                .await
+                .unwrap();
+            assert!(
+                warm.indexes_warmed > 0,
+                "{label} overlay preload must warm segment-tier Puffin indexes (got {warm:?})"
+            );
+            assert!(
+                warm.last_error.is_none(),
+                "{label} overlay preload had error: {:?}",
+                warm.last_error
+            );
+
+            // Table-level ClusterIndex query path (refine_factor = None).
+            let mut stream = tbl
+                .read_expr_stream_async(
+                    None,
+                    Some(vec![vp.clone()]),
+                    Some(&["id"]),
+                    crate::core::query::QueryConfig::default(),
+                    None,
+                )
+                .await
+                .unwrap();
+            let mut total_rows = 0usize;
+            while let Some(batch) = stream.next().await {
+                let b = batch.unwrap();
+                total_rows += b.num_rows();
+            }
+            assert_eq!(
+                total_rows, 5,
+                "{label} overlay cluster query must return top-5 rows"
+            );
+
+            // Segment-tier refined query path (refine_factor = Some(2)).
+            let mut vp_refined = vp.clone();
+            vp_refined.refine_factor = Some(2);
+            let mut stream_ref = tbl
+                .read_expr_stream_async(
+                    None,
+                    Some(vec![vp_refined]),
+                    Some(&["id"]),
+                    crate::core::query::QueryConfig::default(),
+                    None,
+                )
+                .await
+                .unwrap();
+            let mut total_ref_rows = 0usize;
+            while let Some(batch) = stream_ref.next().await {
+                let b = batch.unwrap();
+                total_ref_rows += b.num_rows();
+            }
+            assert_eq!(
+                total_ref_rows, 5,
+                "{label} overlay refined segment query must return top-5 rows"
+            );
+        }
+
+        // 4. Upstream table must be completely untouched.
+        let upstream_after = TableBuilder::new(upstream_uri)
+            .with_index_all(false)
+            .build_async()
+            .await
+            .unwrap();
+        assert_eq!(
+            upstream_after.snapshot_version().await.unwrap(),
+            upstream_version_before,
+            "upstream table must never be mutated by overlay mounts or builds"
         );
     }
 }

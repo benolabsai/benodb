@@ -431,6 +431,47 @@ impl Table {
         Ok(false)
     }
 
+    /// Read an Iceberg metadata artifact (manifest list or manifest Avro file)
+    /// that may live either under `<location>/metadata/` (standard Iceberg) or
+    /// outside it (such as BenoStreamDB's `<location>/_manifest/`).
+    async fn read_iceberg_artifact(
+        &self,
+        artifact_uri: &str,
+        meta_location: &str,
+        meta_store: &Arc<dyn ObjectStore>,
+    ) -> Result<bytes::Bytes> {
+        if let Ok(url) = url::Url::parse(artifact_uri) {
+            let path = url.path();
+            if let Ok(loc_url) = url::Url::parse(meta_location) {
+                let meta_prefix = format!("{}/metadata/", loc_url.path().trim_end_matches('/'));
+                if let Some(rel) = path.strip_prefix(&meta_prefix) {
+                    let obj_path = object_store::path::Path::from(rel);
+                    return Ok(meta_store.get(&obj_path).await?.bytes().await?);
+                }
+            }
+            let obj_path = object_store::path::Path::from(path.trim_start_matches('/'));
+            if let Some(ref ds) = self.data_store {
+                return Ok(ds.get(&obj_path).await?.bytes().await?);
+            }
+            let root_uri = crate::core::table::detached::upstream_data_store_uri(artifact_uri)?;
+            let fallback = create_object_store(&root_uri)?;
+            return Ok(fallback.get(&obj_path).await?.bytes().await?);
+        }
+
+        let trimmed = artifact_uri.trim_start_matches("file://");
+        if trimmed.starts_with('/') {
+            let obj_path = object_store::path::Path::from(trimmed.trim_start_matches('/'));
+            if let Some(ref ds) = self.data_store {
+                return Ok(ds.get(&obj_path).await?.bytes().await?);
+            }
+            let fallback = create_object_store("file:///")?;
+            return Ok(fallback.get(&obj_path).await?.bytes().await?);
+        }
+
+        let obj_path = object_store::path::Path::from(trimmed);
+        Ok(meta_store.get(&obj_path).await?.bytes().await?)
+    }
+
     pub(crate) async fn import_iceberg_snapshot(
         &self,
         snapshot_id: i64,
@@ -445,55 +486,24 @@ impl Table {
 
         tracing::info!("Importing Iceberg Snapshot {}...", snapshot_id);
 
-        // Load Manifest List
-        let ml_path_str_clean = if let Ok(url) = url::Url::parse(&snapshot.manifest_list) {
-            let path = url.path();
-            if let Ok(loc_url) = url::Url::parse(&meta.location) {
-                let loc_path = format!("{}/metadata/", loc_url.path().trim_end_matches('/'));
-                if path.starts_with(&loc_path) {
-                    path.strip_prefix(&loc_path).unwrap_or(path).to_string()
-                } else {
-                    path.trim_start_matches('/').to_string()
-                }
-            } else {
-                path.trim_start_matches('/').to_string()
-            }
-        } else {
-            snapshot
-                .manifest_list
-                .trim_start_matches("file://")
-                .to_string()
-        };
-        let ml_path = object_store::path::Path::from(ml_path_str_clean.as_str());
-
-        let ret = iceberg_store.get(&ml_path).await?;
-        let bytes = ret.bytes().await?;
+        // Load Manifest List (handles both `metadata/` and `_manifest/` paths)
+        let bytes = self
+            .read_iceberg_artifact(&snapshot.manifest_list, &meta.location, &iceberg_store)
+            .await
+            .with_context(|| {
+                format!("reading Iceberg manifest list '{}'", snapshot.manifest_list)
+            })?;
         let manifest_list = crate::core::iceberg::read_manifest_list(&bytes[..])?;
 
         let mut all_entries = Vec::new();
 
         for ml_entry in manifest_list {
-            let m_path_str_clean = if let Ok(url) = url::Url::parse(&ml_entry.manifest_path) {
-                let path = url.path();
-                if let Ok(loc_url) = url::Url::parse(&meta.location) {
-                    let loc_path = format!("{}/metadata/", loc_url.path().trim_end_matches('/'));
-                    if path.starts_with(&loc_path) {
-                        path.strip_prefix(&loc_path).unwrap_or(path).to_string()
-                    } else {
-                        path.trim_start_matches('/').to_string()
-                    }
-                } else {
-                    path.trim_start_matches('/').to_string()
-                }
-            } else {
-                ml_entry
-                    .manifest_path
-                    .trim_start_matches("file://")
-                    .to_string()
-            };
-            let m_path = object_store::path::Path::from(m_path_str_clean.as_str());
-            let ret = iceberg_store.get(&m_path).await?;
-            let bytes = ret.bytes().await?;
+            let bytes = self
+                .read_iceberg_artifact(&ml_entry.manifest_path, &meta.location, &iceberg_store)
+                .await
+                .with_context(|| {
+                    format!("reading Iceberg manifest '{}'", ml_entry.manifest_path)
+                })?;
             let manifest = crate::core::iceberg::read_manifest(&bytes[..])?;
 
             let iceberg_schema = crate::core::manifest::Schema {
@@ -543,6 +553,17 @@ impl Table {
                         &iceberg_spec,
                     ) {
                         Ok(crate::core::iceberg::IcebergManifestObject::Data(mut me)) => {
+                            // Qualify relative upstream paths against the upstream table location
+                            // so `data_store` resolves them regardless of the overlay prefix.
+                            me.file_path = crate::core::iceberg::qualify_data_file_path(
+                                &meta.location,
+                                &me.file_path,
+                            );
+                            // Upstream sidecar index files live in the upstream prefix, not in
+                            // this overlay store. Clearing them prevents dangling Puffin refs on
+                            // first mount and lets `commit_synced_snapshot` preserve the
+                            // overlay's own local `index_files` on subsequent syncs.
+                            me.index_files.clear();
                             // Legacy manifests may carry per-entry delete files;
                             // fold them into the authoritative global list.
                             for df in me.delete_files.drain(..) {
