@@ -2,6 +2,17 @@
 
 ### Fixed
 
+- **The cluster index pulled whole shards into the page cache**
+  (`src/core/index/cluster_index.rs`): `open_shard_container` mapped every shard
+  with `MADV_WILLNEED`, so loading the 100M artifact faulted all 78 shards and
+  43 GB before the first query. Under a 16 GiB cap that evicted itself, so every
+  query re-read the artifact: 724 MB of physical bytes per query against 2.3 MB
+  of logical reads. Shards are now mapped without prefetch, and a query advises
+  `POSIX_FADV_WILLNEED` on the byte ranges of the clusters it probed, which is
+  the smallest set that answers it. On 100M at nprobe 32 a warm query now reads
+  no physical bytes and returns in about 0.4 s, where the pass median had been
+  2.86 s.
+
 - **The Python `manifest()` reported the head while the handle was pinned**
   (`src/core/table/stats.rs`): `get_snapshot_segments` and
   `get_snapshot_segments_with_version` built their own `ManifestManager`, so

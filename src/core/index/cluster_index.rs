@@ -267,7 +267,11 @@ async fn open_shard_container(
     path: &str,
 ) -> anyhow::Result<Bytes> {
     use crate::core::cache::DiskCache;
-    match DiskCache::new(store.clone()).get_mmap_prefetch(path).await {
+    // No `WILLNEED` here. A 78 shard artifact is 43 GB, so prefetching every
+    // shard on load reads the whole index before the first query and the memory
+    // cap evicts it before the second. The probed clusters are advised instead,
+    // in `prefetch_cluster`, once a query knows which ones it needs.
+    match DiskCache::new(store.clone()).get_mmap(path).await {
         Ok(mmap) => Ok(Bytes::from_owner(MmapOwner(mmap))),
         Err(_) => Ok(store
             .get(&object_store::path::Path::from(path))
@@ -311,6 +315,13 @@ pub struct ClusterIndex {
     pub shards: Vec<ClusterShard>,
     /// Mapping from global cluster_id to the containing shard index.
     pub cluster_to_shard: HashMap<usize, usize>,
+    /// Local filesystem root of the store holding the shards, when it is local.
+    ///
+    /// The shards are mapped without prefetch, so a query advises the page cache
+    /// for the byte ranges it is about to touch. That needs a file descriptor,
+    /// which only a local store has; remote stores keep `None` and rely on the
+    /// object store's own range reads.
+    local_root: Option<std::path::PathBuf>,
     cache: moka::sync::Cache<usize, Arc<(HnswGraph, Vec<NodeMeta>)>>,
     /// Optional temporary directory backing memory-mapped build shards.
     pub _temp_dir: Option<std::path::PathBuf>,
@@ -969,6 +980,7 @@ impl ClusterIndex {
             record_count,
             shards,
             cluster_to_shard,
+            local_root: None,
             cache: moka::sync::Cache::builder().max_capacity(64).build(),
             _temp_dir: None,
         })
@@ -1102,7 +1114,8 @@ impl ClusterIndex {
             });
         }
 
-        Self::from_shards(
+        let local_root = crate::core::cache::local_store_root(store.as_ref());
+        let mut index = Self::from_shards(
             shards,
             column.to_string(),
             dim,
@@ -1112,7 +1125,9 @@ impl ClusterIndex {
             segment_table,
             manifest_version,
             0,
-        )
+        )?;
+        index.local_root = local_root;
+        Ok(index)
     }
 
     /// Persist the container shards to the object store.
@@ -1270,6 +1285,12 @@ impl ClusterIndex {
         let ef = ef_search.unwrap_or(40);
         let cluster_k = (k * 4).max(ef.min(k * 8));
 
+        // Warm only the clusters this query will touch. Coarse ranking has
+        // already chosen them, so this is the smallest set that answers it.
+        for (cluster_id, _) in cluster_distances.iter().take(probes) {
+            self.prefetch_cluster(*cluster_id);
+        }
+
         let mut candidates: Vec<ScoredResult> = Vec::new();
         for (cluster_id, _) in cluster_distances.into_iter().take(probes) {
             let Some(cluster) = self.get_cluster(cluster_id) else {
@@ -1323,6 +1344,52 @@ impl ClusterIndex {
     }
 
     /// Load a cluster's graph and node metadata from its containing shard, caching the deserialized form.
+    /// Advise the page cache to read one cluster's graph and metadata.
+    ///
+    /// The shard container is mapped without prefetch, so without this a graph
+    /// deserialization would fault its bytes in 4 KB at a time. `posix_fadvise`
+    /// on the shard's file range asks for exactly the bytes this cluster needs,
+    /// which is the difference between reading a cluster and reading a shard.
+    fn prefetch_cluster(&self, cluster_id: usize) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let Some(root) = self.local_root.as_ref() else {
+                return;
+            };
+            let Some(shard_idx) = self.cluster_to_shard.get(&cluster_id) else {
+                return;
+            };
+            let Some(shard) = self.shards.get(*shard_idx) else {
+                return;
+            };
+            let Some(relative) = shard.file_path.as_deref() else {
+                return;
+            };
+            let Some(slices) = shard.cluster_slices.get(&cluster_id) else {
+                return;
+            };
+            let Ok(file) = std::fs::File::open(root.join(relative)) else {
+                return;
+            };
+            let fd = file.as_raw_fd();
+            for (offset, len) in [slices.graph, slices.node_meta] {
+                // SAFETY: the descriptor is open for the duration of the call and
+                // `posix_fadvise` neither reads nor writes through it.
+                unsafe {
+                    libc::posix_fadvise(
+                        fd,
+                        offset as libc::off_t,
+                        len as libc::off_t,
+                        libc::POSIX_FADV_WILLNEED,
+                    );
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = cluster_id;
+    }
+
     fn get_cluster(&self, cluster_id: usize) -> Option<Arc<(HnswGraph, Vec<NodeMeta>)>> {
         if let Some(hit) = self.cache.get(&cluster_id) {
             return Some(hit);

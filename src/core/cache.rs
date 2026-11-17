@@ -238,7 +238,7 @@ async fn write_cache_entry(hash: &str, cache_dir: &Path, cache_path: &Path, data
 /// `ObjectStore` is `Display` — the only store-type introspection the stable
 /// trait exposes — and `LocalFileSystem` renders itself as
 /// `LocalFileSystem(<root>)`.
-fn local_store_root(store: &dyn ObjectStore) -> Option<PathBuf> {
+pub(crate) fn local_store_root(store: &dyn ObjectStore) -> Option<PathBuf> {
     let display = store.to_string();
     let root = display
         .strip_prefix("LocalFileSystem(")
