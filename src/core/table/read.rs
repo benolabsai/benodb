@@ -748,6 +748,10 @@ impl Table {
                                 let probes = vp
                                     .probes
                                     .unwrap_or_else(|| default_probes(index.centroids.len()));
+                                // Remote shards are not resident, so pull this
+                                // query's probe clusters into the cluster cache
+                                // before the synchronous search reads them.
+                                index.hydrate_for_query(&self.store, q, probes).await;
                                 let base_scored = index.search(q, vp.k, probes, vp.ef_search)?;
 
                                 let base_seg_set: HashSet<&str> =
@@ -1692,6 +1696,9 @@ impl Table {
                     let probes = params
                         .probes
                         .unwrap_or_else(|| default_probes(index.centroids.len()));
+                    // Remote shards are not resident; hydrate the probe clusters
+                    // before the synchronous search reads them.
+                    index.hydrate_for_query(&self.store, q, probes).await;
                     let base_scored = index.search(q, params.k, probes, params.ef_search)?;
 
                     // Check for uncompacted delta segments (LSM two-tier retrieval)

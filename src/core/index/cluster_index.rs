@@ -313,6 +313,12 @@ fn coalesce_spans(mut spans: Vec<(usize, usize)>, max_gap: usize) -> Vec<(usize,
     merged
 }
 
+/// True when `blob` lies entirely inside the span `[start, start + len)`.
+fn span_covers(start: usize, len: usize, blob: (usize, usize)) -> bool {
+    let (blob_off, blob_len) = blob;
+    blob_off >= start && blob_off + blob_len <= start + len
+}
+
 /// Byte budget for the deserialized cluster cache, in KiB.
 ///
 /// The cache held 64 entries regardless of the memory envelope. At 100M that is
@@ -342,6 +348,35 @@ fn cluster_entry_kib(value: &Arc<(HnswGraph, Vec<NodeMeta>)>) -> u32 {
     let (graph, node_meta) = value.as_ref();
     let bytes = graph.footprint_bytes() + node_meta.len() * std::mem::size_of::<NodeMeta>();
     ((bytes / 1024) as u32).max(1)
+}
+
+/// Read a shard's Puffin footer with two ranged reads.
+///
+/// The footer is self-locating: the trailing 12 bytes carry its length and flags,
+/// and the payload sits exactly that far before them. This is what lets a remote
+/// client learn a shard's cluster offsets without transferring the shard.
+async fn read_remote_footer(
+    store: &Arc<dyn object_store::ObjectStore>,
+    path: &str,
+) -> Result<(crate::core::puffin::PuffinFooter, u64)> {
+    let object = object_store::path::Path::from(path);
+    let size = store.head(&object).await?.size;
+    let trailer_len = crate::core::puffin::PUFFIN_FOOTER_TRAILER_LEN as u64;
+    if size < trailer_len {
+        anyhow::bail!("'{path}' is {size} bytes, too small to be a Puffin container");
+    }
+    let tail = store.get_range(&object, size - trailer_len..size).await?;
+    let (footer_size, flags) = crate::core::puffin::parse_footer_trailer(&tail)?;
+    let footer_start = size
+        .checked_sub(trailer_len + footer_size as u64)
+        .ok_or_else(|| {
+            anyhow::anyhow!("'{path}' declares a {footer_size} byte footer beyond its start")
+        })?;
+    let payload = store
+        .get_range(&object, footer_start..size - trailer_len)
+        .await?;
+    let footer = crate::core::puffin::parse_footer_payload(&payload, flags)?;
+    Ok((footer, size))
 }
 
 impl AsRef<[u8]> for MmapOwner {
@@ -1057,6 +1092,74 @@ impl ClusterIndex {
         })
     }
 
+    /// Open a sharded artifact without materialising any shard body.
+    ///
+    /// Each shard contributes two ranged reads for its footer plus, on shard 0,
+    /// one ranged read for the centroids blob and one for the segment table. The
+    /// cluster graphs stay in the object store until a query probes them.
+    async fn load_sharded_remote(
+        store: Arc<dyn object_store::ObjectStore>,
+        shard_paths: &[String],
+        column: &str,
+        manifest_version: u64,
+    ) -> Result<Self> {
+        let mut shards: Vec<ClusterShard> = Vec::with_capacity(shard_paths.len());
+        let mut centroids: Vec<Vec<f32>> = Vec::new();
+        let mut metric = VectorMetric::L2;
+        let mut quantizer = None;
+        let mut segment_table: Vec<String> = Vec::new();
+
+        for (i, path) in shard_paths.iter().enumerate() {
+            let (footer, size) = read_remote_footer(&store, path).await?;
+            let slices = cluster_slices_from_footer(&footer, size as usize)?;
+            if i == 0 {
+                let (off, len) = blob_range_in_footer(&footer, PUFFIN_BLOB_HNSW_IVF_CENTROIDS)
+                    .ok_or_else(|| anyhow::anyhow!("shard 0 '{path}' has no centroids blob"))?;
+                let bytes = store
+                    .get_range(&object_store::path::Path::from(path.as_str()), off..off + len)
+                    .await?;
+                let (c, m, q) = read_centroids_from_bytes(bytes)?;
+                centroids = c;
+                metric = m;
+                quantizer = q;
+
+                let (soff, slen) =
+                    blob_range_in_footer(&footer, PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS).ok_or_else(
+                        || anyhow::anyhow!("shard 0 '{path}' has no segments blob"),
+                    )?;
+                let sbytes = store
+                    .get_range(
+                        &object_store::path::Path::from(path.as_str()),
+                        soff..soff + slen,
+                    )
+                    .await?;
+                segment_table = read_segments_from_bytes(sbytes)?;
+            }
+            let min = slices.keys().copied().min().unwrap_or(0);
+            let max = slices.keys().copied().max().unwrap_or(0);
+            shards.push(ClusterShard {
+                shard_idx: i,
+                file_path: Some(path.clone()),
+                cluster_range: (min, max),
+                container: Bytes::new(),
+                cluster_slices: slices,
+            });
+        }
+
+        let dim = centroids.first().map(|c| c.len()).unwrap_or(0);
+        Self::from_shards(
+            shards,
+            column.to_string(),
+            dim,
+            metric,
+            centroids,
+            quantizer,
+            segment_table,
+            manifest_version,
+            0,
+        )
+    }
+
     /// Assemble an index from an already-serialized container (single shard).
     pub fn from_container(
         container: Bytes,
@@ -1145,6 +1248,15 @@ impl ClusterIndex {
     ) -> Result<Self> {
         if shard_paths.is_empty() {
             anyhow::bail!("load_sharded requires at least one shard path");
+        }
+
+        // A remote store cannot be mapped, and materialising every shard just to
+        // read its footer is the difference between 43 GB of egress and a few MB:
+        // at 100M one shard is ~600 MB and a query needs ~2 MB of it. Open those
+        // from their footers instead and let `hydrate_for_query` range-read the
+        // clusters a query actually probes.
+        if crate::core::cache::local_store_root(store.as_ref()).is_none() {
+            return Self::load_sharded_remote(store, shard_paths, column, manifest_version).await;
         }
 
         // Shard 0 always contains the global centroids and segment table.
@@ -1337,17 +1449,9 @@ impl ClusterIndex {
             return Ok(Vec::new());
         }
 
-        // Coarse: rank global centroids.
-        let mut cluster_distances: Vec<(usize, f32)> = self
-            .centroids
-            .iter()
-            .enumerate()
-            .map(|(i, c)| (i, metric_distance(self.metric, query, c)))
-            .collect();
-        cluster_distances
-            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        let probes = n_probe.clamp(1, cluster_distances.len());
+        // Coarse: rank global centroids, then warm exactly the set that will
+        // answer the query.
+        let probe_ids = self.rank_probes(query, n_probe);
         let prepared_query = self
             .quantizer
             .as_ref()
@@ -1356,17 +1460,10 @@ impl ClusterIndex {
         let ef = ef_search.unwrap_or(40);
         let cluster_k = (k * 4).max(ef.min(k * 8));
 
-        // Warm only the clusters this query will touch. Coarse ranking has
-        // already chosen them, so this is the smallest set that answers it.
-        let probe_ids: Vec<usize> = cluster_distances
-            .iter()
-            .take(probes)
-            .map(|(cluster_id, _)| *cluster_id)
-            .collect();
         self.prefetch_clusters(&probe_ids);
 
         let mut candidates: Vec<ScoredResult> = Vec::new();
-        for (cluster_id, _) in cluster_distances.into_iter().take(probes) {
+        for cluster_id in probe_ids {
             let Some(cluster) = self.get_cluster(cluster_id) else {
                 continue;
             };
@@ -1415,6 +1512,180 @@ impl ClusterIndex {
             std::sync::atomic::Ordering::Relaxed,
         );
         Ok(candidates)
+    }
+
+    /// Global cluster ids this query would probe, closest centroid first.
+    ///
+    /// Shared by `search` and by the remote hydration, so the clusters fetched
+    /// are exactly the clusters read.
+    fn rank_probes(&self, query: &[f32], n_probe: usize) -> Vec<usize> {
+        let mut cluster_distances: Vec<(usize, f32)> = self
+            .centroids
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, metric_distance(self.metric, query, c)))
+            .collect();
+        cluster_distances
+            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let probes = n_probe.clamp(1, cluster_distances.len());
+        cluster_distances
+            .into_iter()
+            .take(probes)
+            .map(|(cluster_id, _)| cluster_id)
+            .collect()
+    }
+
+    /// Fetch this query's probe clusters from a remote store into the cache.
+    ///
+    /// The table tier's `search` is synchronous, so a remote read cannot happen
+    /// inside it. This runs first, on the async side: it coalesces the probe's
+    /// byte ranges per shard, issues one ranged GET per merged span, slices each
+    /// cluster's graph and node metadata out of the returned bytes, deserializes
+    /// them and inserts them into the same cache a local probe populates. `search`
+    /// then hits the cache on the first line of `get_cluster` and never learns
+    /// where the bytes came from.
+    ///
+    /// Local stores are left alone: their shards are mapped, and
+    /// `prefetch_clusters` advisories are cheaper than copying bytes into the
+    /// cache.
+    ///
+    /// A failed range is logged and skipped rather than failing the query: the
+    /// affected cluster is simply not probed, which costs recall on that query
+    /// instead of returning an error.
+    pub async fn hydrate_for_query(
+        &self,
+        store: &std::sync::Arc<dyn object_store::ObjectStore>,
+        query: &[f32],
+        n_probe: usize,
+    ) {
+        if self.local_root.is_some() || query.len() != self.dim {
+            return;
+        }
+        let probe_ids = self.rank_probes(query, n_probe);
+        self.hydrate_clusters(store, &probe_ids).await;
+    }
+
+    /// Hydrate specific clusters from a remote store into the cache.
+    pub async fn hydrate_clusters(
+        &self,
+        store: &std::sync::Arc<dyn object_store::ObjectStore>,
+        cluster_ids: &[usize],
+    ) {
+        // Group by shard so one object is addressed once per merged span instead
+        // of once per blob.
+        let mut per_shard: HashMap<usize, Vec<usize>> = HashMap::new();
+        for cluster_id in cluster_ids {
+            if self.cache.get(cluster_id).is_some() {
+                continue;
+            }
+            if let Some(shard_idx) = self.cluster_to_shard.get(cluster_id) {
+                per_shard.entry(*shard_idx).or_default().push(*cluster_id);
+            }
+        }
+
+        for (shard_idx, ids) in per_shard {
+            let Some(shard) = self.shards.get(shard_idx) else {
+                continue;
+            };
+            let Some(path) = shard.file_path.as_deref() else {
+                continue;
+            };
+            let mut spans = Vec::with_capacity(ids.len() * 2);
+            for cluster_id in &ids {
+                if let Some(slices) = shard.cluster_slices.get(cluster_id) {
+                    spans.push(slices.graph);
+                    spans.push(slices.node_meta);
+                }
+            }
+            for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
+                let range = offset as u64..(offset + len) as u64;
+                let bytes = match store
+                    .get_range(&object_store::path::Path::from(path), range)
+                    .await
+                {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        tracing::warn!(shard_idx, offset, len, error = %e, "cluster_index: ranged read failed");
+                        continue;
+                    }
+                };
+                for cluster_id in &ids {
+                    if self.cache.get(cluster_id).is_some() {
+                        continue;
+                    }
+                    let Some(slices) = shard.cluster_slices.get(cluster_id) else {
+                        continue;
+                    };
+                    // Both blobs must sit inside this merged span; a cluster whose
+                    // graph and metadata land in different spans is picked up by
+                    // the per-cluster fallback below.
+                    if !span_covers(offset, len, slices.graph)
+                        || !span_covers(offset, len, slices.node_meta)
+                    {
+                        continue;
+                    }
+                    let graph_bytes = bytes.slice(
+                        slices.graph.0 - offset..slices.graph.0 - offset + slices.graph.1,
+                    );
+                    let meta_bytes = bytes.slice(
+                        slices.node_meta.0 - offset..slices.node_meta.0 - offset
+                            + slices.node_meta.1,
+                    );
+                    self.cache_deserialized(*cluster_id, graph_bytes, meta_bytes);
+                }
+            }
+
+            // A cluster whose graph and metadata fall into different merged spans
+            // is not covered by any single one, so fetch those two blobs directly
+            // rather than dropping the cluster from the probe.
+            for cluster_id in &ids {
+                if self.cache.get(cluster_id).is_some() {
+                    continue;
+                }
+                let Some(slices) = shard.cluster_slices.get(cluster_id) else {
+                    continue;
+                };
+                // One `Path` for both reads: a future borrowing a temporary would
+                // outlive it.
+                let object = object_store::path::Path::from(path);
+                let fetch = |range: (usize, usize)| {
+                    store.get_range(&object, range.0 as u64..(range.0 + range.1) as u64)
+                };
+                let graph_bytes = match fetch(slices.graph).await {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        tracing::warn!(cluster_id, error = %e, "cluster_index: graph range read failed");
+                        continue;
+                    }
+                };
+                let meta_bytes = match fetch(slices.node_meta).await {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        tracing::warn!(cluster_id, error = %e, "cluster_index: metadata range read failed");
+                        continue;
+                    }
+                };
+                self.cache_deserialized(*cluster_id, graph_bytes, meta_bytes);
+            }
+        }
+    }
+
+    /// Deserialize one cluster's blobs into the cache, matching `get_cluster`.
+    fn cache_deserialized(
+        &self,
+        cluster_id: usize,
+        graph_bytes: Bytes,
+        meta_bytes: Bytes,
+    ) {
+        let Ok(graph) = deserialize_graph(graph_bytes, self.quantizer.as_ref(), self.metric) else {
+            tracing::warn!(cluster_id, "cluster_index: graph deserialization failed");
+            return;
+        };
+        let Ok(node_meta) = node_meta_from_parquet(meta_bytes) else {
+            tracing::warn!(cluster_id, "cluster_index: node metadata parse failed");
+            return;
+        };
+        self.cache.insert(cluster_id, Arc::new((graph, node_meta)));
     }
 
     /// Advise the page cache for the clusters this query will read.
@@ -1496,6 +1767,11 @@ impl ClusterIndex {
         }
         let shard_idx = *self.cluster_to_shard.get(&cluster_id)?;
         let shard = self.shards.get(shard_idx)?;
+        // Remote shards carry no container: `hydrate_clusters` owns fetching their
+        // bytes, and reaching here means the cluster was not part of the probe.
+        if shard.container.is_empty() {
+            return None;
+        }
         let slices = shard.cluster_slices.get(&cluster_id)?;
         let graph_bytes = shard
             .container
@@ -2166,13 +2442,36 @@ fn node_meta_from_parquet(bytes: Bytes) -> Result<Vec<NodeMeta>> {
     Ok(out)
 }
 
+/// Byte range of the first blob of `blob_type`, from a footer that was read
+/// without materialising the container.
+fn blob_range_in_footer(
+    footer: &crate::core::puffin::PuffinFooter,
+    blob_type: &str,
+) -> Option<(u64, u64)> {
+    footer
+        .blobs
+        .iter()
+        .find(|b| b.r#type == blob_type)
+        .and_then(|b| {
+            let offset = u64::try_from(b.offset).ok()?;
+            let length = u64::try_from(b.length).ok()?;
+            Some((offset, length))
+        })
+}
+
 fn read_centroids_blob(
     container: &Bytes,
 ) -> Result<(Vec<Vec<f32>>, VectorMetric, Option<QuantizerImpl>)> {
     let (offset, length) = find_blob(container, PUFFIN_BLOB_HNSW_IVF_CENTROIDS)?
         .ok_or_else(|| anyhow::anyhow!("cluster index container has no centroids blob"))?;
-    let bytes = container.slice(offset..offset + length);
+    read_centroids_from_bytes(container.slice(offset..offset + length))
+}
 
+/// Parse the centroids blob from its own bytes, which a remote reader gets with
+/// a ranged GET instead of holding the shard.
+fn read_centroids_from_bytes(
+    bytes: Bytes,
+) -> Result<(Vec<Vec<f32>>, VectorMetric, Option<QuantizerImpl>)> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(bytes.clone())?;
     let reader = builder.build()?;
     let mut centroids = Vec::new();
@@ -2215,7 +2514,11 @@ fn read_centroids_blob(
 fn read_segments_blob(container: &Bytes) -> Result<Vec<String>> {
     let (offset, length) = find_blob(container, PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS)?
         .ok_or_else(|| anyhow::anyhow!("cluster index container has no segments blob"))?;
-    let bytes = container.slice(offset..offset + length);
+    read_segments_from_bytes(container.slice(offset..offset + length))
+}
+
+/// Parse the segment table from its own bytes.
+fn read_segments_from_bytes(bytes: Bytes) -> Result<Vec<String>> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(bytes)?;
     let reader = builder.build()?;
     let mut out = Vec::new();
@@ -2257,10 +2560,23 @@ fn find_blob(container: &Bytes, blob_type: &str) -> Result<Option<(usize, usize)
 /// Pair each cluster's graph blob with its node-metadata blob.
 fn cluster_slices_from_container(container: &Bytes) -> Result<HashMap<usize, ClusterSlices>> {
     let reader = PuffinReader::new(Cursor::new(container.as_ref()))?;
+    cluster_slices_from_footer(reader.footer(), container.len())
+}
+
+/// Cluster byte ranges from a footer alone.
+///
+/// `object_len` is the size of the container the offsets are relative to. For a
+/// local shard that is the mapped length; for a remote one it comes from `head`,
+/// so a footer read with a ranged GET can still validate its offsets without the
+/// container being resident.
+fn cluster_slices_from_footer(
+    footer: &crate::core::puffin::PuffinFooter,
+    object_len: usize,
+) -> Result<HashMap<usize, ClusterSlices>> {
     let mut graphs: HashMap<usize, (usize, usize)> = HashMap::new();
     let mut metas: HashMap<usize, (usize, usize)> = HashMap::new();
 
-    for blob in reader.footer().blobs.iter() {
+    for blob in footer.blobs.iter() {
         let Some(cluster_id) = blob
             .properties
             .get("cluster_id")
@@ -2274,7 +2590,7 @@ fn cluster_slices_from_container(container: &Bytes) -> Result<HashMap<usize, Clu
             usize::try_from(blob.length).map_err(|_| anyhow::anyhow!("negative blob length"))?;
         if offset
             .checked_add(length)
-            .is_none_or(|end| end > container.len())
+            .is_none_or(|end| end > object_len)
         {
             anyhow::bail!("cluster {cluster_id} blob exceeds container size");
         }
