@@ -234,6 +234,13 @@ def measure(
         rx1, tx1 = netio(container)
         st = bsdb.reader_stats()
         egress = max(tx1 - tx0, 0) / 1e6
+        # Coverage is the axis that makes two clusterings comparable: the vectors
+        # the probe set actually contains, over the corpus. `nprobe` cannot serve,
+        # because equal probe counts examine different amounts of a corpus under
+        # two different clusterings.
+        coverage = (
+            st["cluster_corpus_rows"] / (queries * rows) if queries and rows else 0.0
+        )
         gets = st["cluster_range_gets"]
         cached_kb = st["cluster_range_bytes"] / 1024
         hits = st["cluster_cache_hits"]
@@ -254,11 +261,13 @@ def measure(
             f"{cached_kb / queries:.1f} KiB/query) | cache hits {hits} "
             f"({hits / queries:.2f}/query, {ratio})\n"
             f"            cache resident {entries} clusters, weighed {weighted} KiB "
-            f"({per_entry}/cluster) | recall@{k} {recall_at_k(returned, truth, k):.4f}"
+            f"({per_entry}/cluster) | coverage {100.0 * coverage:6.2f}% of corpus "
+            f"| recall@{k} {recall_at_k(returned, truth, k):.4f}"
         )
         records.append(
             {
                 "probes": n_probe,
+                "coverage": coverage,
                 "qps": queries / elapsed,
                 "gets_per_query": gets / queries,
                 "kib_per_query": cached_kb / queries,
@@ -269,6 +278,55 @@ def measure(
             }
         )
     return records
+
+
+
+def compare(left_path: str, right_path: str, k: int, points: int = 9) -> None:
+    """Recall at matched coverage for two measured curves.
+
+    Interpolating on coverage rather than on `nprobe` is the whole point: two
+    centroid trainers produce differently sized clusters, so the same probe count
+    scans different fractions of the corpus and a recall-at-equal-`nprobe`
+    comparison answers the wrong question.
+    """
+    import json
+
+    def load(path: str) -> tuple[str, list[dict]]:
+        with open(path, encoding="utf-8") as fh:
+            recs = json.load(fh)
+        recs = [r for r in recs if r.get("coverage")]
+        recs.sort(key=lambda r: r["coverage"])
+        return path, recs
+
+    def at(recs: list[dict], cov: float) -> float | None:
+        """Linear interpolation of recall at `cov`, None outside the measured range."""
+        if not recs or cov < recs[0]["coverage"] or cov > recs[-1]["coverage"]:
+            return None
+        for a, b in zip(recs, recs[1:]):
+            if a["coverage"] <= cov <= b["coverage"]:
+                span = b["coverage"] - a["coverage"]
+                t = 0.0 if span == 0 else (cov - a["coverage"]) / span
+                return a["recall"] + t * (b["recall"] - a["recall"])
+        return recs[-1]["recall"]
+
+    lname, left = load(left_path)
+    rname, right = load(right_path)
+    lo = max(left[0]["coverage"], right[0]["coverage"])
+    hi = min(left[-1]["coverage"], right[-1]["coverage"])
+    if hi <= lo:
+        print(f"no overlapping coverage: {lname} [{left[0]['coverage']:.3f}, "
+              f"{left[-1]['coverage']:.3f}] vs {rname} [{right[0]['coverage']:.3f}, "
+              f"{right[-1]['coverage']:.3f}]")
+        return
+    print(f"| coverage | {lname} recall@{k} | {rname} recall@{k} | delta |")
+    print("|---|---|---|---|")
+    for i in range(points):
+        cov = lo + (hi - lo) * i / (points - 1)
+        a = at(left, cov)
+        b = at(right, cov)
+        if a is None or b is None:
+            continue
+        print(f"| {100.0 * cov:5.1f}% | {a:.4f} | {b:.4f} | {a - b:+.4f} |")
 
 
 def rows_for_dim(dim: int, cap: int, budget_mb: float = 120.0) -> int:
@@ -375,12 +433,19 @@ def _ids(table) -> list[int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=["build", "measure", "sweep"])
+    parser.add_argument("phase", choices=["build", "measure", "sweep", "compare"])
+    parser.add_argument("--left", default=None, help="`compare`: JSON from one arm")
+    parser.add_argument("--right", default=None, help="`compare`: JSON from the other")
     parser.add_argument("--uri", default="s3://bsdb-bench/bench")
     parser.add_argument("--container", default="rustfs")
     parser.add_argument("--queries", type=int, default=100)
     parser.add_argument("--probes", default="8,16,32")
     parser.add_argument("--k", type=int, default=10)
+    parser.add_argument(
+        "--json-out",
+        default=None,
+        help="write the per-pass records here, so `compare` can read two curves",
+    )
     parser.add_argument(
         "--algorithm",
         default=None,
@@ -448,8 +513,10 @@ def main() -> int:
             with open(out, "w", encoding="utf-8") as fh:
                 fh.write(render_sweep(records, args.k) + "\n")
             print(f"wrote {out}")
+    elif args.phase == "compare":
+        compare(args.left, args.right, args.k)
     else:
-        measure(
+        records = measure(
             bsdb,
             args.uri,
             args.container,
@@ -459,6 +526,12 @@ def main() -> int:
             args.rows,
             args.dim,
         )
+        if args.json_out:
+            import json
+
+            with open(args.json_out, "w", encoding="utf-8") as fh:
+                json.dump(records, fh, indent=2)
+            print(f"wrote {args.json_out}")
     return 0
 
 

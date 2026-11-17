@@ -1625,6 +1625,10 @@ impl ClusterIndex {
             };
             let graph = &cluster.graph;
             let node_meta = &cluster.node_meta;
+            // The vectors this query could return from this cluster. Summed over
+            // the probe set it is the coverage denominator, which is what makes
+            // two clusterings comparable at equal work.
+            stats::CLUSTER_CORPUS_ROWS.fetch_add(node_meta.len() as u64, AtomicOrdering::Relaxed);
             let cluster_ef = ef.min((node_meta.len() * 3) / 4).max(cluster_k);
             for neighbour in graph.search_with_quantizer(
                 &fallback_query,

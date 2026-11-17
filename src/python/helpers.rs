@@ -817,6 +817,9 @@ pub fn reader_stats(py: Python<'_>) -> PyResult<Py<PyAny>> {
     out.set_item("cluster_range_gets", counters.cluster_range_gets)?;
     out.set_item("cluster_range_bytes", counters.cluster_range_bytes)?;
     out.set_item("cluster_cache_hits", counters.cluster_cache_hits)?;
+    // Vectors scanned, so a caller can compute coverage and compare two
+    // clusterings at equal work rather than at equal probe count.
+    out.set_item("cluster_corpus_rows", counters.cluster_corpus_rows)?;
     out.set_item("cluster_cache_entries", counters.cluster_cache_entries)?;
     out.set_item(
         "cluster_cache_weighted_kib",

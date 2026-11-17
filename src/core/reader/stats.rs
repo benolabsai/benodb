@@ -42,6 +42,14 @@ pub static CLUSTER_RANGE_GETS: AtomicU64 = AtomicU64::new(0);
 pub static CLUSTER_RANGE_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Probe clusters served from the cache with no request at all.
 pub static CLUSTER_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
+/// Vectors in the clusters a query actually scanned, summed over queries.
+///
+/// This is the coverage denominator that a probe count cannot supply. Two
+/// clusterings of the same corpus can have very different cluster sizes, so
+/// `nprobe = 16` examines a different number of vectors under each; recall at
+/// equal `nprobe` therefore compares two different amounts of work. Recall at
+/// equal `CLUSTER_CORPUS_ROWS` compares the same amount of work.
+pub static CLUSTER_CORPUS_ROWS: AtomicU64 = AtomicU64::new(0);
 /// Clusters resident in the cache after the most recent hydration (a gauge).
 pub static CLUSTER_CACHE_ENTRIES: AtomicU64 = AtomicU64::new(0);
 /// Weighed KiB the cache holds after the most recent hydration (a gauge).
@@ -64,6 +72,7 @@ pub struct ReaderCounters {
     pub cluster_range_gets: u64,
     pub cluster_range_bytes: u64,
     pub cluster_cache_hits: u64,
+    pub cluster_corpus_rows: u64,
     pub cluster_cache_entries: u64,
     pub cluster_cache_weighted_kib: u64,
 }
@@ -85,6 +94,7 @@ impl ReaderCounters {
             cluster_range_gets: CLUSTER_RANGE_GETS.load(Ordering::Relaxed),
             cluster_range_bytes: CLUSTER_RANGE_BYTES.load(Ordering::Relaxed),
             cluster_cache_hits: CLUSTER_CACHE_HITS.load(Ordering::Relaxed),
+            cluster_corpus_rows: CLUSTER_CORPUS_ROWS.load(Ordering::Relaxed),
             cluster_cache_entries: CLUSTER_CACHE_ENTRIES.load(Ordering::Relaxed),
             cluster_cache_weighted_kib: CLUSTER_CACHE_WEIGHTED_KIB.load(Ordering::Relaxed),
         }
@@ -102,6 +112,7 @@ impl ReaderCounters {
             &CLUSTER_RANGE_GETS,
             &CLUSTER_RANGE_BYTES,
             &CLUSTER_CACHE_HITS,
+            &CLUSTER_CORPUS_ROWS,
             &CLUSTER_CACHE_ENTRIES,
             &CLUSTER_CACHE_WEIGHTED_KIB,
         ] {

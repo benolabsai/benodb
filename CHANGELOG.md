@@ -235,6 +235,16 @@
   starves the per-cluster graphs. Results from this arm belong in the paper's
   experiment plan (Phase D), not in this file.
 
+- **Reader counters report how much of the corpus a query scanned**
+  (`src/core/reader/stats.rs`, `src/core/index/cluster_index.rs`,
+  `src/python/helpers.rs`): `reader_stats()` adds `cluster_corpus_rows`, the
+  vectors in the clusters a query actually scanned. A probe count cannot serve as
+  a work measure across clusterings — equal `nprobe` examines a different number
+  of vectors when cluster sizes differ — so recall compared at equal `nprobe`
+  answers the wrong question. `benchmarks/s3_arm.py` now reports coverage and
+  interpolates two measured curves onto a common coverage grid (`compare`), which
+  is what makes a centroid-trainer ablation valid.
+
 - **Cold rerank measurement in the BigANN harness**
   (`benchmarks/run_neurips_bigann.py`, `benchmarks/phase_c_sweep.sh`): each
   record now carries cgroup memory counters, physical and logical bytes read,
