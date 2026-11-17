@@ -239,6 +239,69 @@ pub struct ClusterSlices {
     pub node_meta: (usize, usize),
 }
 
+/// One shard's entry in the artifact's shard descriptor.
+///
+/// Shard 0 carries this list as a Puffin blob. A remote client reads it once and
+/// learns which shard owns which cluster without a HEAD and two ranged reads per
+/// shard, which at 100M is 78 shards and 234 requests before the first query.
+/// `cluster_start` and `cluster_end` are inclusive and come from the builder,
+/// which writes clusters to shards in ascending id order.
+///
+/// `bytes` is the shard's object size. It is recorded so a client can size a
+/// range read or report artifact bytes without a HEAD per shard.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ShardDescriptor {
+    path: String,
+    cluster_start: usize,
+    cluster_end: usize,
+    bytes: u64,
+}
+
+/// The shard paths a descriptor blob names, in either of its two forms.
+///
+/// Returns `None` when the blob is neither form, so the caller can fall through
+/// to treating the container as a single shard.
+fn shard_paths_from_descriptor(bytes: &[u8]) -> Option<Vec<String>> {
+    if let Ok(descriptors) = serde_json::from_slice::<Vec<ShardDescriptor>>(bytes) {
+        return Some(descriptors.into_iter().map(|d| d.path).collect());
+    }
+    serde_json::from_slice::<Vec<String>>(bytes).ok()
+}
+
+/// Read the shard descriptor from shard 0's footer.
+///
+/// Returns `None` for an artifact written before the descriptor existed, in
+/// which case the caller falls back to reading every shard footer. Returns an
+/// error only when the blob is present and unparseable, because silently
+/// treating a corrupt descriptor as absent would double the open cost without
+/// saying so.
+async fn read_shard_descriptors(
+    store: &Arc<dyn object_store::ObjectStore>,
+    path: &str,
+    footer: &crate::core::puffin::PuffinFooter,
+) -> Result<Option<Vec<ShardDescriptor>>> {
+    let Some((offset, len)) = blob_range_in_footer(footer, PUFFIN_BLOB_VECTOR_CLUSTER_SHARDS)
+    else {
+        return Ok(None);
+    };
+    let bytes = store
+        .get_range(
+            &object_store::path::Path::from(path),
+            offset..offset + len,
+        )
+        .await?;
+    if let Ok(descriptors) = serde_json::from_slice::<Vec<ShardDescriptor>>(&bytes) {
+        return Ok(Some(descriptors));
+    }
+    // A `Vec<String>` is the pre-descriptor form: paths only, no ranges, so the
+    // caller has to read every footer. Recognizing it keeps older artifacts
+    // loadable instead of failing their opens outright.
+    if serde_json::from_slice::<Vec<String>>(&bytes).is_ok() {
+        return Ok(None);
+    }
+    anyhow::bail!("shard descriptor in '{path}' is neither a range list nor a path list")
+}
+
 /// A sequential Puffin shard of the cluster index.
 #[derive(Clone)]
 pub struct ClusterShard {
@@ -394,6 +457,12 @@ async fn read_remote_footer(
         .get_range(&object, footer_start..size - trailer_len)
         .await?;
     let footer = crate::core::puffin::parse_footer_payload(&payload, flags)?;
+    // Footer reads are cluster range reads: they are what lets a client learn a
+    // cluster's offsets. Counting them here keeps the request total honest
+    // whether the read happens at open or in the middle of a query.
+    stats::CLUSTER_RANGE_GETS.fetch_add(2, AtomicOrdering::Relaxed);
+    stats::CLUSTER_RANGE_BYTES
+        .fetch_add((tail.len() + payload.len()) as u64, AtomicOrdering::Relaxed);
     Ok((footer, size))
 }
 
@@ -439,6 +508,14 @@ pub struct ClusterIndex {
     /// object store's own range reads.
     local_root: Option<std::path::PathBuf>,
     cache: moka::sync::Cache<usize, Arc<CachedCluster>>,
+    /// Cluster slices resolved lazily for remote shards, keyed by shard index.
+    ///
+    /// A remote open reads shard 0 and the shard descriptor only, so shards 1..N
+    /// have no slice map when the index is constructed. The first query to probe
+    /// a shard reads that shard's footer (two ranged reads) and caches the map
+    /// here; later queries reuse it. A `std::sync::Mutex` is enough because the
+    /// critical sections are a lookup and an insert with no await between them.
+    remote_slices: std::sync::Mutex<HashMap<usize, Arc<HashMap<usize, ClusterSlices>>>>,
     /// Optional temporary directory backing memory-mapped build shards.
     pub _temp_dir: Option<std::path::PathBuf>,
 }
@@ -1081,10 +1158,30 @@ impl ClusterIndex {
     ) -> Result<Self> {
         let mut cluster_to_shard = HashMap::new();
         for (s_idx, shard) in shards.iter().enumerate() {
-            for cid in shard.cluster_slices.keys() {
-                cluster_to_shard.insert(*cid, s_idx);
+            if shard.cluster_slices.is_empty() {
+                // A remote open leaves shards 1..N unresolved, so the shard's
+                // declared cluster range is the only thing that can route a
+                // probe to it. Expanding the range costs one map entry per
+                // cluster — the same order as the resolved case — and an id that
+                // turns out to have no blobs simply resolves to `None` later.
+                let (start, end) = shard.cluster_range;
+                for cid in start..=end {
+                    cluster_to_shard.insert(cid, s_idx);
+                }
+            } else {
+                for cid in shard.cluster_slices.keys() {
+                    cluster_to_shard.insert(*cid, s_idx);
+                }
             }
         }
+        // Shards that arrived with their slices resolved (a local open, or shard 0
+        // of a remote one) are seeded here so `shard_slices` has one code path.
+        let resolved: HashMap<usize, Arc<HashMap<usize, ClusterSlices>>> = shards
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.cluster_slices.is_empty())
+            .map(|(i, s)| (i, Arc::new(s.cluster_slices.clone())))
+            .collect();
         Ok(Self {
             column,
             dim,
@@ -1104,53 +1201,83 @@ impl ClusterIndex {
                 .weigher(|_key: &usize, value: &Arc<CachedCluster>| cluster_entry_kib(value))
                 .max_capacity(cluster_cache_budget_kib())
                 .build(),
+            remote_slices: std::sync::Mutex::new(resolved),
             _temp_dir: None,
         })
     }
 
     /// Open a sharded artifact without materialising any shard body.
     ///
-    /// Each shard contributes two ranged reads for its footer plus, on shard 0,
-    /// one ranged read for the centroids blob and one for the segment table. The
-    /// cluster graphs stay in the object store until a query probes them.
+    /// The open cost is **one shard's footer**, not every shard's. Shard 0 carries
+    /// the header blobs and a shard descriptor that names every shard with its
+    /// cluster range and object size, so two ranged reads for its footer, two for
+    /// the headers and one for the descriptor are enough to construct the index.
+    /// Shards 1..N are resolved the first time a query probes one of their
+    /// clusters, which reads that shard's footer and caches the slice map. Before
+    /// the descriptor existed every shard cost a HEAD plus two ranged reads at
+    /// open, which at 100M is 78 shards and 234 requests before the first query.
+    ///
+    /// An artifact written before the descriptor falls back to reading every
+    /// footer, so it still opens; it just pays the old cost.
     async fn load_sharded_remote(
         store: Arc<dyn object_store::ObjectStore>,
         shard_paths: &[String],
         column: &str,
         manifest_version: u64,
     ) -> Result<Self> {
-        let mut shards: Vec<ClusterShard> = Vec::with_capacity(shard_paths.len());
-        let mut centroids: Vec<Vec<f32>> = Vec::new();
-        let mut metric = VectorMetric::L2;
-        let mut quantizer = None;
-        let mut segment_table: Vec<String> = Vec::new();
+        let first = shard_paths
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("cluster index has no shard files"))?;
 
-        for (i, path) in shard_paths.iter().enumerate() {
+        let (footer0, size0) = read_remote_footer(&store, first).await?;
+        let slices0 = cluster_slices_from_footer(&footer0, size0 as usize)?;
+
+        let object = object_store::path::Path::from(first.as_str());
+        let (off, len) = blob_range_in_footer(&footer0, PUFFIN_BLOB_HNSW_IVF_CENTROIDS)
+            .ok_or_else(|| anyhow::anyhow!("shard 0 '{first}' has no centroids blob"))?;
+        let bytes = store.get_range(&object, off..off + len).await?;
+        let (centroids, metric, quantizer) = read_centroids_from_bytes(bytes)?;
+
+        let (soff, slen) = blob_range_in_footer(&footer0, PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS)
+            .ok_or_else(|| anyhow::anyhow!("shard 0 '{first}' has no segments blob"))?;
+        let sbytes = store.get_range(&object, soff..soff + slen).await?;
+        let segment_table = read_segments_from_bytes(sbytes)?;
+
+        let descriptors = read_shard_descriptors(&store, first, &footer0).await?;
+
+        let mut shards: Vec<ClusterShard> = Vec::with_capacity(shard_paths.len());
+        // Shard 0 is already read for its headers, so its slices cost nothing.
+        let s0_min = slices0.keys().copied().min().unwrap_or(0);
+        let s0_max = slices0.keys().copied().max().unwrap_or(0);
+        shards.push(ClusterShard {
+            shard_idx: 0,
+            file_path: Some(first.clone()),
+            cluster_range: (s0_min, s0_max),
+            container: Bytes::new(),
+            cluster_slices: slices0,
+        });
+
+        for (i, path) in shard_paths.iter().enumerate().skip(1) {
+            // The descriptor entry is only trusted when it names the same object
+            // the manifest lists, so a stale descriptor degrades to a footer read
+            // instead of routing a probe to the wrong shard.
+            let described = descriptors
+                .as_ref()
+                .and_then(|list| list.get(i))
+                .filter(|d| d.path == *path);
+            if let Some(d) = described {
+                shards.push(ClusterShard {
+                    shard_idx: i,
+                    file_path: Some(path.clone()),
+                    cluster_range: (d.cluster_start, d.cluster_end),
+                    container: Bytes::new(),
+                    cluster_slices: HashMap::new(),
+                });
+                continue;
+            }
+
             let (footer, size) = read_remote_footer(&store, path).await?;
             let slices = cluster_slices_from_footer(&footer, size as usize)?;
-            if i == 0 {
-                let (off, len) = blob_range_in_footer(&footer, PUFFIN_BLOB_HNSW_IVF_CENTROIDS)
-                    .ok_or_else(|| anyhow::anyhow!("shard 0 '{path}' has no centroids blob"))?;
-                let bytes = store
-                    .get_range(&object_store::path::Path::from(path.as_str()), off..off + len)
-                    .await?;
-                let (c, m, q) = read_centroids_from_bytes(bytes)?;
-                centroids = c;
-                metric = m;
-                quantizer = q;
-
-                let (soff, slen) =
-                    blob_range_in_footer(&footer, PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS).ok_or_else(
-                        || anyhow::anyhow!("shard 0 '{path}' has no segments blob"),
-                    )?;
-                let sbytes = store
-                    .get_range(
-                        &object_store::path::Path::from(path.as_str()),
-                        soff..soff + slen,
-                    )
-                    .await?;
-                segment_table = read_segments_from_bytes(sbytes)?;
-            }
             let min = slices.keys().copied().min().unwrap_or(0);
             let max = slices.keys().copied().max().unwrap_or(0);
             shards.push(ClusterShard {
@@ -1230,10 +1357,9 @@ impl ClusterIndex {
         // If this container is Shard 0 with a multi-shard descriptor blob, load all shards
         if let Ok(Some((offset, len))) = find_blob(&container, PUFFIN_BLOB_VECTOR_CLUSTER_SHARDS) {
             let shard_meta_bytes = container.slice(offset..offset + len);
-            if let Ok(shard_paths) = serde_json::from_slice::<Vec<String>>(&shard_meta_bytes) {
-                if shard_paths.len() > 1 {
-                    return Self::load_sharded(store, &shard_paths, column, manifest_version).await;
-                }
+            let shard_paths = shard_paths_from_descriptor(&shard_meta_bytes);
+            if let Some(shard_paths) = shard_paths.filter(|paths| paths.len() > 1) {
+                return Self::load_sharded(store, &shard_paths, column, manifest_version).await;
             }
         }
 
@@ -1354,6 +1480,20 @@ impl ClusterIndex {
             let shard_names: Vec<String> = (0..self.shards.len())
                 .map(|i| format!("{stem}_shard_{:04}.puffin", i))
                 .collect();
+            // The descriptor is what lets a remote client route a probe to a shard
+            // without reading every footer. It carries the cluster range the
+            // builder already assigned, which is the assignment itself.
+            let descriptors: Vec<ShardDescriptor> = self
+                .shards
+                .iter()
+                .enumerate()
+                .map(|(i, shard)| ShardDescriptor {
+                    path: shard_names[i].clone(),
+                    cluster_start: shard.cluster_range.0,
+                    cluster_end: shard.cluster_range.1,
+                    bytes: shard.container.len() as u64,
+                })
+                .collect();
 
             for (i, shard) in self.shards.iter().enumerate() {
                 let shard_path = &shard_names[i];
@@ -1375,7 +1515,7 @@ impl ClusterIndex {
                             b.properties.clone(),
                         )?;
                     }
-                    let shard_json = serde_json::to_vec(&shard_names)?;
+                    let shard_json = serde_json::to_vec(&descriptors)?;
                     writer.add_blob(
                         PUFFIN_BLOB_VECTOR_CLUSTER_SHARDS.to_string(),
                         Vec::new(),
@@ -1614,12 +1754,18 @@ impl ClusterIndex {
             let Some(shard) = self.shards.get(shard_idx) else {
                 continue;
             };
-            let Some(path) = shard.file_path.as_deref() else {
+            let Some(path) = shard.file_path.as_deref().map(str::to_string) else {
+                continue;
+            };
+            // A remote open resolves only shard 0, so this is where shards 1..N
+            // learn their offsets: two ranged reads for the footer, cached for
+            // every later query.
+            let Some(slices) = self.shard_slices(store, shard_idx).await else {
                 continue;
             };
             let mut spans = Vec::with_capacity(ids.len() * 2);
             for cluster_id in &ids {
-                if let Some(slices) = shard.cluster_slices.get(cluster_id) {
+                if let Some(slices) = slices.get(cluster_id) {
                     spans.push(slices.graph);
                     spans.push(slices.node_meta);
                 }
@@ -1627,7 +1773,7 @@ impl ClusterIndex {
             for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
                 let range = offset as u64..(offset + len) as u64;
                 let bytes = match store
-                    .get_range(&object_store::path::Path::from(path), range)
+                    .get_range(&object_store::path::Path::from(path.as_str()), range)
                     .await
                 {
                     Ok(bytes) => {
@@ -1645,7 +1791,7 @@ impl ClusterIndex {
                     if self.cache.get(cluster_id).is_some() {
                         continue;
                     }
-                    let Some(slices) = shard.cluster_slices.get(cluster_id) else {
+                    let Some(slices) = slices.get(cluster_id) else {
                         continue;
                     };
                     // Both blobs must sit inside this merged span; a cluster whose
@@ -1656,12 +1802,11 @@ impl ClusterIndex {
                     {
                         continue;
                     }
-                    let graph_bytes = bytes.slice(
-                        slices.graph.0 - offset..slices.graph.0 - offset + slices.graph.1,
-                    );
+                    let graph_bytes = bytes
+                        .slice(slices.graph.0 - offset..slices.graph.0 - offset + slices.graph.1);
                     let meta_bytes = bytes.slice(
-                        slices.node_meta.0 - offset..slices.node_meta.0 - offset
-                            + slices.node_meta.1,
+                        slices.node_meta.0 - offset
+                            ..slices.node_meta.0 - offset + slices.node_meta.1,
                     );
                     self.cache_deserialized(*cluster_id, graph_bytes, meta_bytes);
                 }
@@ -1674,12 +1819,12 @@ impl ClusterIndex {
                 if self.cache.get(cluster_id).is_some() {
                     continue;
                 }
-                let Some(slices) = shard.cluster_slices.get(cluster_id) else {
+                let Some(slices) = slices.get(cluster_id) else {
                     continue;
                 };
                 // One `Path` for both reads: a future borrowing a temporary would
                 // outlive it.
-                let object = object_store::path::Path::from(path);
+                let object = object_store::path::Path::from(path.as_str());
                 let fetch = |range: (usize, usize)| {
                     store.get_range(&object, range.0 as u64..(range.0 + range.1) as u64)
                 };
@@ -1720,13 +1865,47 @@ impl ClusterIndex {
             .store(self.cache.weighted_size(), AtomicOrdering::Relaxed);
     }
 
-    /// Deserialize one cluster's blobs into the cache, matching `get_cluster`.
-    fn cache_deserialized(
+    /// Cluster slices for `shard_idx`, reading that shard's footer on first use.
+    ///
+    /// A remote open resolves shard 0 only, so shards 1..N arrive here. The map is
+    /// cached per process, which is what keeps the footer cost to two ranged reads
+    /// per shard rather than two per query.
+    async fn shard_slices(
         &self,
-        cluster_id: usize,
-        graph_bytes: Bytes,
-        meta_bytes: Bytes,
-    ) {
+        store: &std::sync::Arc<dyn object_store::ObjectStore>,
+        shard_idx: usize,
+    ) -> Option<Arc<HashMap<usize, ClusterSlices>>> {
+        let cached = {
+            let map = self.remote_slices.lock().ok()?;
+            map.get(&shard_idx).cloned()
+        };
+        if let Some(slices) = cached {
+            return Some(slices);
+        }
+        let path = self.shards.get(shard_idx)?.file_path.clone()?;
+        let (footer, size) = match read_remote_footer(store, &path).await {
+            Ok(resolved) => resolved,
+            Err(e) => {
+                tracing::warn!(shard_idx, error = %e, "cluster_index: shard footer read failed");
+                return None;
+            }
+        };
+        let Ok(slices) = cluster_slices_from_footer(&footer, size as usize) else {
+            tracing::warn!(
+                shard_idx,
+                "cluster_index: shard footer has no cluster slices"
+            );
+            return None;
+        };
+        let slices = Arc::new(slices);
+        if let Ok(mut map) = self.remote_slices.lock() {
+            map.insert(shard_idx, slices.clone());
+        }
+        Some(slices)
+    }
+
+    /// Deserialize one cluster's blobs into the cache, matching `get_cluster`.
+    fn cache_deserialized(&self, cluster_id: usize, graph_bytes: Bytes, meta_bytes: Bytes) {
         let bytes = graph_bytes.len() + meta_bytes.len();
         let Ok(graph) = deserialize_graph(graph_bytes, self.quantizer.as_ref(), self.metric) else {
             tracing::warn!(cluster_id, "cluster_index: graph deserialization failed");
@@ -2702,7 +2881,10 @@ mod tests {
     #[test]
     fn coalesce_spans_merges_adjacent_ranges() {
         // A cluster's graph immediately followed by its node metadata.
-        assert_eq!(coalesce_spans(vec![(0, 100), (100, 100)], 0), vec![(0, 200)]);
+        assert_eq!(
+            coalesce_spans(vec![(0, 100), (100, 100)], 0),
+            vec![(0, 200)]
+        );
     }
 
     #[test]
@@ -2713,7 +2895,10 @@ mod tests {
     #[test]
     fn coalesce_spans_respects_the_gap() {
         // 50 bytes of slack with a 100 byte allowance merges; 150 does not.
-        assert_eq!(coalesce_spans(vec![(0, 100), (150, 100)], 100), vec![(0, 250)]);
+        assert_eq!(
+            coalesce_spans(vec![(0, 100), (150, 100)], 100),
+            vec![(0, 250)]
+        );
         assert_eq!(
             coalesce_spans(vec![(0, 100), (250, 100)], 100),
             vec![(0, 100), (250, 100)]
@@ -2769,6 +2954,90 @@ mod tests {
             bytes: 900 * 1024,
         });
         assert_eq!(cluster_entry_kib(&entry), 900);
+    }
+
+    #[test]
+    fn descriptor_names_every_shard_with_its_range() {
+        // The descriptor is what a remote open reads instead of every footer, so
+        // both of its forms have to survive the round trip: the range form for a
+        // new artifact, and the bare path list for one written before it existed.
+        let descriptors = vec![
+            ShardDescriptor {
+                path: "idx_shard_0000.puffin".to_string(),
+                cluster_start: 0,
+                cluster_end: 40,
+                bytes: 1024,
+            },
+            ShardDescriptor {
+                path: "idx_shard_0001.puffin".to_string(),
+                cluster_start: 41,
+                cluster_end: 77,
+                bytes: 2048,
+            },
+        ];
+        let encoded = serde_json::to_vec(&descriptors).unwrap();
+        let paths = shard_paths_from_descriptor(&encoded).unwrap();
+        assert_eq!(
+            paths,
+            vec![
+                "idx_shard_0000.puffin".to_string(),
+                "idx_shard_0001.puffin".to_string()
+            ]
+        );
+
+        let legacy = serde_json::to_vec(&paths).unwrap();
+        assert_eq!(shard_paths_from_descriptor(&legacy).unwrap(), paths);
+        assert!(shard_paths_from_descriptor(b"not json").is_none());
+    }
+
+    #[test]
+    fn an_unresolved_shard_still_routes_its_clusters() {
+        // A remote open leaves shards 1..N without slice maps, so the declared
+        // range is the only routing table. Without this expansion those clusters
+        // would resolve to no shard and the probes that hit them would be dropped.
+        let resolved = HashMap::from([(
+            0usize,
+            ClusterSlices {
+                graph: (0, 4),
+                node_meta: (4, 8),
+            },
+        )]);
+        let shards = vec![
+            ClusterShard {
+                shard_idx: 0,
+                file_path: Some("shard_0.puffin".to_string()),
+                cluster_range: (0, 0),
+                container: Bytes::new(),
+                cluster_slices: resolved,
+            },
+            ClusterShard {
+                shard_idx: 1,
+                file_path: Some("shard_1.puffin".to_string()),
+                cluster_range: (1, 3),
+                container: Bytes::new(),
+                cluster_slices: HashMap::new(),
+            },
+        ];
+        let index = ClusterIndex::from_shards(
+            shards,
+            "embedding".to_string(),
+            8,
+            VectorMetric::L2,
+            vec![vec![0.0; 8]; 4],
+            None,
+            segments(),
+            1,
+            0,
+        )
+        .unwrap();
+        assert_eq!(index.cluster_to_shard.get(&0), Some(&0));
+        for cid in 1..=3 {
+            assert_eq!(
+                index.cluster_to_shard.get(&cid),
+                Some(&1),
+                "cluster {cid} must route to the shard whose range declares it"
+            );
+        }
     }
 
     fn blob(n: usize, dim: usize, offset: f32) -> Vec<(u32, u32, Vec<f32>)> {

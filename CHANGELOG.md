@@ -2,6 +2,45 @@
 
 ### Fixed
 
+- **A remote index open read every shard footer**
+  (`src/core/index/cluster_index.rs`): `load_sharded_remote` fetched each shard's
+  Puffin footer to learn its cluster offsets — a HEAD plus two ranged reads per
+  shard, so the 78 shards of a 100M artifact meant 234 requests before the first
+  query. Shard 0 now carries a shard descriptor (path, cluster range, object
+  size) as its `cluster-shards` blob, so an open costs two ranged reads for one
+  footer, two for the header blobs and one for the descriptor: five requests
+  regardless of shard count. Shards 1..N resolve their offsets the first time a
+  query probes one of their clusters and cache the result, which is two ranged
+  reads per shard per process. The descriptor records the assignment the builder
+  already made — clusters go to shards in ascending id order — so it is not a
+  second assignment. An artifact written before the descriptor still opens: the
+  legacy path list is recognized and falls back to reading every footer.
+
+  Measured on containerized RustFS over loopback, counting cluster range GETs
+  with `reader_stats()`: on a 19-shard artifact written before the change, open
+  plus the first query issued 54 GETs and 14,272 KiB, of which 41 GETs were the
+  open (38 footer reads, centroids, segments, descriptor). On a 3-shard artifact
+  written after it, the same sequence issued 14 GETs and 1,351 KiB, of which 5
+  GETs were the open. Open latency is unchanged on loopback (0.12 s against
+  0.18 s) because the round trips this removes are LAN or WAN, not microseconds.
+
+- **The cluster cache weighed each cluster at five times its cost**
+  (`src/core/index/cluster_index.rs`): the byte weighed cache charged each entry
+  `HnswGraph::footprint_bytes`, which for the Arrow graphs the cluster index
+  loads reports Arrow's `get_array_memory_size`. On the object store arm that
+  reported 6,819 KiB per cluster while the store returned about 900 KiB for the
+  cluster's two blobs, and the whole process — Python, numpy and every decoded
+  graph — peaked at 529 MB RSS against the 2.05 GB the cache claimed to hold. The
+  budget therefore retained a fifth of the clusters it could hold, so no larger
+  budget could have fixed the hit rate. Entries now carry the byte length of the
+  blobs that produced them: the graph is decoded with `load_from_bytes_owned`
+  and aliases the fetched buffer, so the fetched bytes are both the resident cost
+  and the cost the store bills for. At the 256 MiB default the resident set went
+  from 114 to 295 clusters of 512, the hit rate at nprobe 16 from 8.0% to 55.7%,
+  range GETs per query from 15.01 to 7.08, and bytes per query from 15,625 KiB to
+  8,789 KiB. With 768 MiB every cluster stays resident: 99.5% hits and 0.16 GETs
+  per query at nprobe 32.
+
 - **The cluster index pulled whole shards into the page cache**
   (`src/core/index/cluster_index.rs`): `open_shard_container` mapped every shard
   with `MADV_WILLNEED`, so loading the 100M artifact faulted all 78 shards and
@@ -89,6 +128,25 @@
   about `BSDB_CACHE_GB`.
 
 ### Added
+
+- **Object store request counting** (`src/core/reader/stats.rs`,
+  `src/core/index/cluster_index.rs`, `src/python/helpers.rs`): `reader_stats()`
+  reports `cluster_range_gets`, `cluster_range_bytes` and `cluster_cache_hits`,
+  plus `cluster_cache_entries` and `cluster_cache_weighted_kib` as occupancy
+  gauges. They are recorded in `hydrate_clusters` and in the footer reader, the
+  only two places that issue cluster range reads, so a request count claim rests
+  on counted requests instead of an inference from egress. The occupancy gauges
+  are what distinguished "the budget is too small" from "the weigher is wrong"
+  when the hit rate stayed near zero.
+
+- **An object store read arm** (`benchmarks/s3_arm.py`): builds a 200k x 64 table
+  on S3, then measures cold open plus per query store egress, cluster range GETs,
+  cache hits and resident clusters at nprobe 8, 16 and 32. Every number it prints
+  is from a containerized RustFS on the loopback interface, not from AWS S3, GCS
+  or Azure: the byte and request counts carry over, the latencies do not, because
+  there is no WAN round trip, TLS or throttling. `build` refuses a prefix that
+  already holds objects, because `write` appends and six diagnostic rebuilds into
+  one prefix had produced a table 6.3x the size the module claims.
 
 - **A pinned read view makes the index follow the data through time**
   (`src/core/table/state.rs`, `src/core/manifest/manager.rs`,

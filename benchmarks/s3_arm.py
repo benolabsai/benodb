@@ -77,7 +77,35 @@ def _table(bsdb, uri: str):
     return bsdb.Table(uri)
 
 
+def _existing_objects(uri: str) -> int:
+    """Objects already under `uri`.
+
+    `write` appends, so building twice into one prefix silently doubles the
+    table. An earlier version of this script did exactly that while the
+    multipart defect was being diagnosed: six attempts appended to the same
+    prefix, and the resulting table was 6.3x the 200k rows the module claims
+    (338 MB of Parquet where 200k x 64 float32 is 51 MB). Every absolute figure
+    from those runs described a million-row table. Refusing a non-empty prefix
+    is cheaper than noticing that after the fact.
+    """
+    if not uri.startswith("s3://"):
+        return 0
+    import boto3
+
+    bucket, _, prefix = uri[len("s3://") :].partition("/")
+    s3 = boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT"))
+    total = 0
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+        total += len(page.get("Contents", []))
+    return total
+
+
 def build(bsdb, uri: str, container: str) -> None:
+    existing = _existing_objects(uri)
+    if existing:
+        raise SystemExit(
+            f"{uri} already holds {existing} objects; write appends, so use a fresh prefix"
+        )
     rx0, tx0 = netio(container)
     t0 = time.time()
     table = _table(bsdb, uri)
@@ -124,16 +152,22 @@ def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> 
     query_vectors = rng.random((queries, DIM), dtype=np.float32)
 
     # Cold open plus one query: this is what triggers `load_sharded_remote`, so
-    # the delta is the whole initialisation cost.
+    # the delta is the whole initialisation cost. The request count is the point
+    # of the shard descriptor: an open that reads every footer pays three
+    # requests per shard, one that reads the descriptor pays five in total.
+    bsdb.reset_reader_stats()
     rx0, tx0 = netio(container)
     t0 = time.time()
     table = _table(bsdb, uri)
     first = _query(table, query_vectors[0], 10, 64, probes[0])
     init_s = time.time() - t0
+    init_stats = bsdb.reader_stats()
     rx1, tx1 = netio(container)
     egress_mb = max(tx1 - tx0, 0) / 1e6
     print(
         f"init: open + first query in {init_s:.2f}s | store egress {egress_mb:.2f} MB "
+        f"| slice GETs {init_stats['cluster_range_gets']} "
+        f"({init_stats['cluster_range_bytes'] / 1024:.0f} KiB) "
         f"| returned {len(first)} ids"
     )
 
