@@ -1636,7 +1636,14 @@ impl Table {
                                 )
                             })?;
                     use tokio::io::AsyncReadExt;
-                    let mut buf = vec![0; 8 * 1024 * 1024];
+                    // Accumulate to a legal part size before emitting, as in
+                    // `stage::upload_staged_file`: `read()` returns short chunks
+                    // (tokio caps each call at 2 MiB), and a non-final part under
+                    // the provider floor is rejected as `EntityTooSmall`.
+                    let object_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+                    let part_bytes = crate::core::storage::multipart_part_bytes(object_len);
+                    let mut part: Vec<u8> = Vec::with_capacity(part_bytes);
+                    let mut buf = vec![0; 1024 * 1024];
                     let mut total_uploaded = 0;
                     loop {
                         let n = file.read(&mut buf).await.with_context(|| {
@@ -1645,13 +1652,20 @@ impl Table {
                         if n == 0 {
                             break;
                         }
-                        upload
-                            .put_part(buf[..n].to_vec().into())
-                            .await
-                            .with_context(|| {
+                        total_uploaded += n;
+                        part.extend_from_slice(&buf[..n]);
+                        if part.len() >= part_bytes {
+                            let full =
+                                std::mem::replace(&mut part, Vec::with_capacity(part_bytes));
+                            upload.put_part(full.into()).await.with_context(|| {
                                 format!("Failed to upload part to {}", remote_path_str)
                             })?;
-                        total_uploaded += n;
+                        }
+                    }
+                    if !part.is_empty() {
+                        upload.put_part(part.into()).await.with_context(|| {
+                            format!("Failed to upload the final part to {}", remote_path_str)
+                        })?;
                     }
                     upload.complete().await.with_context(|| {
                         format!("Failed to complete multipart upload to {}", remote_path_str)

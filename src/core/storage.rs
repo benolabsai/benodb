@@ -35,6 +35,48 @@ pub fn ssrf_guard_enabled() -> bool {
 /// host logs a warning naming this variable.
 pub const SSRF_ALLOW_HOSTS_ENV: &str = "BSDB_SSRF_ALLOW_HOSTS";
 
+// ---------------------------------------------------------------------------
+// Multipart upload part sizing
+// ---------------------------------------------------------------------------
+//
+// Every major provider can be driven through a multipart/block API, but their
+// limits differ, and one constant has to satisfy all of them:
+//
+// | provider                  | minimum part   | maximum part | max parts |
+// |---------------------------|----------------|--------------|-----------|
+// | AWS S3 (multipart)        | 5 MiB, last    | 5 GiB        | 10,000    |
+// |                           | part exempt    |              |           |
+// | GCS (XML multipart)       | 5 MiB, last    | 5 GiB        | 10,000    |
+// |                           | part exempt    |              |           |
+// | Azure (Put Block)         | none           | 4,000 MiB    | 50,000    |
+//
+// So the part size must sit in [5 MiB, 4,000 MiB] -- Azure's block ceiling is
+// the binding upper bound -- and must be large enough that the object needs no
+// more than 10,000 parts. Below 48.8 GiB that is just the 5 MiB floor; above it
+// the size grows to keep the count legal.
+//
+// Streaming read loops must *accumulate to this size before emitting a part*:
+// `tokio::fs::File::read` returns at most 2 MiB per call, so emitting per read
+// produces non-final parts of 2 MiB and S3 and GCS reject them with
+// `EntityTooSmall`.
+
+/// Smallest legal part for a non-final part (AWS S3 and GCS XML).
+pub const MIN_MULTIPART_PART_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Largest part any supported provider accepts (Azure Put Block is 4,000 MiB;
+/// S3 and GCS allow 5 GiB, so Azure is the tighter constraint).
+pub const MAX_MULTIPART_PART_BYTES: u64 = 4_000 * 1024 * 1024;
+
+/// Maximum number of parts S3 and GCS accept in one object.
+pub const MAX_MULTIPART_PARTS: u64 = 10_000;
+
+/// Part size to use when uploading an object of `object_len` bytes.
+pub fn multipart_part_bytes(object_len: u64) -> usize {
+    let by_count = object_len.div_ceil(MAX_MULTIPART_PARTS);
+    by_count
+        .clamp(MIN_MULTIPART_PART_BYTES, MAX_MULTIPART_PART_BYTES) as usize
+}
+
 static SSRF_ALLOW_WARNED: std::sync::Once = std::sync::Once::new();
 
 /// Canonical form used for both the allow list and the host under test.

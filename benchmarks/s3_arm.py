@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
+"""Exercise the S3 (object store) read path and report what it transfers.
+
+The 100M local sweep measures the mmap path. This measures the other one: the
+table level cluster artifact lives in an S3 bucket, `load_sharded_remote` opens it
+from footers alone, and each query hydrates its probe clusters with coalesced
+range reads. The number that matters is not wall clock -- it is bytes and
+requests, which is what an object store bills for.
+
+**Provenance: every number this produces is from a containerized RustFS instance
+on the loopback interface**, not from AWS S3, GCS or Azure. That makes the byte
+counts meaningful (the same ranges, the same coalescing) and the latency numbers
+optimistic: there is no WAN round trip, no TLS, no request throttling and no
+egress charge. Any write-up must say so, and must not present these as public
+cloud figures.
+
+Byte accounting comes from the S3 server's own interface counters (`docker stats`
+on the RustFS container), so it measures what left the store rather than what the
+client thinks it asked for.
+
+Usage:
+    AWS_ENDPOINT=http://localhost:9000 ./s3_arm.py build
+    AWS_ENDPOINT=http://localhost:9000 ./s3_arm.py measure
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import time
+
+import numpy as np
+import pyarrow as pa
+
+N = 200_000
+DIM = 64
+CLUSTERS = 512
+# Keep flushed objects above the multipart floor. The writer buffers to 5 MiB
+# before emitting a part, so an object under the floor is a single final part --
+# legal per the S3 spec (only non-final parts carry the minimum) but RustFS
+# rejects it with `EntityTooSmall`. One flush for the whole set sidesteps that
+# server deviation and does not change what a query reads.
+SEGMENT_ROWS = 200_000
+SHARD_BYTES = 24 * 1024 * 1024
+
+
+def netio(container: str) -> tuple[int, int]:
+    """Cumulative (rx, tx) bytes for a container, from the store's counters."""
+    raw = subprocess.check_output(
+        ["docker", "stats", "--no-stream", "--format", "{{.NetIO}}", container],
+        text=True,
+    ).strip()
+    rx_s, tx_s = [part.strip() for part in raw.split("/")]
+    return _parse_bytes(rx_s), _parse_bytes(tx_s)
+
+
+def _parse_bytes(text: str) -> int:
+    text = text.strip()
+    for unit, scale in (
+        ("GiB", 1024**3),
+        ("MiB", 1024**2),
+        ("KiB", 1024),
+        ("GB", 1000**3),
+        ("MB", 1000**2),
+        ("kB", 1000),
+        ("B", 1),
+    ):
+        if text.endswith(unit):
+            return int(float(text[: -len(unit)]) * scale)
+    return int(float(text))
+
+
+def _table(bsdb, uri: str):
+    return bsdb.Table(uri)
+
+
+def build(bsdb, uri: str, container: str) -> None:
+    rx0, tx0 = netio(container)
+    t0 = time.time()
+    table = _table(bsdb, uri)
+    rng = np.random.default_rng(0)
+    for start in range(0, N, SEGMENT_ROWS):
+        end = min(start + SEGMENT_ROWS, N)
+        vectors = rng.random((end - start, DIM), dtype=np.float32)
+        fsl = pa.FixedSizeListArray.from_arrays(pa.array(vectors.ravel()), DIM)
+        batch = pa.Table.from_arrays(
+            [
+                pa.array(np.arange(start, end, dtype=np.int64)),
+                fsl,
+            ],
+            names=["id", "embedding"],
+        )
+        table.write(batch)
+        # One segment per batch keeps each flushed object under the multipart
+        # threshold (see SEGMENT_ROWS) and gives the cluster index several shards
+        # to spread clusters over, which is what the coalescing is meant to face.
+        table.flush()
+    ingest_s = time.time() - t0
+
+    t0 = time.time()
+    table.rebuild_cluster_index(
+        "embedding",
+        k=CLUSTERS,
+        m=16,
+        ef_construction=200,
+        target_shard_bytes=SHARD_BYTES,
+    )
+    index_s = time.time() - t0
+
+    rx1, tx1 = netio(container)
+    print(
+        f"build: {N:,}x{DIM} in {ingest_s:.1f}s, index {CLUSTERS} clusters "
+        f"in {index_s:.1f}s | store rx {(rx1 - rx0) / 1e6:.1f} MB, "
+        f"tx {(tx1 - tx0) / 1e6:.1f} MB"
+    )
+    del table
+
+
+def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> None:
+    rng = np.random.default_rng(1)
+    query_vectors = rng.random((queries, DIM), dtype=np.float32)
+
+    # Cold open plus one query: this is what triggers `load_sharded_remote`, so
+    # the delta is the whole initialisation cost.
+    rx0, tx0 = netio(container)
+    t0 = time.time()
+    table = _table(bsdb, uri)
+    first = _query(table, query_vectors[0], 10, 64, probes[0])
+    init_s = time.time() - t0
+    rx1, tx1 = netio(container)
+    egress_mb = max(tx1 - tx0, 0) / 1e6
+    print(
+        f"init: open + first query in {init_s:.2f}s | store egress {egress_mb:.2f} MB "
+        f"| returned {len(first)} ids"
+    )
+
+    for n_probe in probes:
+        rx0, tx0 = netio(container)
+        t0 = time.time()
+        for i in range(queries):
+            _query(table, query_vectors[i], 10, 64, n_probe)
+        elapsed = time.time() - t0
+        rx1, tx1 = netio(container)
+        egress = max(tx1 - tx0, 0) / 1e6
+        print(
+            f"probes={n_probe:<3} {queries} queries in {elapsed:6.2f}s "
+            f"-> {queries / elapsed:6.1f} QPS | store egress {egress:8.2f} MB "
+            f"({egress * 1e6 / queries / 1024:8.1f} KiB/query)"
+        )
+
+
+def _query(table, vector, k: int, ef_search: int, probes: int):
+    return table.to_arrow(
+        vector_filter={
+            "column": "embedding",
+            "query": vector.tolist(),
+            "k": k,
+            "ef_search": ef_search,
+            "probes": probes,
+        },
+        columns=["id"],
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("phase", choices=["build", "measure"])
+    parser.add_argument("--uri", default="s3://bsdb-bench/bench")
+    parser.add_argument("--container", default="rustfs")
+    parser.add_argument("--queries", type=int, default=100)
+    parser.add_argument("--probes", default="8,16,32")
+    args = parser.parse_args()
+
+    import benostreamdb as bsdb
+
+    probes = [int(p) for p in args.probes.split(",") if p.strip()]
+    if args.phase == "build":
+        build(bsdb, args.uri, args.container)
+    else:
+        measure(bsdb, args.uri, args.container, probes, args.queries)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -392,7 +392,15 @@ impl Table {
             .put_multipart(&remote)
             .await
             .with_context(|| format!("failed to initiate upload to {}", remote_path))?;
-        let mut buffer = vec![0u8; 8 * 1024 * 1024];
+        // Accumulate to a legal part size before emitting. `tokio::fs::File::read`
+        // returns at most 2 MiB per call, so emitting per read produced 2 MiB
+        // non-final parts, which S3 and GCS reject with `EntityTooSmall`. The
+        // size is derived from the object length so the part count stays within
+        // the provider limits; see `storage::multipart_part_bytes`.
+        let object_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+        let part_bytes = crate::core::storage::multipart_part_bytes(object_len);
+        let mut buffer = vec![0u8; 1024 * 1024];
+        let mut part: Vec<u8> = Vec::with_capacity(part_bytes);
         loop {
             let read = file
                 .read(&mut buffer)
@@ -401,10 +409,20 @@ impl Table {
             if read == 0 {
                 break;
             }
+            part.extend_from_slice(&buffer[..read]);
+            if part.len() >= part_bytes {
+                let full = std::mem::replace(&mut part, Vec::with_capacity(part_bytes));
+                upload
+                    .put_part(full.into())
+                    .await
+                    .with_context(|| format!("failed to upload a part to {}", remote_path))?;
+            }
+        }
+        if !part.is_empty() {
             upload
-                .put_part(buffer[..read].to_vec().into())
+                .put_part(part.into())
                 .await
-                .with_context(|| format!("failed to upload a part to {}", remote_path))?;
+                .with_context(|| format!("failed to upload the final part to {}", remote_path))?;
         }
         upload
             .complete()
