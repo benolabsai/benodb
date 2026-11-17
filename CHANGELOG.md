@@ -223,6 +223,18 @@
 
 ### Benchmarks
 
+- **The object store arm measures recall, and sweeps dimensions**
+  (`benchmarks/s3_arm.py`): `measure` computes an exact-L2 top-k oracle from the
+  same seeded corpus and reports recall@k per pass, so a cheaper index can no
+  longer be reported as a free win. `sweep` builds and measures a grid of
+  dimensions and quantizers and tabulates it, and `--dim`, `--rows`, `--dims`,
+  `--algorithms`, `--m` and `--rows-budget-mb` make the grid reproducible. Two
+  calibration points are baked into the harness because the first runs were
+  misread without them: probes below the cluster count measure probe selection
+  rather than quantizer fidelity, and a vector budget too small for the dimension
+  starves the per-cluster graphs. Results from this arm belong in the paper's
+  experiment plan (Phase D), not in this file.
+
 - **Cold rerank measurement in the BigANN harness**
   (`benchmarks/run_neurips_bigann.py`, `benchmarks/phase_c_sweep.sh`): each
   record now carries cgroup memory counters, physical and logical bytes read,

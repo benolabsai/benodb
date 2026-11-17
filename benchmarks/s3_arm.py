@@ -100,7 +100,15 @@ def _existing_objects(uri: str) -> int:
     return total
 
 
-def build(bsdb, uri: str, container: str) -> None:
+def build(
+    bsdb,
+    uri: str,
+    container: str,
+    algorithm: str | None = None,
+    m: int = 16,
+    rows: int = N,
+    dim: int = DIM,
+) -> None:
     existing = _existing_objects(uri)
     if existing:
         raise SystemExit(
@@ -110,10 +118,10 @@ def build(bsdb, uri: str, container: str) -> None:
     t0 = time.time()
     table = _table(bsdb, uri)
     rng = np.random.default_rng(0)
-    for start in range(0, N, SEGMENT_ROWS):
-        end = min(start + SEGMENT_ROWS, N)
-        vectors = rng.random((end - start, DIM), dtype=np.float32)
-        fsl = pa.FixedSizeListArray.from_arrays(pa.array(vectors.ravel()), DIM)
+    for start in range(0, rows, SEGMENT_ROWS):
+        end = min(start + SEGMENT_ROWS, rows)
+        vectors = rng.random((end - start, dim), dtype=np.float32)
+        fsl = pa.FixedSizeListArray.from_arrays(pa.array(vectors.ravel()), dim)
         batch = pa.Table.from_arrays(
             [
                 pa.array(np.arange(start, end, dtype=np.int64)),
@@ -128,11 +136,18 @@ def build(bsdb, uri: str, container: str) -> None:
         table.flush()
     ingest_s = time.time() - t0
 
+    # `rebuild_cluster_index` builds with the column's configured algorithm, and
+    # the default is `hnsw_tq8`, so a plain build is already quantized. Naming the
+    # algorithm here is what makes the payload comparison an experiment instead of
+    # an assumption.
+    if algorithm:
+        table.add_index("embedding", algorithm=algorithm)
+
     t0 = time.time()
     table.rebuild_cluster_index(
         "embedding",
         k=CLUSTERS,
-        m=16,
+        m=m,
         ef_construction=200,
         target_shard_bytes=SHARD_BYTES,
     )
@@ -140,16 +155,52 @@ def build(bsdb, uri: str, container: str) -> None:
 
     rx1, tx1 = netio(container)
     print(
-        f"build: {N:,}x{DIM} in {ingest_s:.1f}s, index {CLUSTERS} clusters "
-        f"in {index_s:.1f}s | store rx {(rx1 - rx0) / 1e6:.1f} MB, "
-        f"tx {(tx1 - tx0) / 1e6:.1f} MB"
+        f"build: {rows:,}x{dim} in {ingest_s:.1f}s, index {CLUSTERS} clusters "
+        f"(algorithm {algorithm or 'default'}, m={m}) in {index_s:.1f}s | "
+        f"store rx {(rx1 - rx0) / 1e6:.1f} MB, tx {(tx1 - tx0) / 1e6:.1f} MB"
     )
     del table
 
 
-def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> None:
+def exact_topk(vectors: np.ndarray, query: np.ndarray, k: int) -> np.ndarray:
+    """Exact top-k by squared L2, one query at a time.
+
+    200k x 64 float32 is 51 MB, so the squared norms are computed once and each
+    query costs a single matvec. This is the oracle the recall column is measured
+    against; without it a payload reduction is only a smaller number.
+    """
+    norms = (vectors * vectors).sum(axis=1)
+    out = np.empty((len(query), k), dtype=np.int64)
+    for i, q in enumerate(query):
+        d = norms - 2.0 * (vectors @ q) + float(q @ q)
+        part = np.argpartition(d, k)[:k]
+        out[i] = part[np.argsort(d[part])]
+    return out
+
+
+def recall_at_k(returned: list[list[int]], truth: np.ndarray, k: int) -> float:
+    hits = 0
+    for got, want in zip(returned, truth):
+        hits += len(set(got[:k]) & set(int(w) for w in want[:k]))
+    return hits / (len(returned) * k)
+
+
+def measure(
+    bsdb,
+    uri: str,
+    container: str,
+    probes: list[int],
+    queries: int,
+    k: int = 10,
+    rows: int = N,
+    dim: int = DIM,
+) -> list[dict]:
     rng = np.random.default_rng(1)
-    query_vectors = rng.random((queries, DIM), dtype=np.float32)
+    query_vectors = rng.random((queries, dim), dtype=np.float32)
+    # The build regenerates the corpus from the same seed and shape, so the oracle
+    # needs no reads of its own.
+    corpus = np.random.default_rng(0).random((rows, dim), dtype=np.float32)
+    truth = exact_topk(corpus, query_vectors, k)
 
     # Cold open plus one query: this is what triggers `load_sharded_remote`, so
     # the delta is the whole initialisation cost. The request count is the point
@@ -159,7 +210,7 @@ def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> 
     rx0, tx0 = netio(container)
     t0 = time.time()
     table = _table(bsdb, uri)
-    first = _query(table, query_vectors[0], 10, 64, probes[0])
+    first = _query(table, query_vectors[0], k, 64, probes[0])
     init_s = time.time() - t0
     init_stats = bsdb.reader_stats()
     rx1, tx1 = netio(container)
@@ -171,12 +222,14 @@ def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> 
         f"| returned {len(first)} ids"
     )
 
+    records: list[dict] = []
     for n_probe in probes:
         rx0, tx0 = netio(container)
         bsdb.reset_reader_stats()
+        returned: list[list[int]] = []
         t0 = time.time()
         for i in range(queries):
-            _query(table, query_vectors[i], 10, 64, n_probe)
+            returned.append(_ids(_query(table, query_vectors[i], k, 64, n_probe)))
         elapsed = time.time() - t0
         rx1, tx1 = netio(container)
         st = bsdb.reader_stats()
@@ -201,8 +254,103 @@ def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> 
             f"{cached_kb / queries:.1f} KiB/query) | cache hits {hits} "
             f"({hits / queries:.2f}/query, {ratio})\n"
             f"            cache resident {entries} clusters, weighed {weighted} KiB "
-            f"({per_entry}/cluster)"
+            f"({per_entry}/cluster) | recall@{k} {recall_at_k(returned, truth, k):.4f}"
         )
+        records.append(
+            {
+                "probes": n_probe,
+                "qps": queries / elapsed,
+                "gets_per_query": gets / queries,
+                "kib_per_query": cached_kb / queries,
+                "hits": hits,
+                "hit_ratio": (hits / touched) if touched else 0.0,
+                "per_cluster_kib": (weighted / entries) if entries else 0.0,
+                "recall": recall_at_k(returned, truth, k),
+            }
+        )
+    return records
+
+
+def rows_for_dim(dim: int, cap: int, budget_mb: float = 120.0) -> int:
+    """Rows for one arm, sized so every arm ingests about the same bytes.
+
+    Holding the row count fixed would push 410 MB of vectors through the store for
+    the 2048-dim arm alone. The comparison that needs matching is *within* a
+    dimension, so each (dim, quantizer) pair shares a row count and the row count
+    varies between dimensions to stay inside the byte budget.
+
+    There is a floor as well as a ceiling: below roughly 50 rows per cluster the
+    per-cluster graph and the cluster assignment both degenerate, and recall then
+    measures the row count rather than the quantizer. `--rows-budget-mb` raises
+    the budget when a high-dimension cell needs its clusters populated.
+    """
+    by_budget = int(budget_mb * 1_000_000) // (4 * dim)
+    return max(2_000, min(cap, by_budget))
+
+
+def sweep(
+    bsdb,
+    base_uri: str,
+    container: str,
+    dims: list[int],
+    algorithms: list[str],
+    rows: int,
+    queries: int,
+    k: int,
+    probes: int,
+    m: int,
+    rows_budget_mb: float = 120.0,
+) -> list[dict]:
+    """Build and measure every (dimension, quantizer) cell, then tabulate.
+
+    The whole point is the padding boundary. `BenoQuantEncoder` rotates and then
+    pads to the next power of two, so TQ8 stores `next_pow2(dim)` code bytes per
+    point while SQ8 stores `dim`. A dimension that is not a power of two is where
+    that costs bytes; a power of two is where it costs nothing, which is why a
+    single dimension cannot decide between the two quantizers.
+    """
+    rows_out: list[dict] = []
+    for dim in dims:
+        rows = rows_for_dim(dim, rows, rows_budget_mb)
+        for algo in algorithms:
+            short = algo.replace("hnsw_", "").replace("hnsw", "f32")
+            uri = f"{base_uri.rstrip('/')}/q{dim}_{short}_{rows}"
+            print(f"\n=== dim {dim} ({short}), {rows:,} rows ===", flush=True)
+            build(bsdb, uri, container, algo, m, rows, dim)
+            records = measure(
+                bsdb, uri, container, [probes], queries, k, rows, dim
+            )
+            rec = records[0]
+            rec.update(
+                {
+                    "dim": dim,
+                    "algorithm": short,
+                    "padded_dim": 1 << (dim - 1).bit_length(),
+                    "rows": rows,
+                }
+            )
+            rows_out.append(rec)
+            print(
+                f"    -> {rec['per_cluster_kib']:.0f} KiB/cluster, "
+                f"recall@{k} {rec['recall']:.4f}, {rec['qps']:.1f} QPS",
+                flush=True,
+            )
+    return rows_out
+
+
+def render_sweep(records: list[dict], k: int) -> str:
+    out = [
+        "| dim | padded | quantizer | KiB/cluster | recall@%d | QPS |" % k,
+        "|---|---|---|---|---|---|",
+    ]
+    for r in records:
+        pad = r["padded_dim"]
+        pad_cell = f"{pad} (+{100.0 * (pad - r['dim']) / r['dim']:.1f}%)" if pad != r["dim"] else f"{pad} (none)"
+        out.append(
+            f"| {r['dim']} | {pad_cell} | {r['algorithm']} | "
+            f"{r['per_cluster_kib']:.0f} | {r['recall']:.4f} | {r['qps']:.1f} |"
+        )
+    return "\n".join(out)
 
 
 def _query(table, vector, k: int, ef_search: int, probes: int):
@@ -211,6 +359,8 @@ def _query(table, vector, k: int, ef_search: int, probes: int):
             "column": "embedding",
             "query": vector.tolist(),
             "k": k,
+            # Pinned so the recall oracle knows which ranking to reproduce.
+            "metric": "l2",
             "ef_search": ef_search,
             "probes": probes,
         },
@@ -218,22 +368,97 @@ def _query(table, vector, k: int, ef_search: int, probes: int):
     )
 
 
+def _ids(table) -> list[int]:
+    """The `id` values of a result, in the order the engine returned them."""
+    return table.column("id").to_pylist()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=["build", "measure"])
+    parser.add_argument("phase", choices=["build", "measure", "sweep"])
     parser.add_argument("--uri", default="s3://bsdb-bench/bench")
     parser.add_argument("--container", default="rustfs")
     parser.add_argument("--queries", type=int, default=100)
     parser.add_argument("--probes", default="8,16,32")
+    parser.add_argument("--k", type=int, default=10)
+    parser.add_argument(
+        "--algorithm",
+        default=None,
+        help="index algorithm for the vector column, e.g. hnsw, hnsw_tq8, hnsw_tq4",
+    )
+    parser.add_argument("--m", type=int, default=16, help="cluster graph degree")
+    parser.add_argument("--rows", type=int, default=N)
+    parser.add_argument(
+        "--rows-budget-mb",
+        type=float,
+        default=120.0,
+        help="vector bytes per sweep arm, which sets its row count; raise it for high dimensions",
+    )
+    parser.add_argument(
+        "--dim",
+        type=int,
+        default=DIM,
+        help="vector dimensions; a power of two is the case where TQ8 does not pad",
+    )
+    parser.add_argument(
+        "--dims",
+        default="64,100,300,384,512,768,1024,1536,2048,3072",
+        help=(
+            "dimensions for `sweep`, comma separated: 64/512/1024/2048 are powers "
+            "of two (TQ8 does not pad), 100 is GloVe-100d, 300 is GloVe/fastText, "
+            "384 is all-MiniLM-L6-v2, 768 is BERT-base/mpnet-base/Cohere v2, "
+            "1536 is OpenAI text-embedding-3-small and ada-002, 3072 is "
+            "text-embedding-3-large (pads to 4096)"
+        ),
+    )
+    parser.add_argument(
+        "--algorithms",
+        default="hnsw_sq8,hnsw_tq8",
+        help="index algorithms for `sweep`, comma separated",
+    )
     args = parser.parse_args()
 
     import benostreamdb as bsdb
 
     probes = [int(p) for p in args.probes.split(",") if p.strip()]
     if args.phase == "build":
-        build(bsdb, args.uri, args.container)
+        build(bsdb, args.uri, args.container, args.algorithm, args.m, args.rows, args.dim)
+    elif args.phase == "sweep":
+        dims = [int(d) for d in args.dims.split(",") if d.strip()]
+        algos = [a.strip() for a in args.algorithms.split(",") if a.strip()]
+        # One probe value for the whole grid: every cluster, so the probe stage
+        # cannot mask the quantizer's effect on ranking.
+        records = sweep(
+            bsdb,
+            args.uri,
+            args.container,
+            dims,
+            algos,
+            args.rows,
+            args.queries,
+            args.k,
+            probes[0],
+            args.m,
+            args.rows_budget_mb,
+        )
+        print()
+        print(render_sweep(records, args.k))
+        out = os.environ.get("SWEEP_OUT")
+        if out:
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write(render_sweep(records, args.k) + "\n")
+            print(f"wrote {out}")
     else:
-        measure(bsdb, args.uri, args.container, probes, args.queries)
+        measure(
+            bsdb,
+            args.uri,
+            args.container,
+            probes,
+            args.queries,
+            args.k,
+            args.rows,
+            args.dim,
+        )
     return 0
 
 

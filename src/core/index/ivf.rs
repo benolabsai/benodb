@@ -300,8 +300,12 @@ pub fn simple_kmeans_with_seed(
     // `benostream-gpu-ann`, is used by every randomised step of index building.
     let seed_val = seed.unwrap_or(benostream_gpu_ann::INDEX_BUILD_SEED);
 
-    // Gated dispatch: route eligible configurations to high-throughput e-means
-    if crate::core::index::e_means::is_emeans_eligible(n, k, dim) {
+    // Gated dispatch: route eligible configurations to high-throughput e-means.
+    // `BSDB_EMEANS=0` forces the Lloyd path, which is the control arm for
+    // measuring what the dispatch buys.
+    if crate::core::index::e_means::emeans_enabled()
+        && crate::core::index::e_means::is_emeans_eligible(n, k, dim)
+    {
         let config = crate::core::index::e_means::EMeansConfig {
             k,
             nepochs: 3,

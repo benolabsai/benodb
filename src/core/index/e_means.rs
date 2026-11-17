@@ -34,6 +34,24 @@ pub use benostream_gpu_ann::e_means::{
 /// Canonical deterministic seed used throughout BenoStreamDB.
 pub const DEFAULT_EMEANS_SEED: u64 = 0x00C0_FFEE_1337;
 
+/// Whether builds may route centroid training to e-means.
+///
+/// `simple_kmeans_with_seed` consults this together with
+/// [`is_emeans_eligible`], and `global_centroids::train_global` reaches both
+/// through that call, so the table-level cluster index trains with e-means
+/// whenever the configuration is eligible. `BSDB_EMEANS=0` forces the Lloyd path
+/// and is the control arm for measuring what e-means actually buys on a given
+/// corpus: build seconds, and recall at a fixed probe count. Read once per
+/// process so one run cannot straddle both arms.
+pub fn emeans_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("BSDB_EMEANS")
+            .map(|value| value.trim() != "0")
+            .unwrap_or(true)
+    })
+}
+
 /// Train centroids using hardware-accelerated e-means clustering.
 ///
 /// Dispatches mini-batch assignments across active GPU context (CUDA/Metal/WGPU)
