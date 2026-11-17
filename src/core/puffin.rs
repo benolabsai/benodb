@@ -184,6 +184,47 @@ impl<W: Write + Seek> PuffinWriter<W> {
     }
 }
 
+/// Fixed trailer that closes a Puffin container: footer size (4), flags (4),
+/// magic (4), in that order after the footer payload.
+pub const PUFFIN_FOOTER_TRAILER_LEN: usize = 12;
+
+/// Parse the trailer that closes a Puffin container.
+///
+/// `tail` must be the last [`PUFFIN_FOOTER_TRAILER_LEN`] bytes of the object, which
+/// is what a ranged read of a remote container returns. Validating the magic here
+/// keeps a truncated or non-Puffin object from yielding a nonsense footer length
+/// that the follow-up ranged read would then trust.
+///
+/// Returns `(footer_payload_len, flags)`; bit 0 of `flags` marks a zstd-compressed
+/// footer payload, matching [`PuffinReader::new`].
+pub fn parse_footer_trailer(tail: &[u8]) -> Result<(u32, u32)> {
+    if tail.len() != PUFFIN_FOOTER_TRAILER_LEN {
+        anyhow::bail!(
+            "Puffin trailer is {PUFFIN_FOOTER_TRAILER_LEN} bytes, got {}",
+            tail.len()
+        );
+    }
+    if tail[8..12] != PUFFIN_MAGIC {
+        anyhow::bail!("Invalid Puffin magic at end of container");
+    }
+    let footer_size = u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]);
+    let flags = u32::from_le_bytes([tail[4], tail[5], tail[6], tail[7]]);
+    Ok((footer_size, flags))
+}
+
+/// Parse a footer payload fetched with a ranged read.
+///
+/// `flags` comes from [`parse_footer_trailer`]; bit 0 selects zstd, the same
+/// decoding [`PuffinReader::new`] applies when it reads the whole container.
+pub fn parse_footer_payload(payload: &[u8], flags: u32) -> Result<PuffinFooter> {
+    let payload = if flags & 0x01 != 0 {
+        zstd::decode_all(payload).context("Failed to decompress Puffin footer with Zstd")?
+    } else {
+        payload.to_vec()
+    };
+    serde_json::from_slice(&payload).context("Failed to parse Puffin footer JSON")
+}
+
 /// High-level Puffin compound index writer that aggregates multiple secondary index
 /// artifacts (vector, lexical BM25, roaring bitmaps, CSR graphs) for a segment into
 /// a single `.puffin` container file with strict lineage bindings.
@@ -1101,5 +1142,70 @@ mod tests {
         assert_eq!(read_data2, data2);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod footer_range_tests {
+    use super::*;
+
+    /// Build a container body the way `PuffinWriter::finish` lays it out, so the
+    /// ranged-read helpers can be checked against `PuffinReader` on the same bytes.
+    fn container_with_footer(footer: &PuffinFooter) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"payload-before-footer");
+        let footer_json = serde_json::to_string(footer).unwrap();
+        bytes.extend_from_slice(footer_json.as_bytes());
+        bytes.extend_from_slice(&(footer_json.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&PUFFIN_MAGIC);
+        bytes
+    }
+
+    fn empty_footer() -> PuffinFooter {
+        PuffinFooter {
+            blobs: Vec::new(),
+            properties: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn footer_trailer_locates_the_payload_for_a_ranged_read() {
+        let container = container_with_footer(&empty_footer());
+        let len = container.len();
+
+        // The two ranged reads a remote client issues: the trailing 12 bytes,
+        // then exactly the payload the trailer points at.
+        let tail = &container[len - PUFFIN_FOOTER_TRAILER_LEN..];
+        let (footer_size, flags) = parse_footer_trailer(tail).unwrap();
+        let start = len - PUFFIN_FOOTER_TRAILER_LEN - footer_size as usize;
+        let payload = &container[start..len - PUFFIN_FOOTER_TRAILER_LEN];
+        let parsed = parse_footer_payload(payload, flags).unwrap();
+
+        // The same footer the whole-container reader derives from those bytes.
+        let whole = PuffinReader::new(std::io::Cursor::new(container)).unwrap();
+        assert_eq!(parsed.blobs.len(), whole.footer().blobs.len());
+        assert_eq!(parsed.properties.len(), whole.footer().properties.len());
+    }
+
+    #[test]
+    fn footer_trailer_rejects_a_bad_magic() {
+        let mut container = container_with_footer(&empty_footer());
+        let len = container.len();
+        container[len - 1] ^= 0xFF;
+        let err = parse_footer_trailer(&container[len - PUFFIN_FOOTER_TRAILER_LEN..]).unwrap_err();
+        assert!(
+            err.to_string().contains("magic"),
+            "expected a magic error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn footer_trailer_rejects_a_short_tail() {
+        let err = parse_footer_trailer(&[0u8; 4]).unwrap_err();
+        assert!(
+            err.to_string().contains("12 bytes"),
+            "expected a length error, got: {err}"
+        );
     }
 }
