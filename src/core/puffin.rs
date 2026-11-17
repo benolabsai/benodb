@@ -69,6 +69,7 @@ pub const PUFFIN_BLOB_HNSW_CLUSTER_MAPPING: &str = "org.apache.iceberg.vector.cl
 // ---------------------------------------------------------------------------
 pub const PUFFIN_BLOB_VECTOR_CLUSTER_NODE_META: &str =
     "org.apache.iceberg.vector.cluster-node-meta";
+pub const PUFFIN_BLOB_VECTOR_CLUSTER_CODES: &str = "org.apache.iceberg.vector.cluster-codes";
 pub const PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS: &str = "org.apache.iceberg.vector.cluster-segments";
 pub const PUFFIN_BLOB_VECTOR_CLUSTER_SHARDS: &str = "org.apache.iceberg.vector.cluster-shards";
 

@@ -22,6 +22,8 @@ BenoStreamDB is designed to be highly configurable through environment variables
 | `BSDB_MIN_FREE_DISK_GB` | Refuse a local flush that would drop free disk below this many GB. | `1.0` |
 | `BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS` | How many spill buckets the table level build reads, groups, and builds together. The graph build is the long pole and a 256 MB bucket holds only a handful of clusters, so one bucket at a time leaves most cores idle. Clamped to 1 through 8. | `3` |
 | `BSDB_CLUSTER_BUILD_TMPDIR` | Directory for the table level index build's bucket and shard spill. Point it at the storage volume: a 100M build passes about 90 GB through it, and the builder refuses to start when the filesystem cannot hold roughly twice the raw vector bytes. Spill directories older than six hours are removed at start, which is what a killed build leaves behind. | `$TMPDIR` |
+| `BSDB_CLUSTER_CACHE_KIB` | Unified byte budget (in KiB) for the table-level `ClusterIndex` cache holding flat `cluster-codes` blobs, winning `node_meta` tables, and fallback HNSW graphs. | `BSDB_CACHE_GB / 4` (or `262144` = 256 MiB) |
+| `BSDB_CLUSTER_SEARCH_MODE` | Controls table-level `ClusterIndex` query execution: `auto` (default) and `codes` scan flat `cluster-codes` blobs and selectively hydrate `node_meta` for winning clusters (falling back to HNSW graphs on legacy shards without `cluster-codes`); `graph` forces full HNSW graph traversal for A/B benchmarking. | `auto` |
 
 #### Concurrency Tuning: `BSDB_MAX_CONCURRENCY` vs `RAYON_NUM_THREADS`
 

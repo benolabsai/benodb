@@ -129,6 +129,52 @@
 
 ### Added
 
+- **Codes-only first stage, Codes-First Puffin shard layout, and selective
+  metadata hydration** (`src/core/puffin.rs`, `src/core/index/cluster_index.rs`,
+  `src/core/table/read.rs`): table-level `ClusterIndex` shards now emit a
+  16-byte aligned flat codes blob (`org.apache.iceberg.vector.cluster-codes`,
+  `BSCD` v1) alongside `cluster-node-meta` and `hnsw-graph`. Centroids are
+  ordered by spatial locality before assignment (`order_centroids_by_locality`,
+  deterministic recursive furthest-pair projection bisection with Hilbert-style
+  seam flipping) so co-probed clusters receive adjacent IDs while keeping
+  monotonic `[cluster_start..=cluster_end]` shard ranges intact. Disk-staged
+  shard sealing writes all `codes` blobs contiguously at the front of each
+  512 MiB shard, followed by all `node_meta` blobs and then `hnsw-graph` blobs,
+  using `PuffinWriter::add_blob_from_reader` to keep peak build RAM flat. At
+  query time, `ClusterIndex::search` and `search_async` scan the flat codes blob
+  directly without reading or deserializing HNSW graphs, and hydrate `node_meta`
+  only for the winning clusters that contribute to top-$k$. Cluster members are
+  ordered deterministically by `(row_id, segment_idx)` so quantized-code ties
+  interleave across segments. Legacy artifacts lacking `cluster-codes` fall back
+  transparently to HNSW graph traversal, and `BSDB_CLUSTER_SEARCH_MODE`
+  (`auto` | `codes` | `graph`) enables A/B comparison on the same artifact.
+
+- **S3 concurrent shard pipelining, singleflight request coalescing, and unified
+  cluster cache** (`src/core/index/cluster_index.rs`): remote object-store
+  queries (`search_async`, `hydrate_for_query`, `hydrate_clusters`) now resolve
+  shard footers and fetch touched shards concurrently (`REMOTE_SHARD_CONCURRENCY
+  = 8`) instead of serially, pipeline remote hydration batches (`REMOTE_PIPELINE_BATCH
+  = 8`) on Tokio while scanning on CPU, and pipeline local `posix_fadvise(WILLNEED)`
+  in chunks of 4 clusters over codes spans only. Per-key async `SingleFlight`
+  gates (`tokio::sync::watch` with RAII guards) deduplicate concurrent remote
+  footer and blob GETs across parallel query threads, while local loads use
+  `moka::sync::Cache::optionally_get_with`. Graphs, flat codes, and `node_meta`
+  share a single byte-weighed `moka` cache under `BSDB_CLUSTER_CACHE_KIB` (or
+  `BSDB_CACHE_GB / 4`).
+
+- **Cross-architecture SIMD quantizer and distance kernels (`x86_64` AVX2+FMA
+  and `aarch64` NEON)** (`src/core/index/benoquant.rs`, `src/core/index/sq.rs`,
+  `src/core/index/pq.rs`, `src/core/index/distance.rs`, `src/core/index/mod.rs`):
+  added hoisted AVX2+FMA (`x86_64`) and native ARM64 NEON (`aarch64`, Apple
+  Silicon M-series / AWS Graviton / Azure Cobalt) kernels for both batch
+  `PreparedQuantizedQuery::scan_codes` and single-vector `distance()` (so
+  per-segment `HnswIvfIndex` queries also get SIMD acceleration without
+  rebuilding indexes). Covers BenoQuant TQ8 and TQ4 (16-nibble SIMD unpacking)
+  for L2 and Cosine/IP, SQ8 (precomputed `q_shifted = query - offsets`) for L2,
+  Cosine/IP, and L1, 4-way unrolled `k == 256` L1-LUT accumulation for PQ, and
+  16-wide NEON `l2_distance_squared_neon` / `dot_product_neon` for unquantized
+  F32 with squared-space `sqrt` pruning.
+
 - **Object store request counting** (`src/core/reader/stats.rs`,
   `src/core/index/cluster_index.rs`, `src/python/helpers.rs`): `reader_stats()`
   reports `cluster_range_gets`, `cluster_range_bytes` and `cluster_cache_hits`,

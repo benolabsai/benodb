@@ -110,6 +110,26 @@ impl<'a> PreparedQuantizedQuery<'a> {
             PreparedQuantizedQuery::Pq(q) => q.distance(encoded),
         }
     }
+
+    /// SIMD / unrolled batch scan over contiguous uniform-stride quantized codes,
+    /// invoking `on_hit(local_id, calibrated_dist)` whenever a code beats the
+    /// running threshold. `on_hit` returns the updated threshold.
+    pub fn scan_codes<F>(&self, codes: &[u8], code_len: usize, initial_threshold: f32, on_hit: F)
+    where
+        F: FnMut(usize, f32) -> f32,
+    {
+        match self {
+            PreparedQuantizedQuery::BenoQuant(q) => {
+                q.scan_codes(codes, code_len, initial_threshold, on_hit)
+            }
+            PreparedQuantizedQuery::Sq(q) => {
+                q.scan_codes(codes, code_len, initial_threshold, on_hit)
+            }
+            PreparedQuantizedQuery::Pq(q) => {
+                q.scan_codes(codes, code_len, initial_threshold, on_hit)
+            }
+        }
+    }
 }
 
 impl Quantizer for QuantizerImpl {

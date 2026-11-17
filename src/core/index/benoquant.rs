@@ -194,14 +194,19 @@ impl BenoQuantEncoder {
         query_f32: &[f32],
         metric: VectorMetric,
     ) -> PreparedBenoQuantQuery<'_> {
+        #[cfg(target_arch = "x86_64")]
+        let use_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
         if self.dim == 0 {
             return PreparedBenoQuantQuery {
                 encoder: self,
                 rotated_query: Vec::new(),
+                q_scaled: Vec::new(),
                 q_norm_sq: 0.0,
                 inv_scale: 1.0,
                 inv_n: 1.0,
                 metric,
+                #[cfg(target_arch = "x86_64")]
+                use_avx2,
             };
         }
 
@@ -236,14 +241,28 @@ impl BenoQuantEncoder {
             1.0 / self.scale
         };
         let inv_n = 1.0 / (n.max(1) as f32);
+        let q_scaled = if self.bits != 4
+            && !matches!(metric, VectorMetric::Cosine | VectorMetric::InnerProduct)
+        {
+            let eff_scale = 1.0 / inv_scale;
+            rotated_query
+                .iter()
+                .map(|&q| (q - self.offset) * eff_scale)
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         PreparedBenoQuantQuery {
             encoder: self,
             rotated_query,
+            q_scaled,
             q_norm_sq,
             inv_scale,
             inv_n,
             metric,
+            #[cfg(target_arch = "x86_64")]
+            use_avx2,
         }
     }
 }
@@ -259,14 +278,620 @@ impl BenoQuantEncoder {
 pub struct PreparedBenoQuantQuery<'a> {
     encoder: &'a BenoQuantEncoder,
     rotated_query: Vec<f32>,
+    /// Pre-shifted and scaled query `(rotated_query - offset) / inv_scale` for
+    /// fast SIMD L2 u8 batch scanning (`(q_scaled[i] - code[i] as f32)^2`).
+    q_scaled: Vec<f32>,
     q_norm_sq: f32,
     inv_scale: f32,
     inv_n: f32,
     metric: VectorMetric,
+    #[cfg(target_arch = "x86_64")]
+    use_avx2: bool,
+}
+
+/// Upper bound on the raw (pre-scale, pre-root) squared distance that can still
+/// beat `cal_thresh` once `raw_sq * factor` is scaled back and rooted.
+///
+/// The margin covers floating-point rounding in the SIMD kernel so that a
+/// candidate the exact `sqrt` path would have admitted is never pruned here.
+#[inline]
+fn raw_sq_threshold_for(cal_thresh: f32, factor: f32) -> f32 {
+    if !cal_thresh.is_finite() || factor <= 0.0 {
+        f32::INFINITY
+    } else {
+        ((cal_thresh * cal_thresh) / factor) * (1.0 + 1e-4) + 1e-6
+    }
+}
+
+/// Squared L2 between the pre-scaled query and one `u8` code, four independent
+/// FMA accumulators deep.
+///
+/// `q_scaled.len()` must be at least `code.len()`; callers pass slices of equal
+/// length so no bounds check appears in the loop. Four chains cover the 4-cycle
+/// `vfmadd` latency, which retires 32 dimensions per iteration instead of 16 on
+/// two chains. A single 8-lane step and a scalar tail finish any remainder, so
+/// every width from 0 upward is handled by the same function.
+///
+/// Measured against the two-chain form by
+/// `bench_scan_l2_u8_codes_throughput`: 1.01x at 128 dimensions, 1.19x at 384,
+/// 1.21x at 768, 1.24x at 1024. The 128-dimension case is almost entirely flat
+/// because the loop body is too short to expose the dependency chain.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn l2_sq_f32_u8_avx2(q_scaled: &[f32], code: &[u8]) -> f32 {
+    use std::arch::x86_64::*;
+    let len = code.len();
+    debug_assert!(q_scaled.len() >= len);
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+    let mut sum2 = _mm256_setzero_ps();
+    let mut sum3 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    let q_ptr = q_scaled.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 32 <= len {
+        let c0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let d0 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i)), c0);
+        sum0 = _mm256_fmadd_ps(d0, d0, sum0);
+
+        let c1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 8) as *const __m128i
+        )));
+        let d1 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i + 8)), c1);
+        sum1 = _mm256_fmadd_ps(d1, d1, sum1);
+
+        let c2 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 16) as *const __m128i
+        )));
+        let d2 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i + 16)), c2);
+        sum2 = _mm256_fmadd_ps(d2, d2, sum2);
+
+        let c3 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 24) as *const __m128i
+        )));
+        let d3 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i + 24)), c3);
+        sum3 = _mm256_fmadd_ps(d3, d3, sum3);
+
+        i += 32;
+    }
+
+    while i + 8 <= len {
+        let c = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let d = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i)), c);
+        sum0 = _mm256_fmadd_ps(d, d, sum0);
+        i += 8;
+    }
+
+    let paired = _mm256_add_ps(_mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3));
+    let mut total = hsum256_ps(paired);
+
+    while i < len {
+        let d = *q_ptr.add(i) - (*c_ptr.add(i) as f32);
+        total += d * d;
+        i += 1;
+    }
+    total
+}
+
+/// Feature-tagged driver for [`PreparedBenoQuantQuery::scan_l2_u8_codes`].
+///
+/// The candidate loop lives inside a `#[target_feature(enable = "avx2",
+/// enable = "fma")]` function so that [`l2_sq_f32_u8_avx2`] is compiled
+/// together with it: the code slice is taken once with `get_unchecked` against
+/// the `chunks_exact` invariant, and the kernel's registers stay live across
+/// the branch back to the top of the loop.
+///
+/// Moving the loop across this boundary measured 0.98x to 1.00x across
+/// 128-to-1024 dimensions, so it is kept for the removed per-candidate bounds
+/// check and as the natural place to hang candidate batching later - not
+/// because the loop boundary itself pays.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn scan_l2_u8_codes_avx2<F>(
+    q_scaled: &[f32],
+    codes: &[u8],
+    code_len: usize,
+    count: usize,
+    factor: f32,
+    initial_threshold: f32,
+    on_hit: &mut F,
+) where
+    F: FnMut(usize, f32) -> f32,
+{
+    let mut threshold = initial_threshold;
+    let mut raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+        // SAFETY: `chunks_exact(code_len)` yields exactly `code_len >= count`
+        // bytes, and the caller sliced `q_scaled` to `count`.
+        let code = code.get_unchecked(..count);
+        let raw_sq = l2_sq_f32_u8_avx2(q_scaled, code);
+        if raw_sq <= raw_sq_threshold {
+            let dist = (raw_sq * factor).max(0.0).sqrt();
+            if dist.is_finite() && dist < threshold {
+                threshold = on_hit(local_id, dist);
+                raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline]
+fn l2_sq_f32_u8_scalar(q_scaled: &[f32], code: &[u8]) -> f32 {
+    let mut sum = 0.0f32;
+    for (&q, &c) in q_scaled.iter().zip(code.iter()) {
+        let d = q - (c as f32);
+        sum += d * d;
+    }
+    sum
+}
+
+/// ARM64 NEON squared L2 distance over pre-scaled query and 8-bit codes.
+/// Processes 8 dimensions per iteration across two 4-lane `float32x4_t`
+/// accumulators (full Apple M-series / AWS Graviton parity with AVX2+FMA).
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn l2_sq_f32_u8_neon(q_scaled: &[f32], code: &[u8]) -> f32 {
+    use std::arch::aarch64::*;
+    let len = q_scaled.len().min(code.len());
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    let q_ptr = q_scaled.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 8 <= len {
+        let c8 = vld1_u8(c_ptr.add(i));
+        let c16 = vmovl_u8(c8);
+        let c0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(c16)));
+        let c1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(c16)));
+
+        let d0 = vsubq_f32(vld1q_f32(q_ptr.add(i)), c0);
+        sum0 = vfmaq_f32(sum0, d0, d0);
+
+        let d1 = vsubq_f32(vld1q_f32(q_ptr.add(i + 4)), c1);
+        sum1 = vfmaq_f32(sum1, d1, d1);
+
+        i += 8;
+    }
+
+    let mut total = vaddvq_f32(vaddq_f32(sum0, sum1));
+    while i < len {
+        let d = *q_ptr.add(i) - (*c_ptr.add(i) as f32);
+        total += d * d;
+        i += 1;
+    }
+    total
+}
+
+/// ARM64 NEON dot product and decoded squared norm for 8-bit BenoQuant codes.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_norm_f32_u8_neon(
+    rotated_query: &[f32],
+    code: &[u8],
+    inv_scale: f32,
+    offset: f32,
+) -> (f32, f32) {
+    use std::arch::aarch64::*;
+    let len = rotated_query.len().min(code.len());
+    let inv_scale_v = vdupq_n_f32(inv_scale);
+    let offset_v = vdupq_n_f32(offset);
+    let mut dot0 = vdupq_n_f32(0.0);
+    let mut dot1 = vdupq_n_f32(0.0);
+    let mut norm0 = vdupq_n_f32(0.0);
+    let mut norm1 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 8 <= len {
+        let c8 = vld1_u8(c_ptr.add(i));
+        let c16 = vmovl_u8(c8);
+        let c0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(c16)));
+        let dec0 = vfmaq_f32(offset_v, c0, inv_scale_v);
+        let q0 = vld1q_f32(q_ptr.add(i));
+        dot0 = vfmaq_f32(dot0, q0, dec0);
+        norm0 = vfmaq_f32(norm0, dec0, dec0);
+
+        let c1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(c16)));
+        let dec1 = vfmaq_f32(offset_v, c1, inv_scale_v);
+        let q1 = vld1q_f32(q_ptr.add(i + 4));
+        dot1 = vfmaq_f32(dot1, q1, dec1);
+        norm1 = vfmaq_f32(norm1, dec1, dec1);
+
+        i += 8;
+    }
+
+    let mut dot = vaddvq_f32(vaddq_f32(dot0, dot1));
+    let mut v_norm_sq = vaddvq_f32(vaddq_f32(norm0, norm1));
+    while i < len {
+        let dec = (*c_ptr.add(i) as f32) * inv_scale + offset;
+        dot += *q_ptr.add(i) * dec;
+        v_norm_sq += dec * dec;
+        i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+/// ARM64 NEON squared L2 distance in rotated space for 4-bit nibble-packed
+/// BenoQuant codes. Unpacks 8 packed bytes (16 dimensions) per iteration using
+/// `vand_u8` / `vshr_n_u8::<4>` / `vzip1_u8` / `vzip2_u8` across 4 FMA pipes.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn l2_sq_f32_u4_neon(
+    rotated_query: &[f32],
+    nibble_bytes: &[u8],
+    step: f32,
+    base: f32,
+) -> f32 {
+    use std::arch::aarch64::*;
+    let n = rotated_query
+        .len()
+        .min(nibble_bytes.len().saturating_mul(2));
+    let step_v = vdupq_n_f32(step);
+    let base_v = vdupq_n_f32(base);
+    let mask_0f = vdup_n_u8(0x0F);
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut sum2 = vdupq_n_f32(0.0);
+    let mut sum3 = vdupq_n_f32(0.0);
+
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = nibble_bytes.as_ptr();
+    let mut byte_i = 0usize;
+    let mut dim_i = 0usize;
+
+    while dim_i + 16 <= n && byte_i + 8 <= nibble_bytes.len() {
+        let packed = vld1_u8(c_ptr.add(byte_i));
+        let lo = vand_u8(packed, mask_0f);
+        let hi = vshr_n_u8::<4>(packed);
+        let first8 = vzip1_u8(lo, hi);
+        let next8 = vzip2_u8(lo, hi);
+
+        let f16 = vmovl_u8(first8);
+        let v0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(f16)));
+        let dec0 = vfmaq_f32(base_v, v0, step_v);
+        let d0 = vsubq_f32(vld1q_f32(q_ptr.add(dim_i)), dec0);
+        sum0 = vfmaq_f32(sum0, d0, d0);
+
+        let v1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(f16)));
+        let dec1 = vfmaq_f32(base_v, v1, step_v);
+        let d1 = vsubq_f32(vld1q_f32(q_ptr.add(dim_i + 4)), dec1);
+        sum1 = vfmaq_f32(sum1, d1, d1);
+
+        let n16 = vmovl_u8(next8);
+        let v2 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(n16)));
+        let dec2 = vfmaq_f32(base_v, v2, step_v);
+        let d2 = vsubq_f32(vld1q_f32(q_ptr.add(dim_i + 8)), dec2);
+        sum2 = vfmaq_f32(sum2, d2, d2);
+
+        let v3 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(n16)));
+        let dec3 = vfmaq_f32(base_v, v3, step_v);
+        let d3 = vsubq_f32(vld1q_f32(q_ptr.add(dim_i + 12)), dec3);
+        sum3 = vfmaq_f32(sum3, d3, d3);
+
+        byte_i += 8;
+        dim_i += 16;
+    }
+
+    let mut total = vaddvq_f32(vaddq_f32(vaddq_f32(sum0, sum1), vaddq_f32(sum2, sum3)));
+    while dim_i < n && byte_i < nibble_bytes.len() {
+        let b = *c_ptr.add(byte_i);
+        let dec_low = ((b & 0x0F) as f32) * step + base;
+        let diff_low = *q_ptr.add(dim_i) - dec_low;
+        total += diff_low * diff_low;
+        dim_i += 1;
+        if dim_i < n {
+            let dec_high = (((b >> 4) & 0x0F) as f32) * step + base;
+            let diff_high = *q_ptr.add(dim_i) - dec_high;
+            total += diff_high * diff_high;
+            dim_i += 1;
+        }
+        byte_i += 1;
+    }
+    total
+}
+
+/// ARM64 NEON dot product and decoded squared norm for 4-bit nibble-packed
+/// BenoQuant codes.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_norm_f32_u4_neon(
+    rotated_query: &[f32],
+    nibble_bytes: &[u8],
+    step: f32,
+    base: f32,
+) -> (f32, f32) {
+    use std::arch::aarch64::*;
+    let n = rotated_query
+        .len()
+        .min(nibble_bytes.len().saturating_mul(2));
+    let step_v = vdupq_n_f32(step);
+    let base_v = vdupq_n_f32(base);
+    let mask_0f = vdup_n_u8(0x0F);
+    let mut dot0 = vdupq_n_f32(0.0);
+    let mut dot1 = vdupq_n_f32(0.0);
+    let mut norm0 = vdupq_n_f32(0.0);
+    let mut norm1 = vdupq_n_f32(0.0);
+
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = nibble_bytes.as_ptr();
+    let mut byte_i = 0usize;
+    let mut dim_i = 0usize;
+
+    while dim_i + 16 <= n && byte_i + 8 <= nibble_bytes.len() {
+        let packed = vld1_u8(c_ptr.add(byte_i));
+        let lo = vand_u8(packed, mask_0f);
+        let hi = vshr_n_u8::<4>(packed);
+        let first8 = vzip1_u8(lo, hi);
+        let next8 = vzip2_u8(lo, hi);
+
+        let f16 = vmovl_u8(first8);
+        let dec0 = vfmaq_f32(base_v, vcvtq_f32_u32(vmovl_u16(vget_low_u16(f16))), step_v);
+        dot0 = vfmaq_f32(dot0, vld1q_f32(q_ptr.add(dim_i)), dec0);
+        norm0 = vfmaq_f32(norm0, dec0, dec0);
+
+        let dec1 = vfmaq_f32(base_v, vcvtq_f32_u32(vmovl_u16(vget_high_u16(f16))), step_v);
+        dot1 = vfmaq_f32(dot1, vld1q_f32(q_ptr.add(dim_i + 4)), dec1);
+        norm1 = vfmaq_f32(norm1, dec1, dec1);
+
+        let n16 = vmovl_u8(next8);
+        let dec2 = vfmaq_f32(base_v, vcvtq_f32_u32(vmovl_u16(vget_low_u16(n16))), step_v);
+        dot0 = vfmaq_f32(dot0, vld1q_f32(q_ptr.add(dim_i + 8)), dec2);
+        norm0 = vfmaq_f32(norm0, dec2, dec2);
+
+        let dec3 = vfmaq_f32(base_v, vcvtq_f32_u32(vmovl_u16(vget_high_u16(n16))), step_v);
+        dot1 = vfmaq_f32(dot1, vld1q_f32(q_ptr.add(dim_i + 12)), dec3);
+        norm1 = vfmaq_f32(norm1, dec3, dec3);
+
+        byte_i += 8;
+        dim_i += 16;
+    }
+
+    let mut dot = vaddvq_f32(vaddq_f32(dot0, dot1));
+    let mut v_norm_sq = vaddvq_f32(vaddq_f32(norm0, norm1));
+    while dim_i < n && byte_i < nibble_bytes.len() {
+        let b = *c_ptr.add(byte_i);
+        let dec_low = ((b & 0x0F) as f32) * step + base;
+        dot += *q_ptr.add(dim_i) * dec_low;
+        v_norm_sq += dec_low * dec_low;
+        dim_i += 1;
+        if dim_i < n {
+            let dec_high = (((b >> 4) & 0x0F) as f32) * step + base;
+            dot += *q_ptr.add(dim_i) * dec_high;
+            v_norm_sq += dec_high * dec_high;
+            dim_i += 1;
+        }
+        byte_i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+/// AVX2+FMA horizontal sum of an 8-lane `f32` register.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn hsum256_ps(v: std::arch::x86_64::__m256) -> f32 {
+    use std::arch::x86_64::*;
+    let mut lanes = [0.0f32; 8];
+    _mm256_storeu_ps(lanes.as_mut_ptr(), v);
+    lanes.iter().sum()
+}
+
+/// AVX2+FMA dot product and decoded squared norm for 8-bit BenoQuant codes.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn dot_norm_f32_u8_avx2(
+    rotated_query: &[f32],
+    code: &[u8],
+    inv_scale: f32,
+    offset: f32,
+) -> (f32, f32) {
+    use std::arch::x86_64::*;
+    let len = rotated_query.len().min(code.len());
+    let inv_scale_v = _mm256_set1_ps(inv_scale);
+    let offset_v = _mm256_set1_ps(offset);
+    let mut dot0 = _mm256_setzero_ps();
+    let mut dot1 = _mm256_setzero_ps();
+    let mut norm0 = _mm256_setzero_ps();
+    let mut norm1 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 16 <= len {
+        let c0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let dec0 = _mm256_fmadd_ps(c0, inv_scale_v, offset_v);
+        let q0 = _mm256_loadu_ps(q_ptr.add(i));
+        dot0 = _mm256_fmadd_ps(q0, dec0, dot0);
+        norm0 = _mm256_fmadd_ps(dec0, dec0, norm0);
+
+        let c1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 8) as *const __m128i
+        )));
+        let dec1 = _mm256_fmadd_ps(c1, inv_scale_v, offset_v);
+        let q1 = _mm256_loadu_ps(q_ptr.add(i + 8));
+        dot1 = _mm256_fmadd_ps(q1, dec1, dot1);
+        norm1 = _mm256_fmadd_ps(dec1, dec1, norm1);
+
+        i += 16;
+    }
+
+    let mut dot = hsum256_ps(_mm256_add_ps(dot0, dot1));
+    let mut v_norm_sq = hsum256_ps(_mm256_add_ps(norm0, norm1));
+
+    while i < len {
+        let dec = (*c_ptr.add(i) as f32) * inv_scale + offset;
+        dot += *q_ptr.add(i) * dec;
+        v_norm_sq += dec * dec;
+        i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+/// AVX2+FMA squared L2 distance in rotated space for 4-bit nibble-packed
+/// BenoQuant codes (`nibble_bytes` packs two 4-bit codes per byte: low = even
+/// dim, high = odd dim). Processes 16 dimensions (8 packed bytes) per iteration.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn l2_sq_f32_u4_avx2(
+    rotated_query: &[f32],
+    nibble_bytes: &[u8],
+    step: f32,
+    base: f32,
+) -> f32 {
+    use std::arch::x86_64::*;
+    let n = rotated_query
+        .len()
+        .min(nibble_bytes.len().saturating_mul(2));
+    let step_v = _mm256_set1_ps(step);
+    let base_v = _mm256_set1_ps(base);
+    let mask_0f = _mm_set1_epi8(0x0F);
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = nibble_bytes.as_ptr();
+    let mut byte_i = 0usize;
+    let mut dim_i = 0usize;
+
+    while dim_i + 16 <= n && byte_i + 8 <= nibble_bytes.len() {
+        let packed = _mm_loadl_epi64(c_ptr.add(byte_i) as *const __m128i);
+        let lo = _mm_and_si128(packed, mask_0f);
+        let hi = _mm_and_si128(_mm_srli_epi16(packed, 4), mask_0f);
+        let interleaved = _mm_unpacklo_epi8(lo, hi);
+
+        let v0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(interleaved));
+        let dec0 = _mm256_fmadd_ps(v0, step_v, base_v);
+        let d0 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(dim_i)), dec0);
+        sum0 = _mm256_fmadd_ps(d0, d0, sum0);
+
+        let hi64 = _mm_srli_si128::<8>(interleaved);
+        let v1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(hi64));
+        let dec1 = _mm256_fmadd_ps(v1, step_v, base_v);
+        let d1 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(dim_i + 8)), dec1);
+        sum1 = _mm256_fmadd_ps(d1, d1, sum1);
+
+        byte_i += 8;
+        dim_i += 16;
+    }
+
+    let mut total = hsum256_ps(_mm256_add_ps(sum0, sum1));
+    while dim_i < n && byte_i < nibble_bytes.len() {
+        let b = *c_ptr.add(byte_i);
+        let dec_low = ((b & 0x0F) as f32) * step + base;
+        let diff_low = *q_ptr.add(dim_i) - dec_low;
+        total += diff_low * diff_low;
+        dim_i += 1;
+        if dim_i < n {
+            let dec_high = (((b >> 4) & 0x0F) as f32) * step + base;
+            let diff_high = *q_ptr.add(dim_i) - dec_high;
+            total += diff_high * diff_high;
+            dim_i += 1;
+        }
+        byte_i += 1;
+    }
+    total
+}
+
+/// AVX2+FMA dot product and decoded squared norm for 4-bit nibble-packed
+/// BenoQuant codes.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn dot_norm_f32_u4_avx2(
+    rotated_query: &[f32],
+    nibble_bytes: &[u8],
+    step: f32,
+    base: f32,
+) -> (f32, f32) {
+    use std::arch::x86_64::*;
+    let n = rotated_query
+        .len()
+        .min(nibble_bytes.len().saturating_mul(2));
+    let step_v = _mm256_set1_ps(step);
+    let base_v = _mm256_set1_ps(base);
+    let mask_0f = _mm_set1_epi8(0x0F);
+    let mut dot0 = _mm256_setzero_ps();
+    let mut dot1 = _mm256_setzero_ps();
+    let mut norm0 = _mm256_setzero_ps();
+    let mut norm1 = _mm256_setzero_ps();
+
+    let q_ptr = rotated_query.as_ptr();
+    let c_ptr = nibble_bytes.as_ptr();
+    let mut byte_i = 0usize;
+    let mut dim_i = 0usize;
+
+    while dim_i + 16 <= n && byte_i + 8 <= nibble_bytes.len() {
+        let packed = _mm_loadl_epi64(c_ptr.add(byte_i) as *const __m128i);
+        let lo = _mm_and_si128(packed, mask_0f);
+        let hi = _mm_and_si128(_mm_srli_epi16(packed, 4), mask_0f);
+        let interleaved = _mm_unpacklo_epi8(lo, hi);
+
+        let v0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(interleaved));
+        let dec0 = _mm256_fmadd_ps(v0, step_v, base_v);
+        let q0 = _mm256_loadu_ps(q_ptr.add(dim_i));
+        dot0 = _mm256_fmadd_ps(q0, dec0, dot0);
+        norm0 = _mm256_fmadd_ps(dec0, dec0, norm0);
+
+        let hi64 = _mm_srli_si128::<8>(interleaved);
+        let v1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(hi64));
+        let dec1 = _mm256_fmadd_ps(v1, step_v, base_v);
+        let q1 = _mm256_loadu_ps(q_ptr.add(dim_i + 8));
+        dot1 = _mm256_fmadd_ps(q1, dec1, dot1);
+        norm1 = _mm256_fmadd_ps(dec1, dec1, norm1);
+
+        byte_i += 8;
+        dim_i += 16;
+    }
+
+    let mut dot = hsum256_ps(_mm256_add_ps(dot0, dot1));
+    let mut v_norm_sq = hsum256_ps(_mm256_add_ps(norm0, norm1));
+    while dim_i < n && byte_i < nibble_bytes.len() {
+        let b = *c_ptr.add(byte_i);
+        let dec_low = ((b & 0x0F) as f32) * step + base;
+        dot += *q_ptr.add(dim_i) * dec_low;
+        v_norm_sq += dec_low * dec_low;
+        dim_i += 1;
+        if dim_i < n {
+            let dec_high = (((b >> 4) & 0x0F) as f32) * step + base;
+            dot += *q_ptr.add(dim_i) * dec_high;
+            v_norm_sq += dec_high * dec_high;
+            dim_i += 1;
+        }
+        byte_i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+#[inline]
+fn split_u4_code(encoded: &[u8], packed_len: usize, encoder_dim: usize) -> (&[u8], f32) {
+    let (nibble_bytes, alpha) = if encoded.len() >= packed_len + 2 {
+        let tail = encoded.len();
+        let alpha_bytes = [encoded[tail - 2], encoded[tail - 1]];
+        (&encoded[..packed_len], f16_bytes_to_f32(alpha_bytes))
+    } else if encoded.len() >= 2 && (encoded.len() - 2) * 2 >= encoder_dim {
+        let tail = encoded.len();
+        let alpha_bytes = [encoded[tail - 2], encoded[tail - 1]];
+        (&encoded[..tail - 2], f16_bytes_to_f32(alpha_bytes))
+    } else {
+        (encoded, 1.0f32)
+    };
+    let alpha = if alpha.is_finite() { alpha } else { 1.0 };
+    (nibble_bytes, alpha)
 }
 
 impl<'a> PreparedBenoQuantQuery<'a> {
     /// Evaluate calibrated asymmetric distance against a stored BenoQuant code.
+    /// Dispatches to AVX2+FMA on x86_64 and NEON on aarch64 for both 8-bit and
+    /// 4-bit codes so per-segment HNSW graph traversal gets full SIMD parity.
     /// Guaranteed finite and non-negative.
     #[inline]
     pub fn distance(&self, encoded: &[u8]) -> f32 {
@@ -277,41 +902,78 @@ impl<'a> PreparedBenoQuantQuery<'a> {
 
         let dist = if self.encoder.bits == 4 {
             let packed_len = n.div_ceil(2);
-            let (nibble_bytes, alpha) = if encoded.len() >= packed_len + 2 {
-                let tail = encoded.len();
-                let alpha_bytes = [encoded[tail - 2], encoded[tail - 1]];
-                (&encoded[..packed_len], f16_bytes_to_f32(alpha_bytes))
-            } else if encoded.len() >= 2 && (encoded.len() - 2) * 2 >= self.encoder.dim {
-                let tail = encoded.len();
-                let alpha_bytes = [encoded[tail - 2], encoded[tail - 1]];
-                (&encoded[..tail - 2], f16_bytes_to_f32(alpha_bytes))
-            } else {
-                (encoded, 1.0f32)
-            };
-            let alpha = if alpha.is_finite() { alpha } else { 1.0 };
+            let (nibble_bytes, alpha) = split_u4_code(encoded, packed_len, self.encoder.dim);
             let step = alpha * self.inv_scale;
             let base = alpha * self.encoder.offset;
 
             match self.metric {
                 VectorMetric::Cosine | VectorMetric::InnerProduct => {
-                    let mut dot = 0.0f32;
-                    let mut v_norm_sq = 0.0f32;
-                    let mut idx = 0usize;
-                    for &b in nibble_bytes {
-                        if idx >= n {
-                            break;
+                    let (dot, v_norm_sq) = {
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            // SAFETY: NEON is mandatory baseline on aarch64.
+                            unsafe {
+                                dot_norm_f32_u4_neon(&self.rotated_query, nibble_bytes, step, base)
+                            }
                         }
-                        let decoded_low = ((b & 0x0F) as f32) * step + base;
-                        dot += self.rotated_query[idx] * decoded_low;
-                        v_norm_sq += decoded_low * decoded_low;
-                        idx += 1;
-                        if idx < n {
-                            let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
-                            dot += self.rotated_query[idx] * decoded_high;
-                            v_norm_sq += decoded_high * decoded_high;
-                            idx += 1;
+                        #[cfg(not(target_arch = "aarch64"))]
+                        {
+                            #[cfg(target_arch = "x86_64")]
+                            if self.use_avx2 {
+                                // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                                unsafe {
+                                    dot_norm_f32_u4_avx2(
+                                        &self.rotated_query,
+                                        nibble_bytes,
+                                        step,
+                                        base,
+                                    )
+                                }
+                            } else {
+                                let mut dot = 0.0f32;
+                                let mut v_norm_sq = 0.0f32;
+                                let mut idx = 0usize;
+                                for &b in nibble_bytes {
+                                    if idx >= n {
+                                        break;
+                                    }
+                                    let decoded_low = ((b & 0x0F) as f32) * step + base;
+                                    dot += self.rotated_query[idx] * decoded_low;
+                                    v_norm_sq += decoded_low * decoded_low;
+                                    idx += 1;
+                                    if idx < n {
+                                        let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
+                                        dot += self.rotated_query[idx] * decoded_high;
+                                        v_norm_sq += decoded_high * decoded_high;
+                                        idx += 1;
+                                    }
+                                }
+                                (dot, v_norm_sq)
+                            }
+                            #[cfg(not(target_arch = "x86_64"))]
+                            {
+                                let mut dot = 0.0f32;
+                                let mut v_norm_sq = 0.0f32;
+                                let mut idx = 0usize;
+                                for &b in nibble_bytes {
+                                    if idx >= n {
+                                        break;
+                                    }
+                                    let decoded_low = ((b & 0x0F) as f32) * step + base;
+                                    dot += self.rotated_query[idx] * decoded_low;
+                                    v_norm_sq += decoded_low * decoded_low;
+                                    idx += 1;
+                                    if idx < n {
+                                        let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
+                                        dot += self.rotated_query[idx] * decoded_high;
+                                        v_norm_sq += decoded_high * decoded_high;
+                                        idx += 1;
+                                    }
+                                }
+                                (dot, v_norm_sq)
+                            }
                         }
-                    }
+                    };
                     let denom = (self.q_norm_sq * v_norm_sq).sqrt();
                     if denom > 1e-12 {
                         (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
@@ -320,23 +982,65 @@ impl<'a> PreparedBenoQuantQuery<'a> {
                     }
                 }
                 _ => {
-                    let mut dist_sq = 0.0f32;
-                    let mut idx = 0usize;
-                    for &b in nibble_bytes {
-                        if idx >= n {
-                            break;
+                    let dist_sq = {
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            // SAFETY: NEON is mandatory baseline on aarch64.
+                            unsafe {
+                                l2_sq_f32_u4_neon(&self.rotated_query, nibble_bytes, step, base)
+                            }
                         }
-                        let decoded_low = ((b & 0x0F) as f32) * step + base;
-                        let diff_low = self.rotated_query[idx] - decoded_low;
-                        dist_sq += diff_low * diff_low;
-                        idx += 1;
-                        if idx < n {
-                            let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
-                            let diff_high = self.rotated_query[idx] - decoded_high;
-                            dist_sq += diff_high * diff_high;
-                            idx += 1;
+                        #[cfg(not(target_arch = "aarch64"))]
+                        {
+                            #[cfg(target_arch = "x86_64")]
+                            if self.use_avx2 {
+                                // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                                unsafe {
+                                    l2_sq_f32_u4_avx2(&self.rotated_query, nibble_bytes, step, base)
+                                }
+                            } else {
+                                let mut dist_sq = 0.0f32;
+                                let mut idx = 0usize;
+                                for &b in nibble_bytes {
+                                    if idx >= n {
+                                        break;
+                                    }
+                                    let decoded_low = ((b & 0x0F) as f32) * step + base;
+                                    let diff_low = self.rotated_query[idx] - decoded_low;
+                                    dist_sq += diff_low * diff_low;
+                                    idx += 1;
+                                    if idx < n {
+                                        let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
+                                        let diff_high = self.rotated_query[idx] - decoded_high;
+                                        dist_sq += diff_high * diff_high;
+                                        idx += 1;
+                                    }
+                                }
+                                dist_sq
+                            }
+                            #[cfg(not(target_arch = "x86_64"))]
+                            {
+                                let mut dist_sq = 0.0f32;
+                                let mut idx = 0usize;
+                                for &b in nibble_bytes {
+                                    if idx >= n {
+                                        break;
+                                    }
+                                    let decoded_low = ((b & 0x0F) as f32) * step + base;
+                                    let diff_low = self.rotated_query[idx] - decoded_low;
+                                    dist_sq += diff_low * diff_low;
+                                    idx += 1;
+                                    if idx < n {
+                                        let decoded_high = (((b >> 4) & 0x0F) as f32) * step + base;
+                                        let diff_high = self.rotated_query[idx] - decoded_high;
+                                        dist_sq += diff_high * diff_high;
+                                        idx += 1;
+                                    }
+                                }
+                                dist_sq
+                            }
                         }
-                    }
+                    };
                     (dist_sq * self.inv_n).max(0.0).sqrt()
                 }
             }
@@ -344,13 +1048,59 @@ impl<'a> PreparedBenoQuantQuery<'a> {
             let count = n.min(encoded.len());
             match self.metric {
                 VectorMetric::Cosine | VectorMetric::InnerProduct => {
-                    let mut dot = 0.0f32;
-                    let mut v_norm_sq = 0.0f32;
-                    for (&q, &e) in self.rotated_query[..count].iter().zip(&encoded[..count]) {
-                        let decoded = (e as f32) * self.inv_scale + self.encoder.offset;
-                        dot += q * decoded;
-                        v_norm_sq += decoded * decoded;
-                    }
+                    let (dot, v_norm_sq) = {
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            // SAFETY: NEON is mandatory baseline on aarch64.
+                            unsafe {
+                                dot_norm_f32_u8_neon(
+                                    &self.rotated_query[..count],
+                                    &encoded[..count],
+                                    self.inv_scale,
+                                    self.encoder.offset,
+                                )
+                            }
+                        }
+                        #[cfg(not(target_arch = "aarch64"))]
+                        {
+                            #[cfg(target_arch = "x86_64")]
+                            if self.use_avx2 {
+                                // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                                unsafe {
+                                    dot_norm_f32_u8_avx2(
+                                        &self.rotated_query[..count],
+                                        &encoded[..count],
+                                        self.inv_scale,
+                                        self.encoder.offset,
+                                    )
+                                }
+                            } else {
+                                let mut dot = 0.0f32;
+                                let mut v_norm_sq = 0.0f32;
+                                for (&q, &e) in
+                                    self.rotated_query[..count].iter().zip(&encoded[..count])
+                                {
+                                    let decoded = (e as f32) * self.inv_scale + self.encoder.offset;
+                                    dot += q * decoded;
+                                    v_norm_sq += decoded * decoded;
+                                }
+                                (dot, v_norm_sq)
+                            }
+                            #[cfg(not(target_arch = "x86_64"))]
+                            {
+                                let mut dot = 0.0f32;
+                                let mut v_norm_sq = 0.0f32;
+                                for (&q, &e) in
+                                    self.rotated_query[..count].iter().zip(&encoded[..count])
+                                {
+                                    let decoded = (e as f32) * self.inv_scale + self.encoder.offset;
+                                    dot += q * decoded;
+                                    v_norm_sq += decoded * decoded;
+                                }
+                                (dot, v_norm_sq)
+                            }
+                        }
+                    };
                     let denom = (self.q_norm_sq * v_norm_sq).sqrt();
                     if denom > 1e-12 {
                         (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
@@ -359,13 +1109,32 @@ impl<'a> PreparedBenoQuantQuery<'a> {
                     }
                 }
                 _ => {
-                    let mut dist_sq = 0.0f32;
-                    for (&q, &e) in self.rotated_query[..count].iter().zip(&encoded[..count]) {
-                        let decoded = (e as f32) * self.inv_scale + self.encoder.offset;
-                        let diff = q - decoded;
-                        dist_sq += diff * diff;
-                    }
-                    (dist_sq * self.inv_n).max(0.0).sqrt()
+                    let count = self.q_scaled.len().min(encoded.len());
+                    let factor = self.inv_scale * self.inv_scale * self.inv_n;
+                    let raw_sq = {
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            // SAFETY: NEON is mandatory baseline on aarch64.
+                            unsafe { l2_sq_f32_u8_neon(&self.q_scaled[..count], &encoded[..count]) }
+                        }
+                        #[cfg(not(target_arch = "aarch64"))]
+                        {
+                            #[cfg(target_arch = "x86_64")]
+                            if self.use_avx2 {
+                                // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                                unsafe {
+                                    l2_sq_f32_u8_avx2(&self.q_scaled[..count], &encoded[..count])
+                                }
+                            } else {
+                                l2_sq_f32_u8_scalar(&self.q_scaled[..count], &encoded[..count])
+                            }
+                            #[cfg(not(target_arch = "x86_64"))]
+                            {
+                                l2_sq_f32_u8_scalar(&self.q_scaled[..count], &encoded[..count])
+                            }
+                        }
+                    };
+                    (raw_sq * factor).max(0.0).sqrt()
                 }
             }
         };
@@ -374,6 +1143,305 @@ impl<'a> PreparedBenoQuantQuery<'a> {
             dist.max(0.0)
         } else {
             f32::MAX
+        }
+    }
+
+    /// True when this prepared query can use the fast AVX2/unrolled L2 u8 batch
+    /// scan path (8-bit non-cosine/IP).
+    #[inline]
+    pub fn is_fast_l2_u8(&self) -> bool {
+        !self.q_scaled.is_empty()
+    }
+
+    /// Linearly scan a contiguous block of `u8` codes of uniform stride `code_len`,
+    /// invoking `on_hit(local_id, calibrated_dist)` whenever a code beats the
+    /// running calibrated distance threshold. `on_hit` returns the updated
+    /// threshold (e.g. the new worst distance in the caller's top-k heap).
+    ///
+    /// Runtime SIMD detection (`avx2` + `fma`) is hoisted once per call, the
+    /// squared-space threshold avoids per-vector `sqrt` and scaling for
+    /// candidates that cannot enter the top-k heap, and the L2 kernel runs four
+    /// FMA accumulators deep (32 dimensions per iteration).
+    pub fn scan_l2_u8_codes<F>(
+        &self,
+        codes: &[u8],
+        code_len: usize,
+        initial_threshold: f32,
+        mut on_hit: F,
+    ) where
+        F: FnMut(usize, f32) -> f32,
+    {
+        if code_len == 0 || self.q_scaled.is_empty() {
+            return;
+        }
+        let count = self.q_scaled.len().min(code_len);
+        let q_scaled = &self.q_scaled[..count];
+        let factor = self.inv_scale * self.inv_scale * self.inv_n;
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut threshold = initial_threshold;
+            let mut raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                // SAFETY: NEON is mandatory baseline on aarch64.
+                let raw_sq = unsafe { l2_sq_f32_u8_neon(q_scaled, &code[..count]) };
+                if raw_sq <= raw_sq_threshold {
+                    let dist = (raw_sq * factor).max(0.0).sqrt();
+                    if dist.is_finite() && dist < threshold {
+                        threshold = on_hit(local_id, dist);
+                        raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            {
+                if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                    // SAFETY: `avx2` and `fma` were detected immediately above, and
+                    // `chunks_exact(code_len)` bounds every code slice to `code_len`
+                    // bytes, which is at least `count`.
+                    unsafe {
+                        scan_l2_u8_codes_avx2(
+                            q_scaled,
+                            codes,
+                            code_len,
+                            count,
+                            factor,
+                            initial_threshold,
+                            &mut on_hit,
+                        );
+                    }
+                    return;
+                }
+            }
+
+            let mut threshold = initial_threshold;
+            let mut raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                let raw_sq = l2_sq_f32_u8_scalar(q_scaled, &code[..count]);
+                if raw_sq <= raw_sq_threshold {
+                    let dist = (raw_sq * factor).max(0.0).sqrt();
+                    if dist.is_finite() && dist < threshold {
+                        threshold = on_hit(local_id, dist);
+                        raw_sq_threshold = raw_sq_threshold_for(threshold, factor);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Unified SIMD-accelerated batch scan over contiguous BenoQuant codes
+    /// (8-bit and 4-bit, L2 and Cosine/IP). Uses hoisted AVX2+FMA on x86_64
+    /// and native NEON on aarch64 (Apple Silicon / AWS Graviton), pruning L2
+    /// candidates in squared space before `sqrt`.
+    pub fn scan_codes<F>(
+        &self,
+        codes: &[u8],
+        code_len: usize,
+        initial_threshold: f32,
+        mut on_hit: F,
+    ) where
+        F: FnMut(usize, f32) -> f32,
+    {
+        if code_len == 0 || self.rotated_query.is_empty() {
+            return;
+        }
+        if self.is_fast_l2_u8() {
+            self.scan_l2_u8_codes(codes, code_len, initial_threshold, on_hit);
+            return;
+        }
+
+        let n = self.rotated_query.len();
+        let is_cosine = matches!(
+            self.metric,
+            VectorMetric::Cosine | VectorMetric::InnerProduct
+        );
+
+        let mut threshold = initial_threshold;
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            if self.encoder.bits == 4 {
+                let packed_len = n.div_ceil(2);
+                if is_cosine {
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        let (nibble_bytes, alpha) =
+                            split_u4_code(code, packed_len, self.encoder.dim);
+                        let step = alpha * self.inv_scale;
+                        let base = alpha * self.encoder.offset;
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        let (dot, v_norm_sq) = unsafe {
+                            dot_norm_f32_u4_neon(&self.rotated_query, nibble_bytes, step, base)
+                        };
+                        let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                        let dist = if denom > 1e-12 {
+                            (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                        } else {
+                            1.0
+                        };
+                        if dist.is_finite() && dist < threshold {
+                            threshold = on_hit(local_id, dist);
+                        }
+                    }
+                } else {
+                    let mut raw_sq_threshold = raw_sq_threshold_for(threshold, self.inv_n);
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        let (nibble_bytes, alpha) =
+                            split_u4_code(code, packed_len, self.encoder.dim);
+                        let step = alpha * self.inv_scale;
+                        let base = alpha * self.encoder.offset;
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        let raw_sq = unsafe {
+                            l2_sq_f32_u4_neon(&self.rotated_query, nibble_bytes, step, base)
+                        };
+                        if raw_sq <= raw_sq_threshold {
+                            let dist = (raw_sq * self.inv_n).max(0.0).sqrt();
+                            if dist.is_finite() && dist < threshold {
+                                threshold = on_hit(local_id, dist);
+                                raw_sq_threshold = raw_sq_threshold_for(threshold, self.inv_n);
+                            }
+                        }
+                    }
+                }
+            } else if is_cosine {
+                let count = n.min(code_len);
+                let rq = &self.rotated_query[..count];
+                for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                    // SAFETY: NEON is mandatory baseline on aarch64.
+                    let (dot, v_norm_sq) = unsafe {
+                        dot_norm_f32_u8_neon(
+                            rq,
+                            &code[..count],
+                            self.inv_scale,
+                            self.encoder.offset,
+                        )
+                    };
+                    let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                    let dist = if denom > 1e-12 {
+                        (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                    } else {
+                        1.0
+                    };
+                    if dist.is_finite() && dist < threshold {
+                        threshold = on_hit(local_id, dist);
+                    }
+                }
+            } else {
+                for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                    let dist = self.distance(code);
+                    if dist < threshold {
+                        threshold = on_hit(local_id, dist);
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            let use_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
+            #[cfg(not(target_arch = "x86_64"))]
+            let use_avx2 = false;
+
+            if self.encoder.bits == 4 {
+                let packed_len = n.div_ceil(2);
+                if is_cosine {
+                    if use_avx2 {
+                        #[cfg(target_arch = "x86_64")]
+                        {
+                            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                                let (nibble_bytes, alpha) =
+                                    split_u4_code(code, packed_len, self.encoder.dim);
+                                let step = alpha * self.inv_scale;
+                                let base = alpha * self.encoder.offset;
+                                // SAFETY: `avx2` and `fma` were verified above.
+                                let (dot, v_norm_sq) = unsafe {
+                                    dot_norm_f32_u4_avx2(
+                                        &self.rotated_query,
+                                        nibble_bytes,
+                                        step,
+                                        base,
+                                    )
+                                };
+                                let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                                let dist = if denom > 1e-12 {
+                                    (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                                } else {
+                                    1.0
+                                };
+                                if dist.is_finite() && dist < threshold {
+                                    threshold = on_hit(local_id, dist);
+                                }
+                            }
+                            return;
+                        }
+                    }
+                } else {
+                    let mut raw_sq_threshold = raw_sq_threshold_for(threshold, self.inv_n);
+                    if use_avx2 {
+                        #[cfg(target_arch = "x86_64")]
+                        {
+                            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                                let (nibble_bytes, alpha) =
+                                    split_u4_code(code, packed_len, self.encoder.dim);
+                                let step = alpha * self.inv_scale;
+                                let base = alpha * self.encoder.offset;
+                                // SAFETY: `avx2` and `fma` were verified above.
+                                let raw_sq = unsafe {
+                                    l2_sq_f32_u4_avx2(&self.rotated_query, nibble_bytes, step, base)
+                                };
+                                if raw_sq <= raw_sq_threshold {
+                                    let dist = (raw_sq * self.inv_n).max(0.0).sqrt();
+                                    if dist.is_finite() && dist < threshold {
+                                        threshold = on_hit(local_id, dist);
+                                        raw_sq_threshold =
+                                            raw_sq_threshold_for(threshold, self.inv_n);
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                    }
+                }
+            } else if is_cosine && use_avx2 {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    let count = n.min(code_len);
+                    let rq = &self.rotated_query[..count];
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        // SAFETY: `avx2` and `fma` were verified above.
+                        let (dot, v_norm_sq) = unsafe {
+                            dot_norm_f32_u8_avx2(
+                                rq,
+                                &code[..count],
+                                self.inv_scale,
+                                self.encoder.offset,
+                            )
+                        };
+                        let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                        let dist = if denom > 1e-12 {
+                            (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                        } else {
+                            1.0
+                        };
+                        if dist.is_finite() && dist < threshold {
+                            threshold = on_hit(local_id, dist);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            // Portable scalar fallback for non-AVX2/non-aarch64 hosts.
+            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                let dist = self.distance(code);
+                if dist < threshold {
+                    threshold = on_hit(local_id, dist);
+                }
+            }
         }
     }
 }
@@ -750,5 +1818,337 @@ mod tests {
             opp_dist > 1.8,
             "opposite cosine distance should be ~2.0, got {opp_dist}"
         );
+    }
+
+    #[test]
+    fn test_scan_l2_u8_codes_matches_distance() {
+        for dim in [12usize, 16, 128] {
+            let mut rng_state: u64 = 12345 + dim as u64;
+            let mut rand_f32 = || {
+                rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                ((rng_state >> 33) as f32 / (1u32 << 31) as f32) * 10.0 - 5.0
+            };
+            let vectors: Vec<Vec<f32>> = (0..64)
+                .map(|_| (0..dim).map(|_| rand_f32()).collect())
+                .collect();
+            let enc = BenoQuantEncoder::train(&vectors, 8, VectorMetric::L2).unwrap();
+            let encoded: Vec<Vec<u8>> = vectors.iter().map(|v| enc.encode(v)).collect();
+            let code_len = encoded[0].len();
+            let mut flat = Vec::with_capacity(encoded.len() * code_len);
+            for c in &encoded {
+                flat.extend_from_slice(c);
+            }
+
+            let q = vectors[13].clone();
+            let prep = enc.prepare_query(&q, VectorMetric::L2);
+            assert!(prep.is_fast_l2_u8());
+
+            let mut scanned = Vec::new();
+            prep.scan_l2_u8_codes(&flat, code_len, f32::INFINITY, |id, dist| {
+                scanned.push((id, dist));
+                f32::INFINITY
+            });
+            assert_eq!(scanned.len(), vectors.len());
+            for (id, dist) in scanned {
+                let ref_dist = prep.distance(&encoded[id]);
+                assert!(
+                    (dist - ref_dist).abs() < 1e-3,
+                    "dim={dim} id={id}: batch scan {dist} != ref {ref_dist}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_scan_codes_tq4_and_cosine_match_distance() {
+        for dim in [12usize, 16, 128] {
+            let mut rng_state: u64 = 54321 + dim as u64;
+            let mut rand_f32 = || {
+                rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                ((rng_state >> 33) as f32 / (1u32 << 31) as f32) * 10.0 - 5.0
+            };
+            let vectors: Vec<Vec<f32>> = (0..48)
+                .map(|_| (0..dim).map(|_| rand_f32()).collect())
+                .collect();
+            let q = vectors[9].clone();
+
+            for (bits, metric) in [
+                (4usize, VectorMetric::L2),
+                (4usize, VectorMetric::Cosine),
+                (8usize, VectorMetric::Cosine),
+            ] {
+                let enc = BenoQuantEncoder::train(&vectors, bits, metric).unwrap();
+                let encoded: Vec<Vec<u8>> = vectors.iter().map(|v| enc.encode(v)).collect();
+                let code_len = encoded[0].len();
+                let mut flat = Vec::with_capacity(encoded.len() * code_len);
+                for c in &encoded {
+                    flat.extend_from_slice(c);
+                }
+
+                let prep = enc.prepare_query(&q, metric);
+                let mut scanned = Vec::new();
+                prep.scan_codes(&flat, code_len, f32::INFINITY, |id, dist| {
+                    scanned.push((id, dist));
+                    f32::INFINITY
+                });
+                assert_eq!(scanned.len(), vectors.len());
+                let n = prep.rotated_query.len();
+                let packed_len = n.div_ceil(2);
+                for (id, dist) in scanned {
+                    let code = &encoded[id];
+                    let ref_dist = prep.distance(code);
+                    // Independent scalar reference (never shares SIMD codegen with
+                    // `distance()` or `scan_codes()`).
+                    let scalar_ref = if bits == 4 {
+                        let (nb, alpha) = split_u4_code(code, packed_len, enc.dim);
+                        let step = alpha * prep.inv_scale;
+                        let base = alpha * enc.offset;
+                        if metric == VectorMetric::Cosine {
+                            let (mut dot, mut v2, mut idx) = (0.0f32, 0.0f32, 0usize);
+                            for &b in nb {
+                                if idx >= n {
+                                    break;
+                                }
+                                let lo = ((b & 0x0F) as f32) * step + base;
+                                dot += prep.rotated_query[idx] * lo;
+                                v2 += lo * lo;
+                                idx += 1;
+                                if idx < n {
+                                    let hi = (((b >> 4) & 0x0F) as f32) * step + base;
+                                    dot += prep.rotated_query[idx] * hi;
+                                    v2 += hi * hi;
+                                    idx += 1;
+                                }
+                            }
+                            let denom = (prep.q_norm_sq * v2).sqrt();
+                            if denom > 1e-12 {
+                                (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                            } else {
+                                1.0
+                            }
+                        } else {
+                            let (mut sq, mut idx) = (0.0f32, 0usize);
+                            for &b in nb {
+                                if idx >= n {
+                                    break;
+                                }
+                                let lo = ((b & 0x0F) as f32) * step + base;
+                                let d0 = prep.rotated_query[idx] - lo;
+                                sq += d0 * d0;
+                                idx += 1;
+                                if idx < n {
+                                    let hi = (((b >> 4) & 0x0F) as f32) * step + base;
+                                    let d1 = prep.rotated_query[idx] - hi;
+                                    sq += d1 * d1;
+                                    idx += 1;
+                                }
+                            }
+                            (sq * prep.inv_n).max(0.0).sqrt()
+                        }
+                    } else {
+                        let count = n.min(code.len());
+                        let (mut dot, mut v2) = (0.0f32, 0.0f32);
+                        for (&rq, &e) in prep.rotated_query[..count].iter().zip(&code[..count]) {
+                            let dec = (e as f32) * prep.inv_scale + enc.offset;
+                            dot += rq * dec;
+                            v2 += dec * dec;
+                        }
+                        let denom = (prep.q_norm_sq * v2).sqrt();
+                        if denom > 1e-12 {
+                            (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                        } else {
+                            1.0
+                        }
+                    };
+                    assert!(
+                        (dist - ref_dist).abs() < 1e-3 && (dist - scalar_ref).abs() < 1e-3,
+                        "bits={bits} metric={metric:?} dim={dim} id={id}: scan={dist}, dist={ref_dist}, scalar={scalar_ref}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Every width must agree with the scalar reference: the 4-accumulator main
+    /// loop (32 dims), the single 8-lane step, and the scalar tail are three
+    /// separate code paths, and an off-by-one in any of them silently changes
+    /// distances without changing the candidate count.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_l2_sq_u8_kernel_covers_every_width() {
+        if !(std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma")) {
+            return;
+        }
+        let mut state: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let q: Vec<f32> = (0..72).map(|_| (next() % 256) as f32 - 128.0).collect();
+        let c: Vec<u8> = (0..72).map(|_| (next() % 256) as u8).collect();
+
+        for len in 1..=72usize {
+            let expected = l2_sq_f32_u8_scalar(&q[..len], &c[..len]);
+            // SAFETY: `avx2` and `fma` were detected above.
+            let actual = unsafe { l2_sq_f32_u8_avx2(&q[..len], &c[..len]) };
+            let tol = expected.abs() * 1e-5 + 1e-2;
+            assert!(
+                (actual - expected).abs() <= tol,
+                "len={len}: avx2 {actual} != scalar {expected}"
+            );
+        }
+    }
+
+    /// The pre-change u8 L2 kernel, kept as the baseline arm of the timing
+    /// diagnostic: two FMA accumulators, 16 dimensions per iteration, and a
+    /// store-then-scalar-sum horizontal reduce through the stack.
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "avx2", enable = "fma")]
+    unsafe fn l2_sq_f32_u8_avx2_two_chain(q_scaled: &[f32], code: &[u8]) -> f32 {
+        use std::arch::x86_64::*;
+        let len = q_scaled.len().min(code.len());
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut i = 0usize;
+        let q_ptr = q_scaled.as_ptr();
+        let c_ptr = code.as_ptr();
+
+        while i + 16 <= len {
+            let c0 = _mm_loadl_epi64(c_ptr.add(i) as *const __m128i);
+            let c0_f32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c0));
+            let d0 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i)), c0_f32);
+            sum0 = _mm256_fmadd_ps(d0, d0, sum0);
+
+            let c1 = _mm_loadl_epi64(c_ptr.add(i + 8) as *const __m128i);
+            let c1_f32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c1));
+            let d1 = _mm256_sub_ps(_mm256_loadu_ps(q_ptr.add(i + 8)), c1_f32);
+            sum1 = _mm256_fmadd_ps(d1, d1, sum1);
+
+            i += 16;
+        }
+
+        let sum = _mm256_add_ps(sum0, sum1);
+        let mut lanes = [0.0f32; 8];
+        _mm256_storeu_ps(lanes.as_mut_ptr(), sum);
+        let mut total: f32 = lanes.iter().sum();
+
+        while i < len {
+            let d = *q_ptr.add(i) - (*c_ptr.add(i) as f32);
+            total += d * d;
+            i += 1;
+        }
+        total
+    }
+
+    /// Timing diagnostic for the u8 L2 scan kernel. All arms evaluate the same
+    /// kernel over the same codes with the same squared-space prune, so the
+    /// differences isolate two separate questions:
+    ///
+    /// * two-chain vs four-chain = what the accumulator unroll bought.
+    /// * loop-inside vs four-chain = what moving the candidate loop across the
+    ///   `#[target_feature]` boundary bought (inlining the kernel into it).
+    ///
+    /// ```text
+    /// cargo test --release --lib bench_scan_l2_u8_codes -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "timing diagnostic"]
+    #[cfg(target_arch = "x86_64")]
+    fn bench_scan_l2_u8_codes_throughput() {
+        use std::time::Instant;
+        if !(std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma")) {
+            println!("no avx2+fma; skipping");
+            return;
+        }
+        // Below any achievable distance, so the squared-space compare prunes
+        // every candidate and the measurement isolates the kernel itself.
+        const PRUNE_BELOW_EVERYTHING: f32 = 1e-6;
+        let candidates = 20_000usize;
+        let reps = 20usize;
+
+        for dim in [128usize, 384, 768, 1024] {
+            let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+            let mut next = || {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state
+            };
+            let q: Vec<f32> = (0..dim).map(|_| (next() % 256) as f32 - 128.0).collect();
+            let codes: Vec<u8> = (0..dim * candidates)
+                .map(|_| (next() % 256) as u8)
+                .collect();
+
+            // Arm A: loop inside the feature-tagged callee, kernel inlined.
+            let mut sink_a = 0.0f32;
+            let start = Instant::now();
+            for _ in 0..reps {
+                // SAFETY: `avx2` and `fma` were detected above.
+                unsafe {
+                    scan_l2_u8_codes_avx2(
+                        &q,
+                        &codes,
+                        dim,
+                        dim,
+                        1.0,
+                        PRUNE_BELOW_EVERYTHING,
+                        &mut |_, d| {
+                            sink_a += d;
+                            d
+                        },
+                    );
+                }
+            }
+            let inlined = start.elapsed().as_secs_f64();
+
+            // Arm B: the pre-change shape - loop outside, kernel called once per
+            // candidate. The feature mismatch prevents inlining here, exactly as
+            // it did before.
+            let mut sink_b = 0.0f32;
+            let raw_sq_threshold = raw_sq_threshold_for(PRUNE_BELOW_EVERYTHING, 1.0);
+            let start = Instant::now();
+            for _ in 0..reps {
+                for code in codes.chunks_exact(dim) {
+                    // SAFETY: `avx2` and `fma` were detected above.
+                    let raw_sq = unsafe { l2_sq_f32_u8_avx2(&q, code) };
+                    if raw_sq <= raw_sq_threshold {
+                        sink_b += raw_sq;
+                    }
+                }
+            }
+            let called = start.elapsed().as_secs_f64();
+
+            // Arm C: the pre-change kernel - two FMA chains, 16 dims per
+            // iteration, horizontal sum through the stack.
+            let mut sink_c = 0.0f32;
+            let start = Instant::now();
+            for _ in 0..reps {
+                for code in codes.chunks_exact(dim) {
+                    // SAFETY: `avx2` and `fma` were detected above.
+                    let raw_sq = unsafe { l2_sq_f32_u8_avx2_two_chain(&q, code) };
+                    if raw_sq <= raw_sq_threshold {
+                        sink_c += raw_sq;
+                    }
+                }
+            }
+            let two_chain = start.elapsed().as_secs_f64();
+
+            let per_vector = (candidates * reps) as f64;
+            let dims = (dim as f64) * per_vector;
+            println!(
+                "dim={dim:4}  two-chain {:7.2} ns/vec  four-chain {:7.2} ns/vec  x{:.2}  |  loop-inside {:7.2} ns/vec  x{:.2}  ({:.2} dims/ns)",
+                two_chain / per_vector * 1e9,
+                called / per_vector * 1e9,
+                two_chain / called,
+                inlined / per_vector * 1e9,
+                called / inlined,
+                dims / (called * 1e9),
+            );
+            assert_eq!(sink_a, 0.0);
+            assert_eq!(sink_b, 0.0);
+            assert_eq!(sink_c, 0.0);
+        }
     }
 }

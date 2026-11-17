@@ -340,26 +340,68 @@ pub struct PreparedPqQuery {
 
 impl PreparedPqQuery {
     /// Evaluate calibrated asymmetric distance against a stored PQ code.
-    /// Guaranteed finite and non-negative.
+    /// Uses a 4-way unrolled zero-clamp fast path when `k == 256` so per-segment
+    /// HNSW traversal saturates L1 cache bandwidth. Guaranteed finite and non-negative.
     #[inline]
     pub fn distance(&self, encoded: &[u8]) -> f32 {
         if self.m == 0 || self.k == 0 {
             return 0.0;
         }
         let n_sub = self.m.min(encoded.len());
+        let fast_256 = self.k == 256 && self.lut.len() >= n_sub.saturating_mul(256);
+        let lut = self.lut.as_slice();
         let dist = match self.metric {
             crate::core::index::VectorMetric::Cosine
             | crate::core::index::VectorMetric::InnerProduct => {
-                let mut dot = 0.0f32;
-                let mut v_norm_sq = 0.0f32;
-                for (i, &code) in encoded[..n_sub].iter().enumerate() {
-                    let c = (code as usize).min(self.k - 1);
-                    let idx = i * self.k + c;
-                    if let (Some(&d), Some(&v2)) = (self.lut.get(idx), self.v_norm_lut.get(idx)) {
-                        dot += d;
-                        v_norm_sq += v2;
+                let fast_cos_256 = fast_256 && self.v_norm_lut.len() >= n_sub.saturating_mul(256);
+                let v_lut = self.v_norm_lut.as_slice();
+                let (dot, v_norm_sq) = if fast_cos_256 {
+                    let mut d0 = 0.0f32;
+                    let mut d1 = 0.0f32;
+                    let mut d2 = 0.0f32;
+                    let mut d3 = 0.0f32;
+                    let mut v0 = 0.0f32;
+                    let mut v1 = 0.0f32;
+                    let mut v2 = 0.0f32;
+                    let mut v3 = 0.0f32;
+                    let mut i = 0usize;
+                    while i + 4 <= n_sub {
+                        let i0 = (i << 8) + encoded[i] as usize;
+                        let i1 = ((i + 1) << 8) + encoded[i + 1] as usize;
+                        let i2 = ((i + 2) << 8) + encoded[i + 2] as usize;
+                        let i3 = ((i + 3) << 8) + encoded[i + 3] as usize;
+                        d0 += lut[i0];
+                        d1 += lut[i1];
+                        d2 += lut[i2];
+                        d3 += lut[i3];
+                        v0 += v_lut[i0];
+                        v1 += v_lut[i1];
+                        v2 += v_lut[i2];
+                        v3 += v_lut[i3];
+                        i += 4;
                     }
-                }
+                    let mut dot = (d0 + d1) + (d2 + d3);
+                    let mut v_sq = (v0 + v1) + (v2 + v3);
+                    while i < n_sub {
+                        let idx = (i << 8) + encoded[i] as usize;
+                        dot += lut[idx];
+                        v_sq += v_lut[idx];
+                        i += 1;
+                    }
+                    (dot, v_sq)
+                } else {
+                    let mut dot = 0.0f32;
+                    let mut v_norm_sq = 0.0f32;
+                    for (i, &code) in encoded[..n_sub].iter().enumerate() {
+                        let c = (code as usize).min(self.k - 1);
+                        let idx = i * self.k + c;
+                        if let (Some(&d), Some(&v2)) = (lut.get(idx), v_lut.get(idx)) {
+                            dot += d;
+                            v_norm_sq += v2;
+                        }
+                    }
+                    (dot, v_norm_sq)
+                };
                 let denom = (self.q_norm_sq * v_norm_sq).sqrt();
                 if denom > 1e-12 {
                     (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
@@ -368,23 +410,66 @@ impl PreparedPqQuery {
                 }
             }
             crate::core::index::VectorMetric::L1 => {
-                let mut total = 0.0f32;
-                for (i, &code) in encoded[..n_sub].iter().enumerate() {
-                    let c = (code as usize).min(self.k - 1);
-                    if let Some(&val) = self.lut.get(i * self.k + c) {
-                        total += val;
+                if fast_256 {
+                    let mut s0 = 0.0f32;
+                    let mut s1 = 0.0f32;
+                    let mut s2 = 0.0f32;
+                    let mut s3 = 0.0f32;
+                    let mut i = 0usize;
+                    while i + 4 <= n_sub {
+                        s0 += lut[(i << 8) + encoded[i] as usize];
+                        s1 += lut[((i + 1) << 8) + encoded[i + 1] as usize];
+                        s2 += lut[((i + 2) << 8) + encoded[i + 2] as usize];
+                        s3 += lut[((i + 3) << 8) + encoded[i + 3] as usize];
+                        i += 4;
                     }
+                    let mut total = (s0 + s1) + (s2 + s3);
+                    while i < n_sub {
+                        total += lut[(i << 8) + encoded[i] as usize];
+                        i += 1;
+                    }
+                    total
+                } else {
+                    let mut total = 0.0f32;
+                    for (i, &code) in encoded[..n_sub].iter().enumerate() {
+                        let c = (code as usize).min(self.k - 1);
+                        if let Some(&val) = lut.get(i * self.k + c) {
+                            total += val;
+                        }
+                    }
+                    total
                 }
-                total
             }
             _ => {
-                let mut dist_sq = 0.0f32;
-                for (i, &code) in encoded[..n_sub].iter().enumerate() {
-                    let c = (code as usize).min(self.k - 1);
-                    if let Some(&val) = self.lut.get(i * self.k + c) {
-                        dist_sq += val;
+                let dist_sq = if fast_256 {
+                    let mut s0 = 0.0f32;
+                    let mut s1 = 0.0f32;
+                    let mut s2 = 0.0f32;
+                    let mut s3 = 0.0f32;
+                    let mut i = 0usize;
+                    while i + 4 <= n_sub {
+                        s0 += lut[(i << 8) + encoded[i] as usize];
+                        s1 += lut[((i + 1) << 8) + encoded[i + 1] as usize];
+                        s2 += lut[((i + 2) << 8) + encoded[i + 2] as usize];
+                        s3 += lut[((i + 3) << 8) + encoded[i + 3] as usize];
+                        i += 4;
                     }
-                }
+                    let mut total = (s0 + s1) + (s2 + s3);
+                    while i < n_sub {
+                        total += lut[(i << 8) + encoded[i] as usize];
+                        i += 1;
+                    }
+                    total
+                } else {
+                    let mut dist_sq = 0.0f32;
+                    for (i, &code) in encoded[..n_sub].iter().enumerate() {
+                        let c = (code as usize).min(self.k - 1);
+                        if let Some(&val) = lut.get(i * self.k + c) {
+                            dist_sq += val;
+                        }
+                    }
+                    dist_sq
+                };
                 dist_sq.max(0.0).sqrt()
             }
         };
@@ -393,6 +478,178 @@ impl PreparedPqQuery {
             dist.max(0.0)
         } else {
             f32::MAX
+        }
+    }
+
+    /// High-throughput 4-way unrolled ADC lookup scan over contiguous PQ codes
+    /// of stride `code_len`. Uses squared-space early threshold pruning for L2
+    /// and a zero-clamp `k == 256` fast path to saturate L1 cache bandwidth.
+    pub fn scan_codes<F>(
+        &self,
+        codes: &[u8],
+        code_len: usize,
+        initial_threshold: f32,
+        mut on_hit: F,
+    ) where
+        F: FnMut(usize, f32) -> f32,
+    {
+        if code_len == 0 || self.m == 0 || self.k == 0 {
+            return;
+        }
+        let n_sub = self.m.min(code_len);
+        let fast_256 = self.k == 256 && self.lut.len() >= n_sub.saturating_mul(256);
+        let mut threshold = initial_threshold;
+
+        match self.metric {
+            crate::core::index::VectorMetric::Cosine
+            | crate::core::index::VectorMetric::InnerProduct => {
+                let fast_cos_256 = fast_256 && self.v_norm_lut.len() >= n_sub.saturating_mul(256);
+                let lut = self.lut.as_slice();
+                let v_lut = self.v_norm_lut.as_slice();
+                for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                    let (dot, v_norm_sq) = if fast_cos_256 {
+                        let mut d0 = 0.0f32;
+                        let mut d1 = 0.0f32;
+                        let mut d2 = 0.0f32;
+                        let mut d3 = 0.0f32;
+                        let mut v0 = 0.0f32;
+                        let mut v1 = 0.0f32;
+                        let mut v2 = 0.0f32;
+                        let mut v3 = 0.0f32;
+                        let mut i = 0usize;
+                        while i + 4 <= n_sub {
+                            let i0 = (i << 8) + code[i] as usize;
+                            let i1 = ((i + 1) << 8) + code[i + 1] as usize;
+                            let i2 = ((i + 2) << 8) + code[i + 2] as usize;
+                            let i3 = ((i + 3) << 8) + code[i + 3] as usize;
+                            d0 += lut[i0];
+                            d1 += lut[i1];
+                            d2 += lut[i2];
+                            d3 += lut[i3];
+                            v0 += v_lut[i0];
+                            v1 += v_lut[i1];
+                            v2 += v_lut[i2];
+                            v3 += v_lut[i3];
+                            i += 4;
+                        }
+                        let mut dot = (d0 + d1) + (d2 + d3);
+                        let mut v_sq = (v0 + v1) + (v2 + v3);
+                        while i < n_sub {
+                            let idx = (i << 8) + code[i] as usize;
+                            dot += lut[idx];
+                            v_sq += v_lut[idx];
+                            i += 1;
+                        }
+                        (dot, v_sq)
+                    } else {
+                        let mut dot = 0.0f32;
+                        let mut v_sq = 0.0f32;
+                        for (i, &c) in code[..n_sub].iter().enumerate() {
+                            let idx = i * self.k + (c as usize).min(self.k - 1);
+                            if let (Some(&d), Some(&v2)) = (lut.get(idx), v_lut.get(idx)) {
+                                dot += d;
+                                v_sq += v2;
+                            }
+                        }
+                        (dot, v_sq)
+                    };
+                    let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                    let dist = if denom > 1e-12 {
+                        (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                    } else {
+                        1.0
+                    };
+                    if dist.is_finite() && dist < threshold {
+                        threshold = on_hit(local_id, dist);
+                    }
+                }
+            }
+            crate::core::index::VectorMetric::L1 => {
+                let lut = self.lut.as_slice();
+                for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                    let dist = if fast_256 {
+                        let mut s0 = 0.0f32;
+                        let mut s1 = 0.0f32;
+                        let mut s2 = 0.0f32;
+                        let mut s3 = 0.0f32;
+                        let mut i = 0usize;
+                        while i + 4 <= n_sub {
+                            s0 += lut[(i << 8) + code[i] as usize];
+                            s1 += lut[((i + 1) << 8) + code[i + 1] as usize];
+                            s2 += lut[((i + 2) << 8) + code[i + 2] as usize];
+                            s3 += lut[((i + 3) << 8) + code[i + 3] as usize];
+                            i += 4;
+                        }
+                        let mut total = (s0 + s1) + (s2 + s3);
+                        while i < n_sub {
+                            total += lut[(i << 8) + code[i] as usize];
+                            i += 1;
+                        }
+                        total
+                    } else {
+                        let mut total = 0.0f32;
+                        for (i, &c) in code[..n_sub].iter().enumerate() {
+                            let idx = i * self.k + (c as usize).min(self.k - 1);
+                            if let Some(&val) = lut.get(idx) {
+                                total += val;
+                            }
+                        }
+                        total
+                    };
+                    if dist.is_finite() && dist < threshold {
+                        threshold = on_hit(local_id, dist.max(0.0));
+                    }
+                }
+            }
+            _ => {
+                let lut = self.lut.as_slice();
+                let to_sq_thresh = |t: f32| -> f32 {
+                    if !t.is_finite() {
+                        f32::INFINITY
+                    } else {
+                        t * t * (1.0 + 1e-4) + 1e-6
+                    }
+                };
+                let mut sq_thresh = to_sq_thresh(threshold);
+                for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                    let dist_sq = if fast_256 {
+                        let mut s0 = 0.0f32;
+                        let mut s1 = 0.0f32;
+                        let mut s2 = 0.0f32;
+                        let mut s3 = 0.0f32;
+                        let mut i = 0usize;
+                        while i + 4 <= n_sub {
+                            s0 += lut[(i << 8) + code[i] as usize];
+                            s1 += lut[((i + 1) << 8) + code[i + 1] as usize];
+                            s2 += lut[((i + 2) << 8) + code[i + 2] as usize];
+                            s3 += lut[((i + 3) << 8) + code[i + 3] as usize];
+                            i += 4;
+                        }
+                        let mut total = (s0 + s1) + (s2 + s3);
+                        while i < n_sub {
+                            total += lut[(i << 8) + code[i] as usize];
+                            i += 1;
+                        }
+                        total
+                    } else {
+                        let mut total = 0.0f32;
+                        for (i, &c) in code[..n_sub].iter().enumerate() {
+                            let idx = i * self.k + (c as usize).min(self.k - 1);
+                            if let Some(&val) = lut.get(idx) {
+                                total += val;
+                            }
+                        }
+                        total
+                    };
+                    if dist_sq <= sq_thresh {
+                        let dist = dist_sq.max(0.0).sqrt();
+                        if dist.is_finite() && dist < threshold {
+                            threshold = on_hit(local_id, dist);
+                            sq_thresh = to_sq_thresh(threshold);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -564,5 +821,44 @@ mod tests {
         let p_cos = pq.prepare_query(&vectors[5], VectorMetric::Cosine);
         let self_cos = p_cos.distance(&pq.encode(&vectors[5]));
         assert!((0.0..0.25).contains(&self_cos), "got {self_cos}");
+    }
+
+    #[test]
+    fn test_pq_scan_codes_matches_distance() {
+        let dim = 32;
+        let vectors: Vec<Vec<f32>> = (0..300)
+            .map(|i| {
+                (0..dim)
+                    .map(|d| ((i * 17 + d * 31) % 97) as f32 * 0.1 - 4.0)
+                    .collect()
+            })
+            .collect();
+        for (m, k) in [(8usize, 256usize), (4usize, 16usize)] {
+            let pq = PqEncoder::train(&vectors, PqConfig { m, k, dim }).unwrap();
+            let encoded: Vec<Vec<u8>> = vectors.iter().map(|v| pq.encode(v)).collect();
+            let code_len = encoded[0].len();
+            let mut flat = Vec::with_capacity(encoded.len() * code_len);
+            for c in &encoded {
+                flat.extend_from_slice(c);
+            }
+            let q = vectors[19].clone();
+
+            for metric in [VectorMetric::L2, VectorMetric::Cosine, VectorMetric::L1] {
+                let prep = pq.prepare_query(&q, metric);
+                let mut scanned = Vec::new();
+                prep.scan_codes(&flat, code_len, f32::INFINITY, |id, dist| {
+                    scanned.push((id, dist));
+                    f32::INFINITY
+                });
+                assert_eq!(scanned.len(), vectors.len());
+                for (id, dist) in scanned {
+                    let ref_dist = prep.distance(&encoded[id]);
+                    assert!(
+                        (dist - ref_dist).abs() < 1e-3,
+                        "m={m} k={k} metric={metric:?} id={id}: scan {dist} != ref {ref_dist}"
+                    );
+                }
+            }
+        }
     }
 }

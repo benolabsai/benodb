@@ -70,21 +70,23 @@ For multi-million and 100M+ vector tables, per-segment vector sidecars create qu
 
 ```text
                         Table-Level Cluster Index (v42)
+                        (Locality-Ordered Centroids 0..K-1)
                                       │
        ┌──────────────────────────────┼──────────────────────────────┐
        │                              │                              │
 Shard 0000 (≤512 MiB)          Shard 0001 (≤512 MiB)          Shard 0002 (≤512 MiB)
 Clusters [0 .. K0]             Clusters [K0+1 .. K1]          Clusters [K1+1 .. K2]
-  - HNSW Graphs (IPC)            - HNSW Graphs (IPC)            - HNSW Graphs (IPC)
-  - (seg_id, row_id) Parquet     - (seg_id, row_id) Parquet     - (seg_id, row_id) Parquet
+  1. cluster-codes (BSCD v1)     1. cluster-codes (BSCD v1)     1. cluster-codes (BSCD v1)
+  2. (seg_id, row_id) Parquet    2. (seg_id, row_id) Parquet    2. (seg_id, row_id) Parquet
+  3. HNSW Graphs (IPC)           3. HNSW Graphs (IPC)           3. HNSW Graphs (IPC)
 ```
 
 ### Architectural Guarantees:
-1.  **Decoupled Overlay Invariant**: Cluster nodes carry `(segment_idx, row_id)` tuples stored in Arrow Parquet metadata tables. The underlying Parquet data files are read once and **never rewritten or compacted**, completely eliminating fragile ETL pipeline failures and maintaining standard Apache Iceberg read compatibility.
-2.  **Sequential 512 MiB Rolling Shards**: Shards (`cluster_{col}_{version}_shard_{i}.puffin`) roll strictly at the advisory target size ($\le 512\text{ MiB}$), complying with cloud object store single-PUT requirements (avoiding AWS S3 5 GB multi-part upload penalties and latency).
-3.  **Monotonic Cluster Ordering & Disjoint Ranges**: Clusters are assigned in strictly monotonic order ($0, 1, 2, \dots, K-1$) and packed into non-overlapping cluster ranges (`min_cluster..=max_cluster`), ensuring $O(1)$ shard lookup and high spatial locality during top-$N$ Voronoi centroid routing.
-4.  **Zero-Copy Out-of-Core Memory Mapping (`memmap2`)**: Sealed Puffin shards are wrapped in zero-copy memory maps via `Bytes::from_owner(MmapOwner(Arc::new(mmap)))`. Builds stream directly to disk via `BufWriter<File>`, maintaining flat memory consumption ($\sim 2.2 - 3.5\text{ GiB}$) inside strict $16\text{ GiB}$ zero-swap container cgroups without OOM events.
-5.  **Multi-Threaded Rayon Compaction**: Centroid assignment (Pass 2) and intra-bucket cluster graph construction (Pass 3) execute across all available CPU cores using Rayon work-stealing parallel iterators, achieving $300\% - 600\%$ CPU saturation and a $3.5\times$ compaction speedup.
+1.  **Decoupled Overlay Invariant**: Cluster nodes carry `(segment_idx, row_id)` tuples stored in Arrow Parquet metadata tables (`org.apache.iceberg.vector.cluster-node-meta`). The underlying Parquet data files are read once and **never rewritten or compacted**, preserving standard Apache Iceberg read compatibility.
+2.  **Codes-First Split Blob Layout & Codes-Only Query Path**: Each shard stages and seals blobs in contiguous **codes-first** order (`org.apache.iceberg.vector.cluster-codes` → `cluster-node-meta` → `hnsw-graph`). At query time, `ClusterIndex` scans the compact 16-byte-aligned flat codes blob directly (skipping HNSW graph deserialization and I/O entirely) and hydrates `node_meta` **only** for the small set of winning clusters that contribute to top-$k$. Legacy shards written without `cluster-codes` blobs fall back transparently to HNSW graph traversal; set `BSDB_CLUSTER_SEARCH_MODE=graph` to force graph traversal for A/B benchmarking.
+3.  **Locality-Ordered Centroids & Sequential 512 MiB Rolling Shards**: Global centroids are ordered before assignment by deterministic recursive furthest-pair projection bisection with Hilbert-style seam orientation, then packed into rolling $\le 512\text{ MiB}$ Puffin shards (`cluster_{col}_{version}_shard_{i}.puffin`) with strictly monotonic disjoint cluster ranges (`min_cluster..=max_cluster`). Co-probed centroids land in adjacent offsets within the same shard, enabling single-GET S3 coalescing and respecting cloud single-PUT limits.
+4.  **S3 Pipelining, Singleflight Coalescing & Unified Cache Budget**: On local storage, shards are memory-mapped zero-copy (`memmap2`) with chunked `posix_fadvise(WILLNEED)` pipelining over codes spans only. On remote object storage (`s3://`, `gs://`, `az://`), queries resolve footers and fetch touched shards concurrently (`get_range` coalesced across adjacent codes blobs), pipeline batches on Tokio while scanning on CPU, and deduplicate concurrent misses via per-key `SingleFlight` gates under a single unified byte-weighed `moka` cache (`BSDB_CLUSTER_CACHE_KIB` or `BSDB_CACHE_GB / 4`).
+5.  **Cross-Architecture SIMD Parity & Multi-Threaded Rayon Compaction**: Centroid assignment (Pass 2) and intra-bucket cluster construction (Pass 3) run across CPU cores via Rayon with single-pass quantization and disk-staged shard sealing to bound build memory inside 16 GiB containers. Batch code scanning dispatches to hoisted **AVX2+FMA** kernels on `x86_64` (Intel/AMD) and native **ARM64 NEON** kernels on `aarch64` (Apple Silicon M-series / AWS Graviton / Azure Cobalt) across TQ8, TQ4 (16-nibble unpacking), SQ8, Cosine/IP, L1, and F32, plus 4-way unrolled L1-LUT accumulation for PQ.
 
 ---
 

@@ -131,11 +131,21 @@ impl SqEncoder {
         }
 
         let q_norm_sq = query.iter().map(|x| x * x).sum::<f32>();
+        let q_shifted: Vec<f32> = query
+            .iter()
+            .zip(self.offsets.iter())
+            .map(|(&q, &off)| q - off)
+            .collect();
+        #[cfg(target_arch = "x86_64")]
+        let use_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
         PreparedSqQuery {
             encoder: self,
             query,
+            q_shifted,
             q_norm_sq,
             metric,
+            #[cfg(target_arch = "x86_64")]
+            use_avx2,
         }
     }
 }
@@ -146,13 +156,303 @@ impl SqEncoder {
 pub struct PreparedSqQuery<'a> {
     encoder: &'a SqEncoder,
     query: Vec<f32>,
+    /// Precomputed `query[j] - offsets[j]` so L2/L1 inner loops compute
+    /// `q_shifted[j] - code[j] * inv_scales[j]` in one FMA without loading `offsets`.
+    q_shifted: Vec<f32>,
     q_norm_sq: f32,
     metric: VectorMetric,
+    #[cfg(target_arch = "x86_64")]
+    use_avx2: bool,
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn hsum256_ps(v: std::arch::x86_64::__m256) -> f32 {
+    use std::arch::x86_64::*;
+    let mut lanes = [0.0f32; 8];
+    _mm256_storeu_ps(lanes.as_mut_ptr(), v);
+    lanes.iter().sum()
+}
+
+/// AVX2+FMA squared L2 distance over per-dimension SQ8 codes using precomputed
+/// `q_shifted = query - offsets`: `diff = q_shifted - code * inv_scales`.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sq8_l2_sq_avx2(q_shifted: &[f32], inv_scales: &[f32], code: &[u8]) -> f32 {
+    use std::arch::x86_64::*;
+    let n = q_shifted.len().min(inv_scales.len()).min(code.len());
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    let q_ptr = q_shifted.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 16 <= n {
+        let c0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let s0 = _mm256_loadu_ps(s_ptr.add(i));
+        let q0 = _mm256_loadu_ps(q_ptr.add(i));
+        let d0 = _mm256_fnmadd_ps(c0, s0, q0);
+        sum0 = _mm256_fmadd_ps(d0, d0, sum0);
+
+        let c1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 8) as *const __m128i
+        )));
+        let s1 = _mm256_loadu_ps(s_ptr.add(i + 8));
+        let q1 = _mm256_loadu_ps(q_ptr.add(i + 8));
+        let d1 = _mm256_fnmadd_ps(c1, s1, q1);
+        sum1 = _mm256_fmadd_ps(d1, d1, sum1);
+
+        i += 16;
+    }
+
+    let mut total = hsum256_ps(_mm256_add_ps(sum0, sum1));
+    while i < n {
+        let d = *q_ptr.add(i) - (*c_ptr.add(i) as f32) * *s_ptr.add(i);
+        total += d * d;
+        i += 1;
+    }
+    total
+}
+
+/// AVX2+FMA dot product and decoded squared norm over per-dimension SQ8 codes.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sq8_dot_norm_avx2(
+    query: &[f32],
+    inv_scales: &[f32],
+    offsets: &[f32],
+    code: &[u8],
+) -> (f32, f32) {
+    use std::arch::x86_64::*;
+    let n = query
+        .len()
+        .min(inv_scales.len())
+        .min(offsets.len())
+        .min(code.len());
+    let mut dot0 = _mm256_setzero_ps();
+    let mut dot1 = _mm256_setzero_ps();
+    let mut norm0 = _mm256_setzero_ps();
+    let mut norm1 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    let q_ptr = query.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let o_ptr = offsets.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 16 <= n {
+        let c0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let dec0 = _mm256_fmadd_ps(
+            c0,
+            _mm256_loadu_ps(s_ptr.add(i)),
+            _mm256_loadu_ps(o_ptr.add(i)),
+        );
+        let q0 = _mm256_loadu_ps(q_ptr.add(i));
+        dot0 = _mm256_fmadd_ps(q0, dec0, dot0);
+        norm0 = _mm256_fmadd_ps(dec0, dec0, norm0);
+
+        let c1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 8) as *const __m128i
+        )));
+        let dec1 = _mm256_fmadd_ps(
+            c1,
+            _mm256_loadu_ps(s_ptr.add(i + 8)),
+            _mm256_loadu_ps(o_ptr.add(i + 8)),
+        );
+        let q1 = _mm256_loadu_ps(q_ptr.add(i + 8));
+        dot1 = _mm256_fmadd_ps(q1, dec1, dot1);
+        norm1 = _mm256_fmadd_ps(dec1, dec1, norm1);
+
+        i += 16;
+    }
+
+    let mut dot = hsum256_ps(_mm256_add_ps(dot0, dot1));
+    let mut v_norm_sq = hsum256_ps(_mm256_add_ps(norm0, norm1));
+    while i < n {
+        let dec = (*c_ptr.add(i) as f32) * *s_ptr.add(i) + *o_ptr.add(i);
+        dot += *q_ptr.add(i) * dec;
+        v_norm_sq += dec * dec;
+        i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+/// AVX2+FMA L1 distance over per-dimension SQ8 codes using precomputed `q_shifted`.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sq8_l1_avx2(q_shifted: &[f32], inv_scales: &[f32], code: &[u8]) -> f32 {
+    use std::arch::x86_64::*;
+    let n = q_shifted.len().min(inv_scales.len()).min(code.len());
+    let sign_mask = _mm256_set1_ps(-0.0f32);
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    let q_ptr = q_shifted.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 16 <= n {
+        let c0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i) as *const __m128i
+        )));
+        let d0 = _mm256_fnmadd_ps(
+            c0,
+            _mm256_loadu_ps(s_ptr.add(i)),
+            _mm256_loadu_ps(q_ptr.add(i)),
+        );
+        sum0 = _mm256_add_ps(sum0, _mm256_andnot_ps(sign_mask, d0));
+
+        let c1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(
+            c_ptr.add(i + 8) as *const __m128i
+        )));
+        let d1 = _mm256_fnmadd_ps(
+            c1,
+            _mm256_loadu_ps(s_ptr.add(i + 8)),
+            _mm256_loadu_ps(q_ptr.add(i + 8)),
+        );
+        sum1 = _mm256_add_ps(sum1, _mm256_andnot_ps(sign_mask, d1));
+
+        i += 16;
+    }
+
+    let mut total = hsum256_ps(_mm256_add_ps(sum0, sum1));
+    while i < n {
+        total += (*q_ptr.add(i) - (*c_ptr.add(i) as f32) * *s_ptr.add(i)).abs();
+        i += 1;
+    }
+    total
+}
+
+/// ARM64 NEON squared L2 distance over per-dimension SQ8 codes using precomputed
+/// `q_shifted = query - offsets`: `diff = q_shifted - code * inv_scales`.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn sq8_l2_sq_neon(q_shifted: &[f32], inv_scales: &[f32], code: &[u8]) -> f32 {
+    use std::arch::aarch64::*;
+    let n = q_shifted.len().min(inv_scales.len()).min(code.len());
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    let q_ptr = q_shifted.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 8 <= n {
+        let c16 = vmovl_u8(vld1_u8(c_ptr.add(i)));
+        let c0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(c16)));
+        let d0 = vfmsq_f32(vld1q_f32(q_ptr.add(i)), c0, vld1q_f32(s_ptr.add(i)));
+        sum0 = vfmaq_f32(sum0, d0, d0);
+
+        let c1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(c16)));
+        let d1 = vfmsq_f32(vld1q_f32(q_ptr.add(i + 4)), c1, vld1q_f32(s_ptr.add(i + 4)));
+        sum1 = vfmaq_f32(sum1, d1, d1);
+
+        i += 8;
+    }
+
+    let mut total = vaddvq_f32(vaddq_f32(sum0, sum1));
+    while i < n {
+        let d = *q_ptr.add(i) - (*c_ptr.add(i) as f32) * *s_ptr.add(i);
+        total += d * d;
+        i += 1;
+    }
+    total
+}
+
+/// ARM64 NEON dot product and decoded squared norm over per-dimension SQ8 codes.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn sq8_dot_norm_neon(
+    query: &[f32],
+    inv_scales: &[f32],
+    offsets: &[f32],
+    code: &[u8],
+) -> (f32, f32) {
+    use std::arch::aarch64::*;
+    let n = query
+        .len()
+        .min(inv_scales.len())
+        .min(offsets.len())
+        .min(code.len());
+    let mut dot0 = vdupq_n_f32(0.0);
+    let mut dot1 = vdupq_n_f32(0.0);
+    let mut norm0 = vdupq_n_f32(0.0);
+    let mut norm1 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    let q_ptr = query.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let o_ptr = offsets.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 8 <= n {
+        let c16 = vmovl_u8(vld1_u8(c_ptr.add(i)));
+        let c0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(c16)));
+        let dec0 = vfmaq_f32(vld1q_f32(o_ptr.add(i)), c0, vld1q_f32(s_ptr.add(i)));
+        dot0 = vfmaq_f32(dot0, vld1q_f32(q_ptr.add(i)), dec0);
+        norm0 = vfmaq_f32(norm0, dec0, dec0);
+
+        let c1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(c16)));
+        let dec1 = vfmaq_f32(vld1q_f32(o_ptr.add(i + 4)), c1, vld1q_f32(s_ptr.add(i + 4)));
+        dot1 = vfmaq_f32(dot1, vld1q_f32(q_ptr.add(i + 4)), dec1);
+        norm1 = vfmaq_f32(norm1, dec1, dec1);
+
+        i += 8;
+    }
+
+    let mut dot = vaddvq_f32(vaddq_f32(dot0, dot1));
+    let mut v_norm_sq = vaddvq_f32(vaddq_f32(norm0, norm1));
+    while i < n {
+        let dec = (*c_ptr.add(i) as f32) * *s_ptr.add(i) + *o_ptr.add(i);
+        dot += *q_ptr.add(i) * dec;
+        v_norm_sq += dec * dec;
+        i += 1;
+    }
+    (dot, v_norm_sq)
+}
+
+/// ARM64 NEON L1 distance over per-dimension SQ8 codes using precomputed `q_shifted`.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn sq8_l1_neon(q_shifted: &[f32], inv_scales: &[f32], code: &[u8]) -> f32 {
+    use std::arch::aarch64::*;
+    let n = q_shifted.len().min(inv_scales.len()).min(code.len());
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    let q_ptr = q_shifted.as_ptr();
+    let s_ptr = inv_scales.as_ptr();
+    let c_ptr = code.as_ptr();
+
+    while i + 8 <= n {
+        let c16 = vmovl_u8(vld1_u8(c_ptr.add(i)));
+        let c0 = vcvtq_f32_u32(vmovl_u16(vget_low_u16(c16)));
+        let d0 = vfmsq_f32(vld1q_f32(q_ptr.add(i)), c0, vld1q_f32(s_ptr.add(i)));
+        sum0 = vaddq_f32(sum0, vabsq_f32(d0));
+
+        let c1 = vcvtq_f32_u32(vmovl_u16(vget_high_u16(c16)));
+        let d1 = vfmsq_f32(vld1q_f32(q_ptr.add(i + 4)), c1, vld1q_f32(s_ptr.add(i + 4)));
+        sum1 = vaddq_f32(sum1, vabsq_f32(d1));
+
+        i += 8;
+    }
+
+    let mut total = vaddvq_f32(vaddq_f32(sum0, sum1));
+    while i < n {
+        total += (*q_ptr.add(i) - (*c_ptr.add(i) as f32) * *s_ptr.add(i)).abs();
+        i += 1;
+    }
+    total
 }
 
 impl<'a> PreparedSqQuery<'a> {
     /// Evaluate calibrated asymmetric distance against a stored SQ8 code.
-    /// Guaranteed finite and non-negative.
+    /// Dispatches to AVX2+FMA on x86_64 and NEON on aarch64 so per-segment HNSW
+    /// traversal gets full SIMD parity. Guaranteed finite and non-negative.
     #[inline]
     pub fn distance(&self, encoded: &[u8]) -> f32 {
         let n = self
@@ -161,18 +461,62 @@ impl<'a> PreparedSqQuery<'a> {
             .min(self.query.len())
             .min(encoded.len())
             .min(self.encoder.offsets.len())
-            .min(self.encoder.inv_scales.len());
+            .min(self.encoder.inv_scales.len())
+            .min(self.q_shifted.len());
 
         let dist = match self.metric {
             VectorMetric::Cosine | VectorMetric::InnerProduct => {
-                let mut dot = 0.0f32;
-                let mut v_norm_sq = 0.0f32;
-                for j in 0..n {
-                    let decoded =
-                        (encoded[j] as f32 * self.encoder.inv_scales[j]) + self.encoder.offsets[j];
-                    dot += self.query[j] * decoded;
-                    v_norm_sq += decoded * decoded;
-                }
+                let (dot, v_norm_sq) = {
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        unsafe {
+                            sq8_dot_norm_neon(
+                                &self.query[..n],
+                                &self.encoder.inv_scales[..n],
+                                &self.encoder.offsets[..n],
+                                &encoded[..n],
+                            )
+                        }
+                    }
+                    #[cfg(not(target_arch = "aarch64"))]
+                    {
+                        #[cfg(target_arch = "x86_64")]
+                        if self.use_avx2 {
+                            // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                            unsafe {
+                                sq8_dot_norm_avx2(
+                                    &self.query[..n],
+                                    &self.encoder.inv_scales[..n],
+                                    &self.encoder.offsets[..n],
+                                    &encoded[..n],
+                                )
+                            }
+                        } else {
+                            let mut dot = 0.0f32;
+                            let mut v_norm_sq = 0.0f32;
+                            for j in 0..n {
+                                let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                    + self.encoder.offsets[j];
+                                dot += self.query[j] * decoded;
+                                v_norm_sq += decoded * decoded;
+                            }
+                            (dot, v_norm_sq)
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        {
+                            let mut dot = 0.0f32;
+                            let mut v_norm_sq = 0.0f32;
+                            for j in 0..n {
+                                let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                    + self.encoder.offsets[j];
+                                dot += self.query[j] * decoded;
+                                v_norm_sq += decoded * decoded;
+                            }
+                            (dot, v_norm_sq)
+                        }
+                    }
+                };
                 let denom = (self.q_norm_sq * v_norm_sq).sqrt();
                 if denom > 1e-12 {
                     (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
@@ -181,22 +525,98 @@ impl<'a> PreparedSqQuery<'a> {
                 }
             }
             VectorMetric::L1 => {
-                let mut dist = 0.0f32;
-                for j in 0..n {
-                    let decoded =
-                        (encoded[j] as f32 * self.encoder.inv_scales[j]) + self.encoder.offsets[j];
-                    dist += (self.query[j] - decoded).abs();
+                #[cfg(target_arch = "aarch64")]
+                {
+                    // SAFETY: NEON is mandatory baseline on aarch64.
+                    unsafe {
+                        sq8_l1_neon(
+                            &self.q_shifted[..n],
+                            &self.encoder.inv_scales[..n],
+                            &encoded[..n],
+                        )
+                    }
                 }
-                dist
+                #[cfg(not(target_arch = "aarch64"))]
+                {
+                    #[cfg(target_arch = "x86_64")]
+                    if self.use_avx2 {
+                        // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                        unsafe {
+                            sq8_l1_avx2(
+                                &self.q_shifted[..n],
+                                &self.encoder.inv_scales[..n],
+                                &encoded[..n],
+                            )
+                        }
+                    } else {
+                        let mut dist = 0.0f32;
+                        for j in 0..n {
+                            let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                + self.encoder.offsets[j];
+                            dist += (self.query[j] - decoded).abs();
+                        }
+                        dist
+                    }
+                    #[cfg(not(target_arch = "x86_64"))]
+                    {
+                        let mut dist = 0.0f32;
+                        for j in 0..n {
+                            let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                + self.encoder.offsets[j];
+                            dist += (self.query[j] - decoded).abs();
+                        }
+                        dist
+                    }
+                }
             }
             _ => {
-                let mut dist_sq = 0.0f32;
-                for j in 0..n {
-                    let decoded =
-                        (encoded[j] as f32 * self.encoder.inv_scales[j]) + self.encoder.offsets[j];
-                    let diff = self.query[j] - decoded;
-                    dist_sq += diff * diff;
-                }
+                let dist_sq = {
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        unsafe {
+                            sq8_l2_sq_neon(
+                                &self.q_shifted[..n],
+                                &self.encoder.inv_scales[..n],
+                                &encoded[..n],
+                            )
+                        }
+                    }
+                    #[cfg(not(target_arch = "aarch64"))]
+                    {
+                        #[cfg(target_arch = "x86_64")]
+                        if self.use_avx2 {
+                            // SAFETY: `avx2` and `fma` were verified in `prepare_query`.
+                            unsafe {
+                                sq8_l2_sq_avx2(
+                                    &self.q_shifted[..n],
+                                    &self.encoder.inv_scales[..n],
+                                    &encoded[..n],
+                                )
+                            }
+                        } else {
+                            let mut dist_sq = 0.0f32;
+                            for j in 0..n {
+                                let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                    + self.encoder.offsets[j];
+                                let diff = self.query[j] - decoded;
+                                dist_sq += diff * diff;
+                            }
+                            dist_sq
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        {
+                            let mut dist_sq = 0.0f32;
+                            for j in 0..n {
+                                let decoded = (encoded[j] as f32 * self.encoder.inv_scales[j])
+                                    + self.encoder.offsets[j];
+                                let diff = self.query[j] - decoded;
+                                dist_sq += diff * diff;
+                            }
+                            dist_sq
+                        }
+                    }
+                };
                 dist_sq.max(0.0).sqrt()
             }
         };
@@ -205,6 +625,174 @@ impl<'a> PreparedSqQuery<'a> {
             dist.max(0.0)
         } else {
             f32::MAX
+        }
+    }
+
+    /// SIMD-accelerated batch scan over contiguous SQ8 codes of stride `code_len`.
+    /// Hoists AVX2+FMA detection once per cluster and prunes L2 candidates in
+    /// squared space before `sqrt`.
+    pub fn scan_codes<F>(
+        &self,
+        codes: &[u8],
+        code_len: usize,
+        initial_threshold: f32,
+        mut on_hit: F,
+    ) where
+        F: FnMut(usize, f32) -> f32,
+    {
+        if code_len == 0 {
+            return;
+        }
+        let n = self
+            .encoder
+            .dim
+            .min(self.query.len())
+            .min(code_len)
+            .min(self.encoder.offsets.len())
+            .min(self.encoder.inv_scales.len())
+            .min(self.q_shifted.len());
+        if n == 0 {
+            return;
+        }
+
+        let mut threshold = initial_threshold;
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            let inv_scales = &self.encoder.inv_scales[..n];
+            match self.metric {
+                VectorMetric::Cosine | VectorMetric::InnerProduct => {
+                    let query = &self.query[..n];
+                    let offsets = &self.encoder.offsets[..n];
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        let (dot, v_norm_sq) =
+                            unsafe { sq8_dot_norm_neon(query, inv_scales, offsets, &code[..n]) };
+                        let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                        let dist = if denom > 1e-12 {
+                            (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                        } else {
+                            1.0
+                        };
+                        if dist.is_finite() && dist < threshold {
+                            threshold = on_hit(local_id, dist);
+                        }
+                    }
+                }
+                VectorMetric::L1 => {
+                    let q_shifted = &self.q_shifted[..n];
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        let dist = unsafe { sq8_l1_neon(q_shifted, inv_scales, &code[..n]) };
+                        if dist.is_finite() && dist < threshold {
+                            threshold = on_hit(local_id, dist.max(0.0));
+                        }
+                    }
+                }
+                _ => {
+                    let q_shifted = &self.q_shifted[..n];
+                    let to_sq_thresh = |t: f32| -> f32 {
+                        if !t.is_finite() {
+                            f32::INFINITY
+                        } else {
+                            t * t * (1.0 + 1e-4) + 1e-6
+                        }
+                    };
+                    let mut sq_thresh = to_sq_thresh(threshold);
+                    for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                        // SAFETY: NEON is mandatory baseline on aarch64.
+                        let dist_sq = unsafe { sq8_l2_sq_neon(q_shifted, inv_scales, &code[..n]) };
+                        if dist_sq <= sq_thresh {
+                            let dist = dist_sq.max(0.0).sqrt();
+                            if dist.is_finite() && dist < threshold {
+                                threshold = on_hit(local_id, dist);
+                                sq_thresh = to_sq_thresh(threshold);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            let use_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
+            #[cfg(not(target_arch = "x86_64"))]
+            let use_avx2 = false;
+
+            if use_avx2 {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    let inv_scales = &self.encoder.inv_scales[..n];
+                    match self.metric {
+                        VectorMetric::Cosine | VectorMetric::InnerProduct => {
+                            let query = &self.query[..n];
+                            let offsets = &self.encoder.offsets[..n];
+                            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                                // SAFETY: `avx2` and `fma` were verified above.
+                                let (dot, v_norm_sq) = unsafe {
+                                    sq8_dot_norm_avx2(query, inv_scales, offsets, &code[..n])
+                                };
+                                let denom = (self.q_norm_sq * v_norm_sq).sqrt();
+                                let dist = if denom > 1e-12 {
+                                    (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
+                                } else {
+                                    1.0
+                                };
+                                if dist.is_finite() && dist < threshold {
+                                    threshold = on_hit(local_id, dist);
+                                }
+                            }
+                            return;
+                        }
+                        VectorMetric::L1 => {
+                            let q_shifted = &self.q_shifted[..n];
+                            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                                // SAFETY: `avx2` and `fma` were verified above.
+                                let dist =
+                                    unsafe { sq8_l1_avx2(q_shifted, inv_scales, &code[..n]) };
+                                if dist.is_finite() && dist < threshold {
+                                    threshold = on_hit(local_id, dist.max(0.0));
+                                }
+                            }
+                            return;
+                        }
+                        _ => {
+                            let q_shifted = &self.q_shifted[..n];
+                            let to_sq_thresh = |t: f32| -> f32 {
+                                if !t.is_finite() {
+                                    f32::INFINITY
+                                } else {
+                                    t * t * (1.0 + 1e-4) + 1e-6
+                                }
+                            };
+                            let mut sq_thresh = to_sq_thresh(threshold);
+                            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                                // SAFETY: `avx2` and `fma` were verified above.
+                                let dist_sq =
+                                    unsafe { sq8_l2_sq_avx2(q_shifted, inv_scales, &code[..n]) };
+                                if dist_sq <= sq_thresh {
+                                    let dist = dist_sq.max(0.0).sqrt();
+                                    if dist.is_finite() && dist < threshold {
+                                        threshold = on_hit(local_id, dist);
+                                        sq_thresh = to_sq_thresh(threshold);
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Portable scalar fallback.
+            for (local_id, code) in codes.chunks_exact(code_len).enumerate() {
+                let dist = self.distance(code);
+                if dist < threshold {
+                    threshold = on_hit(local_id, dist);
+                }
+            }
         }
     }
 }
@@ -361,5 +949,45 @@ mod tests {
             d_197 < 0.05,
             "SQ8 exact single-row match must score ~0, got {d_197}"
         );
+    }
+
+    #[test]
+    fn test_sq8_scan_codes_matches_distance() {
+        for dim in [12usize, 16, 128] {
+            let mut rng_state: u64 = 777 + dim as u64;
+            let mut rand_f32 = || {
+                rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                ((rng_state >> 33) as f32 / (1u32 << 31) as f32) * 10.0 - 5.0
+            };
+            let vectors: Vec<Vec<f32>> = (0..48)
+                .map(|_| (0..dim).map(|_| rand_f32()).collect())
+                .collect();
+            let q = vectors[5].clone();
+
+            for metric in [VectorMetric::L2, VectorMetric::Cosine, VectorMetric::L1] {
+                let enc = SqEncoder::train(&vectors, 8, metric).unwrap();
+                let encoded: Vec<Vec<u8>> = vectors.iter().map(|v| enc.encode(v)).collect();
+                let code_len = encoded[0].len();
+                let mut flat = Vec::with_capacity(encoded.len() * code_len);
+                for c in &encoded {
+                    flat.extend_from_slice(c);
+                }
+
+                let prep = enc.prepare_query(&q, metric);
+                let mut scanned = Vec::new();
+                prep.scan_codes(&flat, code_len, f32::INFINITY, |id, dist| {
+                    scanned.push((id, dist));
+                    f32::INFINITY
+                });
+                assert_eq!(scanned.len(), vectors.len());
+                for (id, dist) in scanned {
+                    let ref_dist = prep.distance(&encoded[id]);
+                    assert!(
+                        (dist - ref_dist).abs() < 1e-3,
+                        "metric={metric:?} dim={dim} id={id}: scan {dist} != ref {ref_dist}"
+                    );
+                }
+            }
+        }
     }
 }

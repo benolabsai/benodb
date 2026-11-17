@@ -38,18 +38,76 @@ pub fn l2_distance_squared_early_exit(a: &[f32], b: &[f32], threshold: f32) -> O
 
 #[inline(always)]
 pub fn l2_distance_squared(a: &[f32], b: &[f32]) -> f32 {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "aarch64")]
     {
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            return unsafe { l2_distance_squared_avx2(a, b) };
+        // SAFETY: NEON is mandatory baseline on aarch64.
+        return unsafe { l2_distance_squared_neon(a, b) };
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                return unsafe { l2_distance_squared_avx2(a, b) };
+            }
         }
+
+        // Fallback to portable unrolled implementation
+        l2_distance_squared_portable(a, b)
+    }
+}
+
+/// ARM64 NEON squared L2 distance (Apple M-series / AWS Graviton).
+/// Processes 16 floats per iteration across 4 independent FMA accumulators.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn l2_distance_squared_neon(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::aarch64::*;
+    let n = a.len().min(b.len());
+    let mut i = 0usize;
+    let a_ptr = a.as_ptr();
+    let b_ptr = b.as_ptr();
+
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut sum2 = vdupq_n_f32(0.0);
+    let mut sum3 = vdupq_n_f32(0.0);
+
+    while i + 16 <= n {
+        let d0 = vsubq_f32(vld1q_f32(a_ptr.add(i)), vld1q_f32(b_ptr.add(i)));
+        sum0 = vfmaq_f32(sum0, d0, d0);
+
+        let d1 = vsubq_f32(vld1q_f32(a_ptr.add(i + 4)), vld1q_f32(b_ptr.add(i + 4)));
+        sum1 = vfmaq_f32(sum1, d1, d1);
+
+        let d2 = vsubq_f32(vld1q_f32(a_ptr.add(i + 8)), vld1q_f32(b_ptr.add(i + 8)));
+        sum2 = vfmaq_f32(sum2, d2, d2);
+
+        let d3 = vsubq_f32(vld1q_f32(a_ptr.add(i + 12)), vld1q_f32(b_ptr.add(i + 12)));
+        sum3 = vfmaq_f32(sum3, d3, d3);
+
+        i += 16;
     }
 
-    // Fallback to portable unrolled implementation
-    l2_distance_squared_portable(a, b)
+    sum0 = vaddq_f32(vaddq_f32(sum0, sum1), vaddq_f32(sum2, sum3));
+
+    while i + 4 <= n {
+        let d0 = vsubq_f32(vld1q_f32(a_ptr.add(i)), vld1q_f32(b_ptr.add(i)));
+        sum0 = vfmaq_f32(sum0, d0, d0);
+        i += 4;
+    }
+
+    let mut total = vaddvq_f32(sum0);
+    while i < n {
+        let d = *a_ptr.add(i) - *b_ptr.add(i);
+        total += d * d;
+        i += 1;
+    }
+    total
 }
 
 /// Portable, manually unrolled L2 distance implementation (works on all CPUs)
+#[cfg(not(target_arch = "aarch64"))]
 #[inline(always)]
 fn l2_distance_squared_portable(a: &[f32], b: &[f32]) -> f32 {
     let _n = a.len();
@@ -161,15 +219,74 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[inline(always)]
 pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "aarch64")]
     {
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            return unsafe { dot_product_avx2(a, b) };
-        }
+        // SAFETY: NEON is mandatory baseline on aarch64.
+        return unsafe { dot_product_neon(a, b) };
     }
-    dot_product_portable(a, b)
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                return unsafe { dot_product_avx2(a, b) };
+            }
+        }
+        dot_product_portable(a, b)
+    }
 }
 
+/// ARM64 NEON dot product (Apple M-series / AWS Graviton).
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_product_neon(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::aarch64::*;
+    let n = a.len().min(b.len());
+    let mut i = 0usize;
+    let a_ptr = a.as_ptr();
+    let b_ptr = b.as_ptr();
+
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut sum2 = vdupq_n_f32(0.0);
+    let mut sum3 = vdupq_n_f32(0.0);
+
+    while i + 16 <= n {
+        sum0 = vfmaq_f32(sum0, vld1q_f32(a_ptr.add(i)), vld1q_f32(b_ptr.add(i)));
+        sum1 = vfmaq_f32(
+            sum1,
+            vld1q_f32(a_ptr.add(i + 4)),
+            vld1q_f32(b_ptr.add(i + 4)),
+        );
+        sum2 = vfmaq_f32(
+            sum2,
+            vld1q_f32(a_ptr.add(i + 8)),
+            vld1q_f32(b_ptr.add(i + 8)),
+        );
+        sum3 = vfmaq_f32(
+            sum3,
+            vld1q_f32(a_ptr.add(i + 12)),
+            vld1q_f32(b_ptr.add(i + 12)),
+        );
+        i += 16;
+    }
+
+    sum0 = vaddq_f32(vaddq_f32(sum0, sum1), vaddq_f32(sum2, sum3));
+
+    while i + 4 <= n {
+        sum0 = vfmaq_f32(sum0, vld1q_f32(a_ptr.add(i)), vld1q_f32(b_ptr.add(i)));
+        i += 4;
+    }
+
+    let mut total = vaddvq_f32(sum0);
+    while i < n {
+        total += *a_ptr.add(i) * *b_ptr.add(i);
+        i += 1;
+    }
+    total
+}
+
+#[cfg(not(target_arch = "aarch64"))]
 #[inline(always)]
 fn dot_product_portable(a: &[f32], b: &[f32]) -> f32 {
     let n = a.len();

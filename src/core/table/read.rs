@@ -748,11 +748,12 @@ impl Table {
                                 let probes = vp
                                     .probes
                                     .unwrap_or_else(|| default_probes(index.centroids.len()));
-                                // Remote shards are not resident, so pull this
-                                // query's probe clusters into the cluster cache
-                                // before the synchronous search reads them.
-                                index.hydrate_for_query(&self.store, q, probes).await;
-                                let base_scored = index.search(q, vp.k, probes, vp.ef_search)?;
+                                // Run the pipelined codes-only + selective-metadata
+                                // path (local mmap prefetch on local stores,
+                                // singleflight coalesced range GETs on remote S3).
+                                let base_scored = index
+                                    .search_async(&self.store, q, vp.k, probes, vp.ef_search)
+                                    .await?;
 
                                 let base_seg_set: HashSet<&str> =
                                     index.segment_table.iter().map(|s| s.as_str()).collect();
@@ -1696,10 +1697,12 @@ impl Table {
                     let probes = params
                         .probes
                         .unwrap_or_else(|| default_probes(index.centroids.len()));
-                    // Remote shards are not resident; hydrate the probe clusters
-                    // before the synchronous search reads them.
-                    index.hydrate_for_query(&self.store, q, probes).await;
-                    let base_scored = index.search(q, params.k, probes, params.ef_search)?;
+                    // Run the pipelined codes-only + selective-metadata path
+                    // (local mmap prefetch on local stores, singleflight
+                    // coalesced range GETs on remote S3).
+                    let base_scored = index
+                        .search_async(&self.store, q, params.k, probes, params.ef_search)
+                        .await?;
 
                     // Check for uncompacted delta segments (LSM two-tier retrieval)
                     let base_seg_set: HashSet<&str> =
