@@ -39,6 +39,7 @@
 
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
+use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -68,6 +69,7 @@ use crate::core::puffin::{
     PUFFIN_BLOB_VECTOR_CLUSTER_NODE_META, PUFFIN_BLOB_VECTOR_CLUSTER_SEGMENTS,
     PUFFIN_BLOB_VECTOR_CLUSTER_SHARDS, PUFFIN_BLOB_VECTOR_HNSW_GRAPH,
 };
+use crate::core::reader::stats;
 use crate::core::search::ScoredResult;
 use parquet::file::reader::FileReader;
 
@@ -343,11 +345,27 @@ fn cluster_cache_budget_kib() -> u64 {
     256 * 1024
 }
 
+/// One deserialized cluster, as the cache holds it.
+///
+/// `bytes` is the size of the two blobs the store returned for the cluster. It
+/// is the weight the cache budgets for. Weighing the decoded graph instead
+/// (`HnswGraph::footprint_bytes`, which reports Arrow's
+/// `get_array_memory_size`) overstated a cluster by roughly 5x on the measured
+/// arm: 299 resident clusters weighed 2 GiB while the whole process, Python and
+/// numpy included, peaked at 529 MB. The graph is decoded with
+/// `load_from_bytes_owned`, so it aliases the fetched buffer rather than copying
+/// it — the fetched bytes *are* the resident cost, and they are also the cost the
+/// object store bills for, so one number serves both purposes.
+struct CachedCluster {
+    graph: HnswGraph,
+    node_meta: Vec<NodeMeta>,
+    /// Bytes returned by the store for this cluster's graph and metadata blobs.
+    bytes: usize,
+}
+
 /// Weighed size of one cached cluster, in KiB.
-fn cluster_entry_kib(value: &Arc<(HnswGraph, Vec<NodeMeta>)>) -> u32 {
-    let (graph, node_meta) = value.as_ref();
-    let bytes = graph.footprint_bytes() + node_meta.len() * std::mem::size_of::<NodeMeta>();
-    ((bytes / 1024) as u32).max(1)
+fn cluster_entry_kib(value: &Arc<CachedCluster>) -> u32 {
+    ((value.bytes / 1024) as u32).max(1)
 }
 
 /// Read a shard's Puffin footer with two ranged reads.
@@ -420,7 +438,7 @@ pub struct ClusterIndex {
     /// which only a local store has; remote stores keep `None` and rely on the
     /// object store's own range reads.
     local_root: Option<std::path::PathBuf>,
-    cache: moka::sync::Cache<usize, Arc<(HnswGraph, Vec<NodeMeta>)>>,
+    cache: moka::sync::Cache<usize, Arc<CachedCluster>>,
     /// Optional temporary directory backing memory-mapped build shards.
     pub _temp_dir: Option<std::path::PathBuf>,
 }
@@ -1083,9 +1101,7 @@ impl ClusterIndex {
             // 100M cluster is megabytes of graph and metadata, so `64` was either
             // 0.1% of the index or an OOM depending on the dataset.
             cache: moka::sync::Cache::builder()
-                .weigher(|_key: &usize, value: &Arc<(HnswGraph, Vec<NodeMeta>)>| {
-                    cluster_entry_kib(value)
-                })
+                .weigher(|_key: &usize, value: &Arc<CachedCluster>| cluster_entry_kib(value))
                 .max_capacity(cluster_cache_budget_kib())
                 .build(),
             _temp_dir: None,
@@ -1467,7 +1483,8 @@ impl ClusterIndex {
             let Some(cluster) = self.get_cluster(cluster_id) else {
                 continue;
             };
-            let (graph, node_meta) = cluster.as_ref();
+            let graph = &cluster.graph;
+            let node_meta = &cluster.node_meta;
             let cluster_ef = ef.min((node_meta.len() * 3) / 4).max(cluster_k);
             for neighbour in graph.search_with_quantizer(
                 &fallback_query,
@@ -1566,6 +1583,12 @@ impl ClusterIndex {
     }
 
     /// Hydrate specific clusters from a remote store into the cache.
+    ///
+    /// This is the only function that issues cluster range reads, so it is where
+    /// [`stats::CLUSTER_RANGE_GETS`], [`stats::CLUSTER_RANGE_BYTES`] and
+    /// [`stats::CLUSTER_CACHE_HITS`] are recorded. The three counts answer the
+    /// question an egress figure cannot: how many requests a query actually
+    /// costs, and whether the cache returned anything at all.
     pub async fn hydrate_clusters(
         &self,
         store: &std::sync::Arc<dyn object_store::ObjectStore>,
@@ -1576,6 +1599,10 @@ impl ClusterIndex {
         let mut per_shard: HashMap<usize, Vec<usize>> = HashMap::new();
         for cluster_id in cluster_ids {
             if self.cache.get(cluster_id).is_some() {
+                // A hit is the only thing that can make the request count fall
+                // below one request per probe, so it is counted separately from
+                // the misses that follow.
+                stats::CLUSTER_CACHE_HITS.fetch_add(1, AtomicOrdering::Relaxed);
                 continue;
             }
             if let Some(shard_idx) = self.cluster_to_shard.get(cluster_id) {
@@ -1603,7 +1630,12 @@ impl ClusterIndex {
                     .get_range(&object_store::path::Path::from(path), range)
                     .await
                 {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => {
+                        stats::CLUSTER_RANGE_GETS.fetch_add(1, AtomicOrdering::Relaxed);
+                        stats::CLUSTER_RANGE_BYTES
+                            .fetch_add(bytes.len() as u64, AtomicOrdering::Relaxed);
+                        bytes
+                    }
                     Err(e) => {
                         tracing::warn!(shard_idx, offset, len, error = %e, "cluster_index: ranged read failed");
                         continue;
@@ -1652,14 +1684,24 @@ impl ClusterIndex {
                     store.get_range(&object, range.0 as u64..(range.0 + range.1) as u64)
                 };
                 let graph_bytes = match fetch(slices.graph).await {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => {
+                        stats::CLUSTER_RANGE_GETS.fetch_add(1, AtomicOrdering::Relaxed);
+                        stats::CLUSTER_RANGE_BYTES
+                            .fetch_add(bytes.len() as u64, AtomicOrdering::Relaxed);
+                        bytes
+                    }
                     Err(e) => {
                         tracing::warn!(cluster_id, error = %e, "cluster_index: graph range read failed");
                         continue;
                     }
                 };
                 let meta_bytes = match fetch(slices.node_meta).await {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => {
+                        stats::CLUSTER_RANGE_GETS.fetch_add(1, AtomicOrdering::Relaxed);
+                        stats::CLUSTER_RANGE_BYTES
+                            .fetch_add(bytes.len() as u64, AtomicOrdering::Relaxed);
+                        bytes
+                    }
                     Err(e) => {
                         tracing::warn!(cluster_id, error = %e, "cluster_index: metadata range read failed");
                         continue;
@@ -1668,6 +1710,14 @@ impl ClusterIndex {
                 self.cache_deserialized(*cluster_id, graph_bytes, meta_bytes);
             }
         }
+
+        // Occupancy, for the case the hit counter reports zero: it separates "the
+        // budget is too small to retain these clusters" from "nothing was ever
+        // inserted", and `weighted_size / entry_count` exposes what the weigher
+        // thinks an entry costs.
+        stats::CLUSTER_CACHE_ENTRIES.store(self.cache.entry_count(), AtomicOrdering::Relaxed);
+        stats::CLUSTER_CACHE_WEIGHTED_KIB
+            .store(self.cache.weighted_size(), AtomicOrdering::Relaxed);
     }
 
     /// Deserialize one cluster's blobs into the cache, matching `get_cluster`.
@@ -1677,6 +1727,7 @@ impl ClusterIndex {
         graph_bytes: Bytes,
         meta_bytes: Bytes,
     ) {
+        let bytes = graph_bytes.len() + meta_bytes.len();
         let Ok(graph) = deserialize_graph(graph_bytes, self.quantizer.as_ref(), self.metric) else {
             tracing::warn!(cluster_id, "cluster_index: graph deserialization failed");
             return;
@@ -1685,7 +1736,14 @@ impl ClusterIndex {
             tracing::warn!(cluster_id, "cluster_index: node metadata parse failed");
             return;
         };
-        self.cache.insert(cluster_id, Arc::new((graph, node_meta)));
+        self.cache.insert(
+            cluster_id,
+            Arc::new(CachedCluster {
+                graph,
+                node_meta,
+                bytes,
+            }),
+        );
     }
 
     /// Advise the page cache for the clusters this query will read.
@@ -1761,7 +1819,7 @@ impl ClusterIndex {
 
     /// Load a cluster's graph and node metadata from its containing shard,
     /// caching the deserialized form.
-    fn get_cluster(&self, cluster_id: usize) -> Option<Arc<(HnswGraph, Vec<NodeMeta>)>> {
+    fn get_cluster(&self, cluster_id: usize) -> Option<Arc<CachedCluster>> {
         if let Some(hit) = self.cache.get(&cluster_id) {
             return Some(hit);
         }
@@ -1795,7 +1853,11 @@ impl ClusterIndex {
             }
         };
 
-        let arc = Arc::new((graph, node_meta));
+        let arc = Arc::new(CachedCluster {
+            graph,
+            node_meta,
+            bytes: slices.graph.1 + slices.node_meta.1,
+        });
         self.cache.insert(cluster_id, arc.clone());
         Some(arc)
     }
@@ -2691,6 +2753,22 @@ mod tests {
         // clusters. Any non-trivial budget has to be far larger than an entry
         // count, and a byte weighed entry has to be at least 1 KiB.
         assert!(cluster_cache_budget_kib() >= 1024);
+    }
+
+    #[test]
+    fn cache_entry_is_weighed_by_fetched_bytes() {
+        // The regression this guards: weighing the decoded graph instead of the
+        // fetched blobs. On the measured arm a cluster's two blobs are ~900 KiB,
+        // while Arrow's `get_array_memory_size` reported ~6.8 MiB for the same
+        // graph, so the budget admitted a fifth of the clusters it could hold.
+        let vectors: Vec<Vec<f32>> = blob(16, 8, 0.0).into_iter().map(|(_, _, v)| v).collect();
+        let graph = build_graph(&vectors, None, VectorMetric::L2, 8, 32);
+        let entry = Arc::new(CachedCluster {
+            graph,
+            node_meta: Vec::new(),
+            bytes: 900 * 1024,
+        });
+        assert_eq!(cluster_entry_kib(&entry), 900);
     }
 
     fn blob(n: usize, dim: usize, offset: f32) -> Vec<(u32, u32, Vec<f32>)> {

@@ -38,11 +38,11 @@ import pyarrow as pa
 N = 200_000
 DIM = 64
 CLUSTERS = 512
-# Keep flushed objects above the multipart floor. The writer buffers to 5 MiB
-# before emitting a part, so an object under the floor is a single final part --
-# legal per the S3 spec (only non-final parts carry the minimum) but RustFS
-# rejects it with `EntityTooSmall`. One flush for the whole set sidesteps that
-# server deviation and does not change what a query reads.
+# One flush for the whole set, so the ingest does not exercise the multipart
+# path at all and this script measures the read arm only. (The multipart floor is
+# handled in `core::storage::multipart_part_bytes`; an earlier version of this
+# script hit `EntityTooSmall` because both writers emitted one 2 MiB part per
+# `File::read`, which was our defect, not a server deviation.)
 SEGMENT_ROWS = 200_000
 SHARD_BYTES = 24 * 1024 * 1024
 
@@ -139,16 +139,35 @@ def measure(bsdb, uri: str, container: str, probes: list[int], queries: int) -> 
 
     for n_probe in probes:
         rx0, tx0 = netio(container)
+        bsdb.reset_reader_stats()
         t0 = time.time()
         for i in range(queries):
             _query(table, query_vectors[i], 10, 64, n_probe)
         elapsed = time.time() - t0
         rx1, tx1 = netio(container)
+        st = bsdb.reader_stats()
         egress = max(tx1 - tx0, 0) / 1e6
+        gets = st["cluster_range_gets"]
+        cached_kb = st["cluster_range_bytes"] / 1024
+        hits = st["cluster_cache_hits"]
+        # A probe is either a cache hit or it needs at least one request, so the
+        # hit ratio is hits over hits plus probed clusters that missed. Misses are
+        # not observable directly, but a lower bound is `hits + gets`, which is
+        # exactly right whenever each miss costs one request per cluster.
+        touched = hits + gets
+        ratio = f"{100.0 * hits / touched:5.1f}%" if touched else "   n/a"
+        entries = st["cluster_cache_entries"]
+        weighted = st["cluster_cache_weighted_kib"]
+        per_entry = f"{weighted / entries:.0f} KiB" if entries else "n/a"
         print(
             f"probes={n_probe:<3} {queries} queries in {elapsed:6.2f}s "
             f"-> {queries / elapsed:6.1f} QPS | store egress {egress:8.2f} MB "
-            f"({egress * 1e6 / queries / 1024:8.1f} KiB/query)"
+            f"({egress * 1e6 / queries / 1024:8.1f} KiB/query)\n"
+            f"            cluster range GETs {gets} ({gets / queries:.2f}/query, "
+            f"{cached_kb / queries:.1f} KiB/query) | cache hits {hits} "
+            f"({hits / queries:.2f}/query, {ratio})\n"
+            f"            cache resident {entries} clusters, weighed {weighted} KiB "
+            f"({per_entry}/cluster)"
         )
 
 

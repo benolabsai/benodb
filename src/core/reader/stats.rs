@@ -30,6 +30,28 @@ pub static ROW_GROUPS_READ: AtomicU64 = AtomicU64::new(0);
 /// Row groups available in the files that were read.
 pub static ROW_GROUPS_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+// Cluster-file counters for the object-store path. On a remote store the table
+// tier's `search` is synchronous, so a query's probe clusters are fetched ahead
+// of it (`hydrate_for_query`) with one coalesced ranged GET per shard span. What
+// that costs is requests and bytes, not latency: an object store bills per
+// request and per byte, and a cache miss is the only thing that produces either.
+// Without these counters a request-count claim is an inference from egress.
+/// Range GETs issued to fetch cluster bytes.
+pub static CLUSTER_RANGE_GETS: AtomicU64 = AtomicU64::new(0);
+/// Bytes those range GETs returned.
+pub static CLUSTER_RANGE_BYTES: AtomicU64 = AtomicU64::new(0);
+/// Probe clusters served from the cache with no request at all.
+pub static CLUSTER_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
+/// Clusters resident in the cache after the most recent hydration (a gauge).
+pub static CLUSTER_CACHE_ENTRIES: AtomicU64 = AtomicU64::new(0);
+/// Weighed KiB the cache holds after the most recent hydration (a gauge).
+///
+/// Compared against [`CLUSTER_CACHE_ENTRIES`] this gives the cache's own view of
+/// an entry's size, which is what decides how many clusters the budget can
+/// retain. Compared against [`CLUSTER_RANGE_BYTES`] it says whether that view
+/// agrees with the bytes the store actually returned.
+pub static CLUSTER_CACHE_WEIGHTED_KIB: AtomicU64 = AtomicU64::new(0);
+
 /// A consistent read of every counter.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReaderCounters {
@@ -39,6 +61,11 @@ pub struct ReaderCounters {
     pub rows_decoded: u64,
     pub row_groups_read: u64,
     pub row_groups_total: u64,
+    pub cluster_range_gets: u64,
+    pub cluster_range_bytes: u64,
+    pub cluster_cache_hits: u64,
+    pub cluster_cache_entries: u64,
+    pub cluster_cache_weighted_kib: u64,
 }
 
 impl ReaderCounters {
@@ -55,6 +82,11 @@ impl ReaderCounters {
             rows_decoded: ROWS_DECODED.load(Ordering::Relaxed),
             row_groups_read: ROW_GROUPS_READ.load(Ordering::Relaxed),
             row_groups_total: ROW_GROUPS_TOTAL.load(Ordering::Relaxed),
+            cluster_range_gets: CLUSTER_RANGE_GETS.load(Ordering::Relaxed),
+            cluster_range_bytes: CLUSTER_RANGE_BYTES.load(Ordering::Relaxed),
+            cluster_cache_hits: CLUSTER_CACHE_HITS.load(Ordering::Relaxed),
+            cluster_cache_entries: CLUSTER_CACHE_ENTRIES.load(Ordering::Relaxed),
+            cluster_cache_weighted_kib: CLUSTER_CACHE_WEIGHTED_KIB.load(Ordering::Relaxed),
         }
     }
 
@@ -67,6 +99,11 @@ impl ReaderCounters {
             &ROWS_DECODED,
             &ROW_GROUPS_READ,
             &ROW_GROUPS_TOTAL,
+            &CLUSTER_RANGE_GETS,
+            &CLUSTER_RANGE_BYTES,
+            &CLUSTER_CACHE_HITS,
+            &CLUSTER_CACHE_ENTRIES,
+            &CLUSTER_CACHE_WEIGHTED_KIB,
         ] {
             counter.store(0, Ordering::Relaxed);
         }

@@ -810,6 +810,18 @@ pub fn reader_stats(py: Python<'_>) -> PyResult<Py<PyAny>> {
     out.set_item("row_groups_total", counters.row_groups_total)?;
     out.set_item("decoded_fraction", counters.decoded_fraction())?;
     out.set_item("skip_enabled", crate::core::reader::stats::skip_enabled())?;
+    // Object-store cluster path: requests, bytes, and cache hits. A per-query
+    // egress figure is an inference; these are the request counts an object
+    // store actually bills for, and the hit count says whether the cluster
+    // cache reused anything across queries at all.
+    out.set_item("cluster_range_gets", counters.cluster_range_gets)?;
+    out.set_item("cluster_range_bytes", counters.cluster_range_bytes)?;
+    out.set_item("cluster_cache_hits", counters.cluster_cache_hits)?;
+    out.set_item("cluster_cache_entries", counters.cluster_cache_entries)?;
+    out.set_item(
+        "cluster_cache_weighted_kib",
+        counters.cluster_cache_weighted_kib,
+    )?;
     Ok(out.into())
 }
 
