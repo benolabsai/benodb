@@ -270,7 +270,7 @@ async fn open_shard_container(
     // No `WILLNEED` here. A 78 shard artifact is 43 GB, so prefetching every
     // shard on load reads the whole index before the first query and the memory
     // cap evicts it before the second. The probed clusters are advised instead,
-    // in `prefetch_cluster`, once a query knows which ones it needs.
+    // in `prefetch_clusters`, once a query knows which ones it needs.
     match DiskCache::new(store.clone()).get_mmap(path).await {
         Ok(mmap) => Ok(Bytes::from_owner(MmapOwner(mmap))),
         Err(_) => Ok(store
@@ -279,6 +279,69 @@ async fn open_shard_container(
             .bytes()
             .await?),
     }
+}
+
+/// Gap below which two byte ranges are merged into one read.
+///
+/// A cluster's graph and its node metadata are separate Puffin blobs, and
+/// adjacent clusters sit next to each other inside a shard, so one query often
+/// wants ranges a few KiB apart. Reading the gap is cheaper than asking for it
+/// separately: locally the cost is the syscall and the queue slot, and on S3 it
+/// is the per-request charge plus a round trip. 256 KiB of slack against a 2 MiB
+/// cluster payload is at most 12% of extra bytes for one fewer request.
+const PREFETCH_MERGE_GAP: usize = 256 * 1024;
+
+/// Merge byte ranges into the fewest spans that cover them.
+///
+/// Ranges are sorted by offset and extended while the next starts within
+/// `max_gap` of the current span's end; overlaps collapse to their union.
+/// Zero-length ranges are dropped, since they cover nothing and would otherwise
+/// produce a spurious span at offset 0.
+fn coalesce_spans(mut spans: Vec<(usize, usize)>, max_gap: usize) -> Vec<(usize, usize)> {
+    spans.retain(|(_, len)| *len > 0);
+    spans.sort_unstable_by_key(|(offset, _)| *offset);
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
+    for (offset, len) in spans {
+        match merged.last_mut() {
+            Some((start, cur_len)) if offset <= *start + *cur_len + max_gap => {
+                let end = (offset + len).max(*start + *cur_len);
+                *cur_len = end - *start;
+            }
+            _ => merged.push((offset, len)),
+        }
+    }
+    merged
+}
+
+/// Byte budget for the deserialized cluster cache, in KiB.
+///
+/// The cache held 64 entries regardless of the memory envelope. At 100M that is
+/// 64 of 40,100 clusters, which cannot hold anything a later query wants, so
+/// every probe re-deserialized its graph out of a shard mapping whose pages were
+/// already being reclaimed: the 16 GiB sweep measured 250 MB/s of refaults while
+/// the 8 GiB budget sat unused.
+///
+/// `BSDB_CLUSTER_CACHE_KIB` sets it directly. Otherwise a quarter of
+/// `BSDB_CACHE_GB` when that is set, because the shard mappings share the same
+/// cap and page cache is the cheaper thing to lose. 256 MiB otherwise.
+fn cluster_cache_budget_kib() -> u64 {
+    fn from_env(name: &str) -> Option<u64> {
+        std::env::var(name).ok()?.trim().parse::<u64>().ok()
+    }
+    if let Some(kib) = from_env("BSDB_CLUSTER_CACHE_KIB") {
+        return kib.max(1);
+    }
+    if let Some(gb) = from_env("BSDB_CACHE_GB") {
+        return (gb.saturating_mul(1024 * 1024) / 4).max(1);
+    }
+    256 * 1024
+}
+
+/// Weighed size of one cached cluster, in KiB.
+fn cluster_entry_kib(value: &Arc<(HnswGraph, Vec<NodeMeta>)>) -> u32 {
+    let (graph, node_meta) = value.as_ref();
+    let bytes = graph.footprint_bytes() + node_meta.len() * std::mem::size_of::<NodeMeta>();
+    ((bytes / 1024) as u32).max(1)
 }
 
 impl AsRef<[u8]> for MmapOwner {
@@ -981,7 +1044,15 @@ impl ClusterIndex {
             shards,
             cluster_to_shard,
             local_root: None,
-            cache: moka::sync::Cache::builder().max_capacity(64).build(),
+            // Byte weighed, because an entry count says nothing about memory: one
+            // 100M cluster is megabytes of graph and metadata, so `64` was either
+            // 0.1% of the index or an OOM depending on the dataset.
+            cache: moka::sync::Cache::builder()
+                .weigher(|_key: &usize, value: &Arc<(HnswGraph, Vec<NodeMeta>)>| {
+                    cluster_entry_kib(value)
+                })
+                .max_capacity(cluster_cache_budget_kib())
+                .build(),
             _temp_dir: None,
         })
     }
@@ -1287,9 +1358,12 @@ impl ClusterIndex {
 
         // Warm only the clusters this query will touch. Coarse ranking has
         // already chosen them, so this is the smallest set that answers it.
-        for (cluster_id, _) in cluster_distances.iter().take(probes) {
-            self.prefetch_cluster(*cluster_id);
-        }
+        let probe_ids: Vec<usize> = cluster_distances
+            .iter()
+            .take(probes)
+            .map(|(cluster_id, _)| *cluster_id)
+            .collect();
+        self.prefetch_clusters(&probe_ids);
 
         let mut candidates: Vec<ScoredResult> = Vec::new();
         for (cluster_id, _) in cluster_distances.into_iter().take(probes) {
@@ -1343,53 +1417,79 @@ impl ClusterIndex {
         Ok(candidates)
     }
 
-    /// Load a cluster's graph and node metadata from its containing shard, caching the deserialized form.
-    /// Advise the page cache to read one cluster's graph and metadata.
+    /// Advise the page cache for the clusters this query will read.
     ///
     /// The shard container is mapped without prefetch, so without this a graph
-    /// deserialization would fault its bytes in 4 KB at a time. `posix_fadvise`
-    /// on the shard's file range asks for exactly the bytes this cluster needs,
-    /// which is the difference between reading a cluster and reading a shard.
-    fn prefetch_cluster(&self, cluster_id: usize) {
+    /// deserialization faults its bytes in 4 KB at a time. The advice is grouped
+    /// **by shard** and **coalesced**, because the previous per-cluster form did
+    /// one `File::open` plus two `posix_fadvise` calls for each probed cluster:
+    /// at `n_probe = 16` that is 16 opens and 32 advisories ahead of every query,
+    /// against ranges that often sit a few KiB apart inside the same shard. Now a
+    /// shard is opened once and the ranges it contributes are merged, so the
+    /// count is one open per touched shard and a handful of advisory reads.
+    ///
+    /// Clusters already deserialized are skipped: their bytes are in the cache,
+    /// so advising them re-reads pages the query will never touch.
+    ///
+    /// Remote stores keep `local_root == None` and are untouched here; they read
+    /// through the object store's ranged GETs, which is the same coalescing
+    /// applied at the request layer.
+    fn prefetch_clusters(&self, cluster_ids: &[usize]) {
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
             let Some(root) = self.local_root.as_ref() else {
                 return;
             };
-            let Some(shard_idx) = self.cluster_to_shard.get(&cluster_id) else {
-                return;
-            };
-            let Some(shard) = self.shards.get(*shard_idx) else {
-                return;
-            };
-            let Some(relative) = shard.file_path.as_deref() else {
-                return;
-            };
-            let Some(slices) = shard.cluster_slices.get(&cluster_id) else {
-                return;
-            };
-            let Ok(file) = std::fs::File::open(root.join(relative)) else {
-                return;
-            };
-            let fd = file.as_raw_fd();
-            for (offset, len) in [slices.graph, slices.node_meta] {
-                // SAFETY: the descriptor is open for the duration of the call and
-                // `posix_fadvise` neither reads nor writes through it.
-                unsafe {
-                    libc::posix_fadvise(
-                        fd,
-                        offset as libc::off_t,
-                        len as libc::off_t,
-                        libc::POSIX_FADV_WILLNEED,
-                    );
+            let mut per_shard: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+            for cluster_id in cluster_ids {
+                if self.cache.get(cluster_id).is_some() {
+                    continue;
+                }
+                let Some(shard_idx) = self.cluster_to_shard.get(cluster_id) else {
+                    continue;
+                };
+                let Some(shard) = self.shards.get(*shard_idx) else {
+                    continue;
+                };
+                let Some(slices) = shard.cluster_slices.get(cluster_id) else {
+                    continue;
+                };
+                let spans = per_shard.entry(*shard_idx).or_default();
+                spans.push(slices.graph);
+                spans.push(slices.node_meta);
+            }
+            for (shard_idx, spans) in per_shard {
+                let Some(shard) = self.shards.get(shard_idx) else {
+                    continue;
+                };
+                let Some(relative) = shard.file_path.as_deref() else {
+                    continue;
+                };
+                let Ok(file) = std::fs::File::open(root.join(relative)) else {
+                    continue;
+                };
+                let fd = file.as_raw_fd();
+                for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
+                    // SAFETY: the descriptor is open for the duration of the call
+                    // and `posix_fadvise` neither reads nor writes through it.
+                    unsafe {
+                        libc::posix_fadvise(
+                            fd,
+                            offset as libc::off_t,
+                            len as libc::off_t,
+                            libc::POSIX_FADV_WILLNEED,
+                        );
+                    }
                 }
             }
         }
         #[cfg(not(unix))]
-        let _ = cluster_id;
+        let _ = cluster_ids;
     }
 
+    /// Load a cluster's graph and node metadata from its containing shard,
+    /// caching the deserialized form.
     fn get_cluster(&self, cluster_id: usize) -> Option<Arc<(HnswGraph, Vec<NodeMeta>)>> {
         if let Some(hit) = self.cache.get(&cluster_id) {
             return Some(hit);
@@ -2220,6 +2320,62 @@ fn metric_distance(metric: VectorMetric, q: &[f32], c: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coalesce_spans_merges_adjacent_ranges() {
+        // A cluster's graph immediately followed by its node metadata.
+        assert_eq!(coalesce_spans(vec![(0, 100), (100, 100)], 0), vec![(0, 200)]);
+    }
+
+    #[test]
+    fn coalesce_spans_merges_overlaps() {
+        assert_eq!(coalesce_spans(vec![(0, 100), (50, 100)], 0), vec![(0, 150)]);
+    }
+
+    #[test]
+    fn coalesce_spans_respects_the_gap() {
+        // 50 bytes of slack with a 100 byte allowance merges; 150 does not.
+        assert_eq!(coalesce_spans(vec![(0, 100), (150, 100)], 100), vec![(0, 250)]);
+        assert_eq!(
+            coalesce_spans(vec![(0, 100), (250, 100)], 100),
+            vec![(0, 100), (250, 100)]
+        );
+    }
+
+    #[test]
+    fn coalesce_spans_orders_and_drops_empty_ranges() {
+        // Gap 0 keeps the two distant ranges apart while the zero-length range
+        // disappears: it covers nothing and must not become a span at offset 30.
+        assert_eq!(
+            coalesce_spans(vec![(250, 100), (0, 10), (30, 0)], 0),
+            vec![(0, 10), (250, 100)]
+        );
+        assert!(coalesce_spans(vec![(0, 0), (5, 0)], 0).is_empty());
+    }
+
+    #[test]
+    fn coalesce_spans_collapses_a_probe_that_lands_in_one_shard() {
+        // Two clusters in one shard, each contributing a graph and metadata blob
+        // a few KiB apart: the whole probe becomes one advisory read.
+        let spans = vec![
+            (0, 2_000_000),
+            (2_000_000, 8_192),
+            (2_100_000, 2_000_000),
+            (4_100_000, 8_192),
+        ];
+        assert_eq!(
+            coalesce_spans(spans, PREFETCH_MERGE_GAP),
+            vec![(0, 4_108_192)]
+        );
+    }
+
+    #[test]
+    fn cluster_cache_budget_is_bytes_not_entries() {
+        // The regression this guards: a fixed entry cap of 64 against 40,100
+        // clusters. Any non-trivial budget has to be far larger than an entry
+        // count, and a byte weighed entry has to be at least 1 KiB.
+        assert!(cluster_cache_budget_kib() >= 1024);
+    }
 
     fn blob(n: usize, dim: usize, offset: f32) -> Vec<(u32, u32, Vec<f32>)> {
         (0..n)
