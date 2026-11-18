@@ -35,7 +35,7 @@ SPARK_PROCEDURE_CATALOG = (
     / "com"
     / "benodb"
     / "spark"
-    / "BenoStreamCatalog.scala"
+    / "BenoDBCatalog.scala"
 )
 SPARK_PROCEDURE_TEST = (
     ROOT
@@ -57,7 +57,7 @@ TRINO_PAGE_SOURCE = (
     / "com"
     / "benodb"
     / "trino"
-    / "BenoStreamDBPageSource.java"
+    / "BenoDBPageSource.java"
 )
 FLIGHT_SERVER = ROOT / "server" / "flight_sql" / "src" / "server.rs"
 
@@ -200,7 +200,7 @@ def test_ddl_reachable_from_each_sql_surface():
         / "com"
         / "benodb"
         / "spark"
-        / "BenoStreamQueryTable.scala"
+        / "BenoDBQueryTable.scala"
     )
     assert "openQuery" in spark_query.read_text()
     # Trino: the page source forwards SQL via openQuery.
@@ -253,7 +253,7 @@ def test_spark_exposes_procedures():
     """Spark 4.x implements the native DSv2 `ProcedureCatalog`, exposing
     `CALL benostream.system.*`. The Spark 3.5 build uses the Iceberg shim."""
     catalog = SPARK_PROCEDURE_CATALOG.read_text()
-    assert "extends BenoStreamCatalog with ProcedureCatalog" in catalog, (
+    assert "extends BenoDBCatalog with ProcedureCatalog" in catalog, (
         "spark-4 catalog no longer implements the native ProcedureCatalog"
     )
     # Parse the `case "<name>" =>` arms of loadProcedure.
@@ -271,7 +271,7 @@ def test_spark_exposes_procedures():
         / "com"
         / "benodb"
         / "spark"
-        / "BenoStreamCatalog.scala"
+        / "BenoDBCatalog.scala"
     ).read_text()
     assert "iceberg.catalog" in spark3, "spark-3 catalog must use the Iceberg shim"
 

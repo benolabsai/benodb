@@ -36,7 +36,7 @@ SPARK_FUNCTIONS_SCALA = (
     / "com"
     / "benodb"
     / "spark"
-    / "BenoStreamCatalogFunctions.scala"
+    / "BenoDBCatalogFunctions.scala"
 )
 TRINO_PAGE_SOURCE = (
     ROOT
@@ -47,7 +47,7 @@ TRINO_PAGE_SOURCE = (
     / "com"
     / "benodb"
     / "trino"
-    / "BenoStreamDBPageSource.java"
+    / "BenoDBPageSource.java"
 )
 FLIGHT_SERVER = ROOT / "server" / "flight_sql" / "src" / "server.rs"
 
@@ -283,9 +283,9 @@ def test_spark_passthrough_reader_exists():
         / "com"
         / "benodb"
         / "spark"
-        / "BenoStreamQueryTable.scala"
+        / "BenoDBQueryTable.scala"
     )
-    assert source.exists(), "the Spark pass-through reader (BenoStreamQueryTable) is missing"
+    assert source.exists(), "the Spark pass-through reader (BenoDBQueryTable) is missing"
     text = source.read_text()
     assert "openQuery" in text, "the pass-through reader no longer runs engine SQL"
 
