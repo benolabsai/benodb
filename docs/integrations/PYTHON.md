@@ -1,6 +1,6 @@
 # Python Bindings
 
-BenoStreamDB provides high-performance Python bindings using [PyO3](https://github.com/PyO3/pyo3). This allows you to use BenoStreamDB directly from Python scripts, Jupyter notebooks, and AI pipelines.
+BenoDB provides high-performance Python bindings using [PyO3](https://github.com/PyO3/pyo3). This allows you to use BenoDB directly from Python scripts, Jupyter notebooks, and AI pipelines.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pip install benostreamdb
 
 ### Catalog Selection and Configuration
 
-BenoStreamDB supports multiple catalog backends (Nessie, Hive, REST, Glue, Unity). You can configure the catalog using a factory method or a TOML configuration file.
+BenoDB supports multiple catalog backends (Nessie, Hive, REST, Glue, Unity). You can configure the catalog using a factory method or a TOML configuration file.
 
 #### 1. Direct Instantiation
 
@@ -40,7 +40,7 @@ catalog = bsdb.create_catalog("unity", {
 
 #### 2. Default Configuration (Recommended)
 
-You can define your catalog configuration in a standard location. BenoStreamDB searches in the following order:
+You can define your catalog configuration in a standard location. BenoDB searches in the following order:
 
 1.  `BSDB_CONFIG` (Environment Variable path)
 2.  `./benostream.toml` (Current Directory)
@@ -71,7 +71,7 @@ See [examples/configs/](https://github.com/benolabsai/benostreamdb/tree/main/exa
 
 ### Table Operations (Writing and Reading)
 
-BenoStreamDB centers around the `Table` class, which manages underlying Apache Iceberg Parquet files and rebuildable index overlays.
+BenoDB centers around the `Table` class, which manages underlying Apache Iceberg Parquet files and rebuildable index overlays.
 
 ```python
 import benostreamdb as bsdb
@@ -150,7 +150,7 @@ The change feed is **in-process**: it observes commits made by writers in the sa
 
 ### Compute Device Configuration
 
-BenoStreamDB provides dynamic hardware acceleration via the `Device` class, with automatic detection and graceful CPU fallback:
+BenoDB provides dynamic hardware acceleration via the `Device` class, with automatic detection and graceful CPU fallback:
 
 ```python
 # Auto-detect best available device (CUDA, Apple Silicon Metal, or CPU)

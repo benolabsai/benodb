@@ -2,7 +2,7 @@
 
 ## Overview
 
-BenoStreamDB provides a high-performance Python API for batch vector distance computations with SIMD and GPU acceleration support across multiple hardware backends. This API allows you to compute standalone distances directly over PyArrow arrays, NumPy matrices, and PyTorch tensors without database overhead.
+BenoDB provides a high-performance Python API for batch vector distance computations with SIMD and GPU acceleration support across multiple hardware backends. This API allows you to compute standalone distances directly over PyArrow arrays, NumPy matrices, and PyTorch tensors without database overhead.
 
 > [!NOTE]
 > **Table Vector Search vs. Standalone Kernels:**
@@ -333,7 +333,7 @@ jaccard_packed(binary1, binary2, device=None) -> float
 
 ```python
 class Device:  # exported as ComputeContext and GPUContext
-    """BenoStreamDB compute device (CPU, CUDA, ROCm, MPS, Intel)."""
+    """BenoDB compute device (CPU, CUDA, ROCm, MPS, Intel)."""
 
     @staticmethod
     def auto_detect() -> ComputeContext:
@@ -601,7 +601,7 @@ See [examples/python_distance_api_examples.py](https://github.com/benolabsai/ben
 _(merged from the former `api_reference.md`)_
 
 
-This page provides an overview of BenoStreamDB APIs across different languages and interfaces.
+This page provides an overview of BenoDB APIs across different languages and interfaces.
 
 ## Python API
 
@@ -881,7 +881,7 @@ LIMIT 10;
 
 ### GPU Context Configuration
 
-BenoStreamDB supports GPU acceleration across NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), and Intel XPU. You can configure execution devices using PyTorch-style strings (`"cuda:0"`) or the explicit `index=` parameter.
+BenoDB supports GPU acceleration across NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), and Intel XPU. You can configure execution devices using PyTorch-style strings (`"cuda:0"`) or the explicit `index=` parameter.
 
 ```python
 import benostreamdb as bsdb
@@ -953,7 +953,7 @@ See [Vector Configuration Guide](CONFIGURATION.md) for tuning parameters.
 
 ## REST Search APIs (`benostreamdb-search`)
 
-BenoStreamDB provides a dual-protocol HTTP gateway exposing OpenSearch / Elasticsearch 7.10 compatibility alongside the Qdrant Vector API from a single server:
+BenoDB provides a dual-protocol HTTP gateway exposing OpenSearch / Elasticsearch 7.10 compatibility alongside the Qdrant Vector API from a single server:
 
 ### Starting the Server
 ```bash

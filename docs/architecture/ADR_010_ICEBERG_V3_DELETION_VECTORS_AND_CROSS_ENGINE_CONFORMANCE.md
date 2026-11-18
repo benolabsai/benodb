@@ -7,11 +7,11 @@
 
 ## 1. Context
 
-BenoStreamDB's portability claim rests on writing ordinary Apache Iceberg metadata: `v{N}.metadata.json`, Avro manifest lists, Avro data/delete manifests, Parquet segments, Puffin sidecars. Two forces made a decision necessary.
+BenoDB's portability claim rests on writing ordinary Apache Iceberg metadata: `v{N}.metadata.json`, Avro manifest lists, Avro data/delete manifests, Parquet segments, Puffin sidecars. Two forces made a decision necessary.
 
 **Force 1 — a private dialect is a silent data-loss risk.** The engine had begun encoding V3 concepts in shapes only it understood: the manifest Avro metadata hardcoded `format-version = "2"`; the deletion-vector Puffin blob used a foreign type identifier (`apache-datasketches-theta-v1`) with a raw roaring payload; delete entries used a custom `content = 3` code; and the V3 manifest schema never emitted fields `143–145`. A foreign engine opening such a table has two choices and both are bad: reject it, or trust the metadata and return rows the writer deleted.
 
-**Force 2 — the existing verification could not detect this class of bug.** PyIceberg 0.12 is V2-centric, so it validates the V2 surface and ignores V3 semantics. Worse, BenoStreamDB's own reader applies *every* deletion vector attached to a manifest entry and never consults `referenced_data_file`, so it is structurally incapable of noticing a vector that no external engine can match. "Our reader agrees with our writer" is not evidence.
+**Force 2 — the existing verification could not detect this class of bug.** PyIceberg 0.12 is V2-centric, so it validates the V2 surface and ignores V3 semantics. Worse, BenoDB's own reader applies *every* deletion vector attached to a manifest entry and never consults `referenced_data_file`, so it is structurally incapable of noticing a vector that no external engine can match. "Our reader agrees with our writer" is not evidence.
 
 ## 2. Decision
 
@@ -33,7 +33,7 @@ BenoStreamDB's portability claim rests on writing ordinary Apache Iceberg metada
 
 ## 3. Consequences
 
-**Positive.** A `format-version = 3` table written by BenoStreamDB is readable by `iceberg-rust` 0.11 and by Spark/Trino, including after deletions. V3 lineage is publishable: each snapshot carries a row range so a reader can assign stable `_row_id` values. The engine's delete representation is now the interchange format rather than a local convention.
+**Positive.** A `format-version = 3` table written by BenoDB is readable by `iceberg-rust` 0.11 and by Spark/Trino, including after deletions. V3 lineage is publishable: each snapshot carries a row range so a reader can assign stable `_row_id` values. The engine's delete representation is now the interchange format rather than a local convention.
 
 **Negative and accepted.**
 - **CRC-32 is hand-rolled** (IEEE 802.3, ~15 lines) instead of adding a dependency, because `deny.toml` audits every crate in the graph.

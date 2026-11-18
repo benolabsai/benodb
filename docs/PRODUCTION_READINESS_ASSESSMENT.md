@@ -1,4 +1,4 @@
-# BenoStreamDB — Release Readiness Assessment
+# BenoDB — Release Readiness Assessment
 - **Status:** Living document — **Developer Preview Ready** (All core integrity gates passed; enterprise HA/clustering deferred).
 - **Initial reviews:** 2026-09-30 (concurrency & workspace boundary review); 2026-10-03 (v0.13.0 core storage WS1–WS5 audit)
 - **Last verified:** 2026-11-10 (updated for `M2` `PendingCommit` hardening, `ADR-008`, `test_multi_writer_differential`, and `wal_segment` fuzzing ahead of `v0.15.2`)

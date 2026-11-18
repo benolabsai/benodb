@@ -8,7 +8,7 @@
 
 ## 1. Context & Operational Motivation
 
-BenoStreamDB eliminates the three-system ingestion tax — separate OLTP buffer database, Kafka-to-Iceberg micro-batch ETL, and standalone vector index — by buffering writes in an embedded write-ahead log (WAL) and committing directly to Parquet segments and Apache Iceberg snapshots inside a single Rust process. When flush/commit execution is interleaved with concurrent readers, concurrent buffered writers, process crashes, or multi-writer object-store contention, implicit state transitions between in-memory buffers and durable Iceberg metadata introduce five concrete failure modes:
+BenoDB eliminates the three-system ingestion tax — separate OLTP buffer database, Kafka-to-Iceberg micro-batch ETL, and standalone vector index — by buffering writes in an embedded write-ahead log (WAL) and committing directly to Parquet segments and Apache Iceberg snapshots inside a single Rust process. When flush/commit execution is interleaved with concurrent readers, concurrent buffered writers, process crashes, or multi-writer object-store contention, implicit state transitions between in-memory buffers and durable Iceberg metadata introduce five concrete failure modes:
 
 1. **Visibility Holes During Flush (`buffer`-to-`manifest` Handoff):** Draining `pending_writes` and `memory_index` before the Iceberg manifest becomes durable makes committed-in-WAL rows temporarily invisible to concurrent SQL scans and ANN searches. Conversely, retaining those batches in `pending_writes` after manifest commit causes duplicate row emission.
 2. **Irrecoverable Pre-Manifest Flush Failures:** If Parquet staging, object-store multipart upload, or Iceberg V3 row-lineage OCC fails after `pending_writes` has been drained, discarding or dropping the drained batches breaks the read-your-own-writes and retry guarantees on subsequent `commit_async()` calls.
@@ -107,7 +107,7 @@ For distributed JVM connectors (Spark `BatchWrite` executors staging Parquet fil
 
 ## 4. Honest Architectural Scope & Boundaries
 
-Consistent with BenoStreamDB's systems-first contract, operators must respect four explicit boundaries of `PendingCommit`:
+Consistent with BenoDB's systems-first contract, operators must respect four explicit boundaries of `PendingCommit`:
 
 1. **Single-Table Coordinator Only:** `PendingCommit`, `commit_lock`, and `maintenance_lock` coordinate within a single `Table` handle against shared object-store CAS (`_manifest/v{N}.json` and `metadata/v{N}.metadata.json`). Multi-table cross-statement transactions and distributed two-phase consensus protocols are **out of scope**.
 2. **Remote Object Storage + Ephemeral Local WAL:** When opening an `s3://`, `gs://`, or `az://` URI without setting `BSDB_WAL_DIR` or `TableBuilder::with_wal_dir()`, the WAL defaults to local temporary storage (`/tmp/benostream_wal/...`) and logs a startup `tracing::warn!`. Un-committed WAL records in temporary local storage do not survive container or VM loss prior to `commit_async()`.

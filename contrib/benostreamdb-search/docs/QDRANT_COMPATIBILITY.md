@@ -2,7 +2,7 @@
 
 `bsdb-search` (the `benostreamdb-search` add-on) speaks the **Qdrant v1.x REST
 wire format** on port `6333` (override with `BSDB_QDRANT_BIND` / `BSDB_QDRANT_PORT`).
-Collections are stored as BenoStreamDB tables: a reserved `_id` (Utf8) column,
+Collections are stored as BenoDB tables: a reserved `_id` (Utf8) column,
 a `vector` (`FixedSizeList<Float32>`) column, and one Arrow column per inferred
 payload field. Collection parameters the engine has no native home for (the
 distance metric, HNSW config) are persisted in a small sidecar object
@@ -150,7 +150,7 @@ Success responses use `{ "result": <T>, "status": "ok", "time": <seconds> }`.
 
 ## Positioning
 
-BenoStreamDB-Search is **not** a drop-in replacement for an in-memory,
+BenoDB-Search is **not** a drop-in replacement for an in-memory,
 sub-millisecond Qdrant cluster. It is positioned for **website search, document
 catalogs, and knowledge bases** where a 50–200 ms query envelope is
 imperceptible, and the object-storage-native, scale-to-zero operational model

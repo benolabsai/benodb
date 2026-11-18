@@ -1,7 +1,7 @@
 # High-Throughput Vector Indexing Suite: Specification & Working Plan (v0.16.0)
 
 **Document Status:** Approved Architecture Plan  
-**Target Release:** BenoStreamDB `v0.16.0`  
+**Target Release:** BenoDB `v0.16.0`  
 **Tracking Issue:** [benolabsai/benostreamdb#124](https://github.com/benolabsai/benostreamdb/issues/124)  
 **Feature Branch:** `feature/e-means`  
 **Author:** Richard Albright (BenoLabs)  
@@ -15,7 +15,7 @@ In high-dimensional vector search and hybrid graph-vector database systems, vect
 2. **The Inverted List Dynamic Range Problem (Fine Quantization):** Inverted lists storing raw vectors $x \in \mathbb{R}^d$ suffer from large dynamic range spread. Storing vectors relative to their coarse partition centroids as residuals ($r = x - c_j$) compresses dynamic range by 70–85%, enabling tighter quantization bins with lower reconstruction distortion.
 3. **The Inverted List Memory Bandwidth Bottleneck (Query Scan):** During search, scanning vectors in probed Voronoi buckets incurs high memory bandwidth and cache latency. Traversal using standard gather instructions or uncompressed floats is bound by memory throughput.
 
-To resolve these bottlenecks in `v0.16.0`, BenoStreamDB integrates a unified high-throughput vector suite:
+To resolve these bottlenecks in `v0.16.0`, BenoDB integrates a unified high-throughput vector suite:
 * **e-means Coarse Quantization:** Meta FAIR mini-batch EMA coarse quantizer achieving true convergence in 1.2–2.5 epochs (~10× wall-clock build acceleration).
 * **Residual Inverted List Encoding:** Centering partition vectors around coarse centroids ($r = x - c_j$) with mathematical L2 distance preservation.
 * **In-Register 4-Bit SIMD FastScan Engine:** Traversal of 32-vector interleaved blocks using AVX2 `_mm_shuffle_epi8` / ARM NEON `vtbl1_u8` byte shuffles directly in CPU registers without L1/L2 cache lookups.
@@ -140,7 +140,7 @@ This executes in **1 CPU cycle per subvector for 32 vector distances**, operatin
 
 ---
 
-## 5. Compatibility Matrix Across BenoStreamDB Compression Formats
+## 5. Compatibility Matrix Across BenoDB Compression Formats
 
 | Compression Format | Bit Depth | FastScan Compatibility | Mechanics & Rationale |
 | :--- | :---: | :---: | :--- |

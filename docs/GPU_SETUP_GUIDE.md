@@ -1,10 +1,10 @@
-# GPU Setup Guide for BenoStreamDB
+# GPU Setup Guide for BenoDB
 
-This guide provides detailed instructions for setting up GPU acceleration for vector operations in BenoStreamDB.
+This guide provides detailed instructions for setting up GPU acceleration for vector operations in BenoDB.
 
 ## Overview
 
-BenoStreamDB supports GPU acceleration for vector distance computations across multiple hardware backends:
+BenoDB supports GPU acceleration for vector distance computations across multiple hardware backends:
 
 - **NVIDIA CUDA** - For NVIDIA GPUs (GeForce, Quadro, Tesla, RTX 20/30/40/50 series, Blackwell; tested with CUDA 11, 12, and 13)
 - **Apple Metal (MPS)** - For Apple Silicon Macs (M1–M5, verified)
@@ -22,7 +22,7 @@ GPU acceleration offloads compute-heavy batch vector distance kernels to hardwar
 
 ### Unified Binary (PyPI)
 
-BenoStreamDB provides a unified binary package with support for major compute backends. Runtime detection automatically activates available hardware drivers, safely falling back to CPU if drivers are unavailable.
+BenoDB provides a unified binary package with support for major compute backends. Runtime detection automatically activates available hardware drivers, safely falling back to CPU if drivers are unavailable.
 
 ```bash
 pip install benostreamdb
@@ -62,7 +62,7 @@ print(bsdb.Device.is_available("xpu"))   # True if Intel hardware present
 - **Driver**: NVIDIA driver 450.80.02 or later (550+ recommended for RTX 50 series / Blackwell)
 - **CUDA Runtime & Toolkits**: Supports CUDA 11.x, 12.x, and 13.x (CUDA 13 verified and tested locally). Runtime discovery links against `libcuda.so` (Linux) or `nvcuda.dll` (Windows) provided by the driver.
 
-> **Note on NVRTC JIT Compilation:** BenoStreamDB compiles CUDA kernels at **runtime** via NVRTC (Just-In-Time). The CUDA Toolkit and `nvcc` compiler are **not** required for building or running. BenoStreamDB features custom, version-agnostic NVRTC discovery that automatically resolves `libnvrtc` across CUDA 11, CUDA 12, and CUDA 13 (including pip wheels like `nvidia-cuda-nvrtc-cu12` or `nvidia-cuda-nvrtc-cu13`).
+> **Note on NVRTC JIT Compilation:** BenoDB compiles CUDA kernels at **runtime** via NVRTC (Just-In-Time). The CUDA Toolkit and `nvcc` compiler are **not** required for building or running. BenoDB features custom, version-agnostic NVRTC discovery that automatically resolves `libnvrtc` across CUDA 11, CUDA 12, and CUDA 13 (including pip wheels like `nvidia-cuda-nvrtc-cu12` or `nvidia-cuda-nvrtc-cu13`).
 
 ### Supported GPUs
 
@@ -109,7 +109,7 @@ Without `--features cuda`, the CUDA backend will be unavailable at runtime (othe
 ### Installation on Windows
 
 **Recommended: WSL2 (Windows Subsystem for Linux)**
-Windows users should use **WSL2** to run BenoStreamDB with GPU support:
+Windows users should use **WSL2** to run BenoDB with GPU support:
 
 1. Install WSL2 and Ubuntu (e.g., `wsl --install -d Ubuntu-22.04`)
 2. Install NVIDIA Windows Driver (this provides the necessary kernel-mode interface for WSL2)
@@ -122,7 +122,7 @@ Windows users should use **WSL2** to run BenoStreamDB with GPU support:
 **Native Windows (outside WSL2):**
 We build and package native Windows binaries with full architectural support for CUDA via dynamic linking to `nvcuda.dll` and runtime NVRTC JIT compilation. However, because our automated CI test suite currently runs on Linux, native Windows GPU execution is currently **untested in CI**. 
 
-If you are running BenoStreamDB natively on Windows with an NVIDIA GPU, we would love your help: please test your workload and [report your results or open an issue](https://github.com/benolabsai/benostreamdb/issues) to let us know how it runs on your machine. For production workflows today, WSL2 remains our tested and recommended environment.
+If you are running BenoDB natively on Windows with an NVIDIA GPU, we would love your help: please test your workload and [report your results or open an issue](https://github.com/benolabsai/benostreamdb/issues) to let us know how it runs on your machine. For production workflows today, WSL2 remains our tested and recommended environment.
 
 ### Verification
 
@@ -151,9 +151,9 @@ print(f"GPU time: {stats['total_gpu_time_ms']}ms")
 
 - **GPU**: AMD Radeon RX 5000 series or newer (RDNA 1, 2, 3), or Instinct MI series.
 - **OS**: Linux (Primary support for compute workloads).
-- **Backend**: BenoStreamDB uses **WGPU/Vulkan** for AMD compute, ensuring compatibility across a wide range of Linux distributions.
+- **Backend**: BenoDB uses **WGPU/Vulkan** for AMD compute, ensuring compatibility across a wide range of Linux distributions.
 
-> **Hardware Testing Status (Help Wanted):** BenoStreamDB targets AMD GPUs via its cross-platform **WGPU / Vulkan** compute pipeline. However, our internal testing environment has validated WGPU primarily on Intel integrated graphics; we currently lack physical AMD discrete GPUs (RX 6000/7000 series or Instinct) in our regular CI test harness. While the WGSL distance shaders compile and run against standard Vulkan compute targets, AMD execution is currently **untested on real hardware**.
+> **Hardware Testing Status (Help Wanted):** BenoDB targets AMD GPUs via its cross-platform **WGPU / Vulkan** compute pipeline. However, our internal testing environment has validated WGPU primarily on Intel integrated graphics; we currently lack physical AMD discrete GPUs (RX 6000/7000 series or Instinct) in our regular CI test harness. While the WGSL distance shaders compile and run against standard Vulkan compute targets, AMD execution is currently **untested on real hardware**.
 >
 > If you have an AMD GPU with ROCm or Vulkan on Linux, we would love your help! Please run the verification snippet below and [report your benchmark results or open an issue](https://github.com/benolabsai/benostreamdb/issues).
 
@@ -307,13 +307,13 @@ vulkaninfo | grep "vendorID = 0x8086"
 ```bash
 # Verify Vulkan/WGPU installation
 vulkaninfo | grep vendor
-# Or check adapter listing in BenoStreamDB
+# Or check adapter listing in BenoDB
 python -c "import benostreamdb as bsdb; print(bsdb.Device.list_available_backends())"
 ```
 
 ### Installation on Windows (via WSL2)
 
-Windows users should ensure they have the latest Intel Graphics drivers installed on the host. These provide Vulkan support to WSL2, enabling BenoStreamDB to detect and use the GPU via WGPU.
+Windows users should ensure they have the latest Intel Graphics drivers installed on the host. These provide Vulkan support to WSL2, enabling BenoDB to detect and use the GPU via WGPU.
 
 ### Verification
 

@@ -1,8 +1,8 @@
 # 2-Minute Quickstart
 
-Get up and running with **BenoStreamDB** in under two minutes.
+Get up and running with **BenoDB** in under two minutes.
 
-BenoStreamDB is an embedded, serverless index-overlay engine for Apache Iceberg. You run it directly in your Python or Rust application with **zero external database servers to manage or pay for**.
+BenoDB is an embedded, serverless index-overlay engine for Apache Iceberg. You run it directly in your Python or Rust application with **zero external database servers to manage or pay for**.
 
 ---
 
@@ -116,7 +116,7 @@ print(hybrid_results[["id", "title", "distance", "rrf_score"]])
 
 ## 📊 4. Query with SQL & pgvector Syntax (30 seconds)
 
-BenoStreamDB provides a full Apache DataFusion SQL engine with native support for standard **PostgreSQL pgvector operators** (`<->` L2 distance, `<=>` Cosine distance, `<#>` Inner product). SQL queries transparently benefit from the attached secondary index overlays:
+BenoDB provides a full Apache DataFusion SQL engine with native support for standard **PostgreSQL pgvector operators** (`<->` L2 distance, `<=>` Cosine distance, `<#>` Inner product). SQL queries transparently benefit from the attached secondary index overlays:
 
 ```python
 import benostreamdb as bsdb
@@ -152,7 +152,7 @@ print(df.to_pandas())
 
 ## 🏎️ 5. 4x Index Compression with TurboQuant™ (15 seconds)
 
-BenoStreamDB ships with **TurboQuant™ (TQ8)** out-of-the-box. It applies Fast Walsh-Hadamard Transform (FWHT) and scalar quantization to compress vectors **4x** on disk and RAM while retaining >99% recall:
+BenoDB ships with **TurboQuant™ (TQ8)** out-of-the-box. It applies Fast Walsh-Hadamard Transform (FWHT) and scalar quantization to compress vectors **4x** on disk and RAM while retaining >99% recall:
 
 ```python
 # Add an accelerated TurboQuant 8-bit HNSW index to your vector column
@@ -175,7 +175,7 @@ print(results[["id", "title", "distance"]])
 
 ## 🔌 Core Connectors: Flight SQL, Trino, Spark & dbt
 
-BenoStreamDB's primary integration surface is the lakehouse query stack: **Arrow Flight SQL**, **Trino**, **Apache Spark**, and **dbt**. Every connector reads and writes the same Apache Iceberg tables through the Rust engine — there is no export step and no second copy of the data.
+BenoDB's primary integration surface is the lakehouse query stack: **Arrow Flight SQL**, **Trino**, **Apache Spark**, and **dbt**. Every connector reads and writes the same Apache Iceberg tables through the Rust engine — there is no export step and no second copy of the data.
 
 ### Arrow Flight SQL (`:50051`)
 

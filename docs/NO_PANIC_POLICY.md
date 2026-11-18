@@ -1,6 +1,6 @@
 # No-Panic Policy
 
-BenoStreamDB is a long-running database process. A single `unwrap()` on an
+BenoDB is a long-running database process. A single `unwrap()` on an
 unexpected `None`/`Err` in a request path, an ingest loop, or a decode path
 crashes the whole daemon: in-flight queries are dropped, the process restarts,
 and the WAL has to recover. Panics are therefore treated as defects in

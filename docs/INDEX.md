@@ -1,14 +1,14 @@
-# BenoStreamDB Documentation
+# BenoDB Documentation
 
-BenoStreamDB is an index-overlay engine for the lakehouse built in Rust. It layers reconstructible, persistent secondary indexes—HNSW vector search, BM25 Okapi full-text, Roaring Bitmaps, JSON path filters, and CSR graphs—directly onto Apache Iceberg tables in object storage.
+BenoDB is an index-overlay engine for the lakehouse built in Rust. It layers reconstructible, persistent secondary indexes—HNSW vector search, BM25 Okapi full-text, Roaring Bitmaps, JSON path filters, and CSR graphs—directly onto Apache Iceberg tables in object storage.
 
-> **⚠️ Deployment Security Notice:** BenoStreamDB network servers (`benostreamdb-flight`, `bsdb-search`, and `benostreamdb-mcp`) do not terminate TLS natively. They support stateless authentication (`BSDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md).
+> **⚠️ Deployment Security Notice:** BenoDB network servers (`benostreamdb-flight`, `bsdb-search`, and `benostreamdb-mcp`) do not terminate TLS natively. They support stateless authentication (`BSDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md).
 
 ---
 
 ## 🔌 Connectors & Integrations
 
-BenoStreamDB provides native connectors and API bridges for data engineering and AI ecosystems:
+BenoDB provides native connectors and API bridges for data engineering and AI ecosystems:
 
 * **[Python Client & Vector API](https://www.benostreamdb.org/integrations/python.html)**: Embedded PyO3 bindings with zero-copy PyArrow integration, `Table` operations, vector search, and SQL sessions.
 * **[Apache Spark Connector](https://www.benostreamdb.org/integrations/spark.html)**: Native DataSource V2 connector for Spark 3.5 & 4.x with vector UDFs, secondary index pushdown, catalog stored procedures, and row-level operations.

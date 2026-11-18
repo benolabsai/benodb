@@ -3,16 +3,16 @@
 > ⚠️ **Developer Preview / Untested Against Live Snowflake Accounts**  
 >  
 > This integration architecture is built on the **Apache Iceberg Table Specification (V2/V3)** and the **Iceberg REST Catalog Specification** (compatible with Snowflake Open Catalog / Apache Polaris).  
-> While BenoStreamDB's underlying Iceberg engine, detached overlay catalog, and REST client are verified through automated integration tests, **end-to-end certification against live, production Snowflake Enterprise accounts is currently in development and untested in this release**.  
+> While BenoDB's underlying Iceberg engine, detached overlay catalog, and REST client are verified through automated integration tests, **end-to-end certification against live, production Snowflake Enterprise accounts is currently in development and untested in this release**.  
 > Evaluate this workflow in a sandbox or non-production environment.
 
 ---
 
 ## 📖 Overview
 
-Enterprises that store analytical datasets in Snowflake can use BenoStreamDB to layer reconstructible, high-performance secondary indexes—**vector ANN (HNSW), full-text BM25, and scalar bitmap indexes**—over their Snowflake data with **zero data duplication** and **zero Snowflake compute credits**.
+Enterprises that store analytical datasets in Snowflake can use BenoDB to layer reconstructible, high-performance secondary indexes—**vector ANN (HNSW), full-text BM25, and scalar bitmap indexes**—over their Snowflake data with **zero data duplication** and **zero Snowflake compute credits**.
 
-BenoStreamDB integrates with Snowflake via **Snowflake Iceberg Tables** residing in customer-managed object storage (Amazon S3, Google Cloud Storage, or Azure Blob Storage).
+BenoDB integrates with Snowflake via **Snowflake Iceberg Tables** residing in customer-managed object storage (Amazon S3, Google Cloud Storage, or Azure Blob Storage).
 
 ```text
 ┌─────────────────────────────────────────────────┐
@@ -23,7 +23,7 @@ BenoStreamDB integrates with Snowflake via **Snowflake Iceberg Tables** residing
                         │
                         ▼ (writes Parquet + metadata)
 ┌─────────────────────────────────────────────────┐          ┌─────────────────────────────────────────┐
-│     Customer Object Storage (S3 / GCS / Azure)  │          │     BenoStreamDB Overlay Storage        │
+│     Customer Object Storage (S3 / GCS / Azure)  │          │     BenoDB Overlay Storage        │
 │             External Volume Prefix              │          │            (Separate Bucket)            │
 │              (Strictly Read-Only)               │          │           (Writable Sidecars)           │
 ├─────────────────────────────────────────────────┤          ├─────────────────────────────────────────┤
@@ -41,7 +41,7 @@ BenoStreamDB integrates with Snowflake via **Snowflake Iceberg Tables** residing
 ### Approach A: Direct Storage Mounting (Detached Overlay Mode — Recommended)
 **No Snowflake catalog credentials or API tokens needed.**
 
-When Snowflake manages an Iceberg table on an External Volume, it writes standard Iceberg `v{N}.metadata.json` files and Parquet files into your cloud storage. BenoStreamDB mounts the storage path directly.
+When Snowflake manages an Iceberg table on an External Volume, it writes standard Iceberg `v{N}.metadata.json` files and Parquet files into your cloud storage. BenoDB mounts the storage path directly.
 
 #### Step 1: Create an External Volume & Iceberg Table in Snowflake
 ```sql
@@ -70,8 +70,8 @@ CATALOG = 'SNOWFLAKE'
 BASE_LOCATION = 'customer_interactions/';
 ```
 
-#### Step 2: Mount the Table in BenoStreamDB
-Point BenoStreamDB to the Snowflake external volume base location:
+#### Step 2: Mount the Table in BenoDB
+Point BenoDB to the Snowflake external volume base location:
 
 ```python
 import benostreamdb as bsdb
@@ -161,12 +161,12 @@ CREATE ICEBERG TABLE customer_interactions_iceberg
   BASE_LOCATION = 'customer_interactions/'
   AS SELECT * FROM proprietary_interactions;
 ```
-Once written to the external volume, BenoStreamDB immediately mounts and indexes the data without ongoing migration pipelines.
+Once written to the external volume, BenoDB immediately mounts and indexes the data without ongoing migration pipelines.
 
 ---
 
 ## 🔒 Enterprise Security & Invariants
 
-1. **Zero Snowflake Compute Costs**: All queries, vector ANN searches, BM25 text scans, and index builds run on BenoStreamDB compute. Zero Snowflake virtual warehouse credits are billed.
-2. **Strict Read-Only Access**: BenoStreamDB requires only `s3:GetObject` on the Snowflake external volume prefix. It cannot alter, delete, or rewrite Snowflake data files.
+1. **Zero Snowflake Compute Costs**: All queries, vector ANN searches, BM25 text scans, and index builds run on BenoDB compute. Zero Snowflake virtual warehouse credits are billed.
+2. **Strict Read-Only Access**: BenoDB requires only `s3:GetObject` on the Snowflake external volume prefix. It cannot alter, delete, or rewrite Snowflake data files.
 3. **Reconstructible State**: All index sidecars live in the isolated `overlay_storage_uri`. If the overlay bucket is lost, all indexes can be rebuilt from the authoritative Iceberg Parquet files.

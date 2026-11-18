@@ -1,7 +1,7 @@
 # Dependency Risk & Advisory Tracking Plan
 
 - **Status:** Living document
-- **Owner:** BenoStreamDB core
+- **Owner:** BenoDB core
 - **Initial tracking plan:** 2026-10-02 (`6213bcdc`)
 - **Last verified:** 2026-11-10 (v0.15.1)
 - **Companion config:** [`deny.toml`](https://github.com/benolabsai/benostreamdb/blob/main/deny.toml) (`cargo-deny`), [`audit.toml`](https://github.com/benolabsai/benostreamdb/blob/main/audit.toml) (`cargo-audit`)
@@ -135,7 +135,7 @@ migration path, and resolution record once cleared.
 | Initial review | **2026-11-09** (`5ac9838a`) |
 | Last verified | **2026-11-10** |
 | Chain | **Transitive**: `libsqlite3-sys 0.30.1` ← `sqlx-sqlite 0.8.6` ← `sqlx 0.8.6` ← `benostreamdb` |
-| Reachability | **Not reachable on adversarial inputs.** Exploitation requires opening an untrusted external SQLite database + `-wal` sidecar file. BenoStreamDB uses `sqlx-sqlite` strictly for local trusted state and never opens user-supplied SQLite files. |
+| Reachability | **Not reachable on adversarial inputs.** Exploitation requires opening an untrusted external SQLite database + `-wal` sidecar file. BenoDB uses `sqlx-sqlite` strictly for local trusted state and never opens user-supplied SQLite files. |
 | Fix status | Blocked upstream: `sqlx-sqlite 0.8.6` pins `libsqlite3-sys < 0.31`; the fix ships in `libsqlite3-sys >= 0.39.0`. |
 | Migration path | Upgrade `sqlx` (`0.9+`) or drop the `sqlite` feature from `sqlx` if no catalog path needs it. |
 | Status | Accepted (unreachable on untrusted inputs). |

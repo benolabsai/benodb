@@ -1,6 +1,6 @@
-# BenoStreamDB Benchmarking Plan
+# BenoDB Benchmarking Plan
 
-Status: Completed. Owner: BenoStreamDB core.
+Status: Completed. Owner: BenoDB core.
 Companion docs: [`BENCHMARKING.md`](BENCHMARKING.md) (how to run the existing suite),
 [`RESOURCE_LIMITS.md`](RESOURCE_LIMITS.md) (memory/CPU knobs),
 [`CONCURRENCY.md`](CONCURRENCY.md) (writer/reader model).
@@ -33,7 +33,7 @@ methodology required to keep the numbers honest.
 - Winning every axis. Overlay indexes trade build cost and storage for query
   speed and reconstructibility; the report must state where we lose.
 - Tuned-vs-untuned comparisons. A tuned competitor compared to an untuned
-  BenoStreamDB (or vice versa) is not a benchmark.
+  BenoDB (or vice versa) is not a benchmark.
 
 ---
 
@@ -90,7 +90,7 @@ recomputed by brute force.
 ## 3. Competitor set
 
 Each competitor is run under the **same `--cores` / `--ram-gb` envelope** as the
-BenoStreamDB run (see §5). Adapters live in `benchmarks/competitors/`.
+BenoDB run (see §5). Adapters live in `benchmarks/competitors/`.
 
 ### Tier 1 — vector (must-have for launch)
 
@@ -141,7 +141,7 @@ config, and the command used.
 
 ### 4.1 Vector: `benchmarks/ann_benchmarks/run.py`
 
-- Loads an ANN-Benchmarks HDF5 dataset into a BenoStreamDB table with a vector
+- Loads an ANN-Benchmarks HDF5 dataset into a BenoDB table with a vector
   index, runs `--queries` test queries, and reports standard metrics.
 - Parameter mapping (so the competitor config is matched exactly):
 
@@ -198,7 +198,7 @@ with the Prometheus endpoint (`/metrics`) scraped for the duration.
 ## 5. Resource-envelope rules
 
 The engine and the competitor must be given the **same cores and RAM**. The
-harness sets the BenoStreamDB knobs from `--cores` / `--ram-gb`:
+harness sets the BenoDB knobs from `--cores` / `--ram-gb`:
 
 | Env var | Value | Purpose |
 |---|---|---|
@@ -219,7 +219,7 @@ whether the data is warm (page cache) or cold.
 [`benchmarks/competitors/docker_bench.sh`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/competitors/docker_bench.sh)
 applies a single envelope (`--cpus` / `--mem`) to **every** participant — the
 server engines *and* the runner that executes each client, including
-BenoStreamDB — so no one gets more resources than another. It records the host
+BenoDB — so no one gets more resources than another. It records the host
 hardware profile (CPU model, cores, RAM, Docker/Compose versions, GPU list) to
 `results/hardware_profile.txt`, and each result's `env` carries the
 container-visible cores/RAM.
@@ -227,7 +227,7 @@ container-visible cores/RAM.
 - **CPU is the baseline.** All engines run on CPU under the CPU envelope.
 - **GPU pass runs every engine.** `--gpu` (or `--both`) adds a GPU pass
   (`docker-compose.bench.gpu.yml`, `gpus: all`) that runs the *same* engine set
-  as the CPU pass. GPU-capable engines (FAISS, BenoStreamDB, cuGraph) use the
+  as the CPU pass. GPU-capable engines (FAISS, BenoDB, cuGraph) use the
   GPU; the CPU-only competitors (pgvector, LanceDB, OpenSearch, Neo4j CPU GDS,
   DuckDB) run on CPU inside the GPU container under the same envelope — so the
   comparison shows which engines can actually exploit the GPU. Restrict with
@@ -235,7 +235,7 @@ container-visible cores/RAM.
 - Results are tagged `{engine}_{dataset}_{device}.json` with `device=cpu|gpu`,
   and `rollup.md` has a Device column.
 - **Lexical/hybrid (BEIR) uses the same envelope.** `docker_bench.sh
-  --workload beir` runs BenoStreamDB, Tantivy, and the server-backed OpenSearch
+  --workload beir` runs BenoDB, Tantivy, and the server-backed OpenSearch
   in containers under the same `--cpus`/`--mem` profile (previously the embedded
   engines ran in-process on the host while OpenSearch ran in a separately-sized
   container). BEIR is CPU-bound, so there is no GPU pass; each record carries a
@@ -416,7 +416,7 @@ for HNSW/IVF/PQ/TurboQuant.
 ### Open
 
 - **Inner-product HNSW recall is low on unnormalized vectors.** On
-  `lastfm-64-dot` (inner product, unnormalized) BenoStreamDB's recall@10 is
+  `lastfm-64-dot` (inner product, unnormalized) BenoDB's recall@10 is
   ~0.10 vs FAISS's ~0.99, even though the inner-product and L2 ground truths are
   identical for that dataset (so the ranking is well-defined). Root cause: the
   hnswlib-style neighbour-selection heuristic assumes a *metric*, and inner
@@ -447,8 +447,8 @@ for HNSW/IVF/PQ/TurboQuant.
 | 4 | Fix vector-index-never-built (float64) + harness wait/verify | done |
 | 5 | `benchmarks/competitors/` Tier-1 adapters (FAISS, hnswlib, pgvector, LanceDB) | done |
 | 6 | Lexical/hybrid harnesses (BEIR, Elasticsearch/OpenSearch, Tantivy) | done |
-| 7 | Graph harnesses (LDBC, Neo4j GDS, NetworkX, cuGraph, BenoStreamDB) | done (`benchmarks/graph/run.py`) |
-| 8 | SQL harnesses (ClickBench, DuckDB, DataFusion, ClickHouse, BenoStreamDB) | done (`benchmarks/sql/run.py`) |
+| 7 | Graph harnesses (LDBC, Neo4j GDS, NetworkX, cuGraph, BenoDB) | done (`benchmarks/graph/run.py`) |
+| 8 | SQL harnesses (ClickBench, DuckDB, DataFusion, ClickHouse, BenoDB) | done (`benchmarks/sql/run.py`) |
 | 9 | Production workload harness (concurrent, maintenance, recovery, throttling, filters, skew, concurrency correctness, soak) | done |
 | 10 | Scheduled CI benchmark jobs + results site | done (`.github/workflows/benchmarks.yml`) |
 | 11 | Trino SQL competitor (`_sql_trino` + `trino` compose service) | done |

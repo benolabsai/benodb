@@ -2,8 +2,8 @@
 
 This document details the official results and methodology from the **MuSiQue multi-hop GraphRAG benchmark**:
 
-1. **Engine-Native Passage-Level Retrieval (Headline)**: BenoStreamDB's in-engine retrieval, with **no hosted LLM** in the loop, clears Zilliz's published Naive RAG baseline (**0.5943 vs. 0.5803 Micro Recall@5**).
-2. **Entity-Level Vector Graph RAG (Architecture Demo)**: Demonstrates BenoStreamDB natively serving the three-collection Passages/Entities/Relations/Mentions layout directly over Apache Iceberg tables without requiring external vector or graph databases.
+1. **Engine-Native Passage-Level Retrieval (Headline)**: BenoDB's in-engine retrieval, with **no hosted LLM** in the loop, clears Zilliz's published Naive RAG baseline (**0.5943 vs. 0.5803 Micro Recall@5**).
+2. **Entity-Level Vector Graph RAG (Architecture Demo)**: Demonstrates BenoDB natively serving the three-collection Passages/Entities/Relations/Mentions layout directly over Apache Iceberg tables without requiring external vector or graph databases.
 
 Both benchmarks utilize the exact upstream inputs published by Zilliz and HippoRAG, ensuring a like-for-like empirical comparison on the corpus, the knowledge graph, and the 1,000-question evaluation manifest.
 
@@ -38,7 +38,7 @@ Evaluated on the official Zilliz manifest sample of 1,000 multi-hop questions us
 
 **Comparison Baseline:**  
 Zilliz's published **Naive RAG baseline (BGE-large-en-v1.5) is 0.5803**.  
-BenoStreamDB's two-stage pipeline scores **0.5943 Micro Recall@5 (+1.40 points)** with the entire retrieval cycle executing in-process inside the database engine.
+BenoDB's two-stage pipeline scores **0.5943 Micro Recall@5 (+1.40 points)** with the entire retrieval cycle executing in-process inside the database engine.
 
 ---
 

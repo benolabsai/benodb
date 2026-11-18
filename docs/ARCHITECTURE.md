@@ -1,6 +1,6 @@
 # Architecture: The Indexed Lakehouse
 
-BenoStreamDB implements an indexed, compute-disaggregated lakehouse storage architecture that pairs authoritative open table storage with advisory, persistent secondary indexes and a unified retrieval layer.
+BenoDB implements an indexed, compute-disaggregated lakehouse storage architecture that pairs authoritative open table storage with advisory, persistent secondary indexes and a unified retrieval layer.
 
 ```text
                Iceberg Table
@@ -16,9 +16,9 @@ Authoritative Storage        Advisory Index Overlay
 
 **"Your Data is Standard. Your Index is Custom."**
 
-BenoStreamDB attaches persistent, reconstructible sidecar index files *alongside* standard Parquet files:
+BenoDB attaches persistent, reconstructible sidecar index files *alongside* standard Parquet files:
 *   **100% Format Compatibility**: Standard data engines (Spark, Trino, DuckDB, Pandas) read the underlying Parquet and Iceberg tables directly at native speed.
-*   **O(log N) Accelerated Retrieval**: BenoStreamDB-aware query engines and REST search gateways leverage inverted bitmap and vector indexes for low-latency queries directly on object storage.
+*   **O(log N) Accelerated Retrieval**: BenoDB-aware query engines and REST search gateways leverage inverted bitmap and vector indexes for low-latency queries directly on object storage.
 *   **The Overlay Invariant**: Indexes are derived state. If an index file is absent, corrupted, or stale, queries safely degrade to Parquet scanning without failing or returning incorrect results. See [ADR-001: Tightened Overlay Index Artifact Contract & Compound Puffin Bundles](https://www.benostreamdb.org/guides/adr_001.html).
 
 ---
@@ -40,7 +40,7 @@ Data is stored in immutable **Segments** pairing open columnar storage with advi
 
 ## Ingestion Pipeline: Non-Blocking Indexing & Async WAL
 
-BenoStreamDB achieves high ingestion throughput while maintaining real-time queryability:
+BenoDB achieves high ingestion throughput while maintaining real-time queryability:
 
 1.  **Memtable & Async WAL**: Incoming records write to an in-memory batch buffer with adaptive or immediate WAL fsync durability.
 2.  **Parquet Flushes**: Records flush to compressed Parquet files for immediate durability.
@@ -51,7 +51,7 @@ BenoStreamDB achieves high ingestion throughput while maintaining real-time quer
 
 ## The Read Path & Hot Row Cache
 
-BenoStreamDB combines scalar pre-filtering, vector search, and in-memory caching for ultra-low latencies:
+BenoDB combines scalar pre-filtering, vector search, and in-memory caching for ultra-low latencies:
 
 1.  **Scalar Pruning**: Query planner evaluates inverted index sidecars, producing a candidate row bitmap.
 2.  **Vector / Keyword Scoring**:
@@ -66,7 +66,7 @@ BenoStreamDB combines scalar pre-filtering, vector search, and in-memory caching
 
 ## Table-Level Cluster Indexing & Sequential 512 MiB Puffin Sharding
 
-For multi-million and 100M+ vector tables, per-segment vector sidecars create query fan-out overhead across hundreds of small HNSW graphs. BenoStreamDB provides **Table-Level Cluster Indexing** (`ClusterIndex`) via `table.rebuild_cluster_index()`:
+For multi-million and 100M+ vector tables, per-segment vector sidecars create query fan-out overhead across hundreds of small HNSW graphs. BenoDB provides **Table-Level Cluster Indexing** (`ClusterIndex`) via `table.rebuild_cluster_index()`:
 
 ```text
                         Table-Level Cluster Index (v42)
@@ -92,7 +92,7 @@ Clusters [0 .. K0]             Clusters [K0+1 .. K1]          Clusters [K1+1 .. 
 
 ## Multi-Protocol Search Gateway (`bsdb-search`)
 
-BenoStreamDB exposes its columnar storage and index overlays via standard REST protocols:
+BenoDB exposes its columnar storage and index overlays via standard REST protocols:
 *   **OpenSearch / Elasticsearch 7.10 API (Port 9200)**: Drop-in compatibility for `_search`, `_bulk`, `_mapping`, and `_cat/indices`.
 *   **Qdrant Vector API (Port 6333)**: Qdrant v1.x REST emulation — collections, point upsert/retrieve, payload & vector edits, vector search, aliases, and the universal query API. See [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md).
 *   **Arrow Flight SQL (Port 50051)**: Low-latency zero-copy gRPC queries for analytical tools.

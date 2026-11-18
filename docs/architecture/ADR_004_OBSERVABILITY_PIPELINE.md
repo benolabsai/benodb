@@ -109,13 +109,13 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_gathe
 ```
 
 and the Trino equivalent
-(`Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_gatherMetrics`).
+(`Java_com_benostreamdb_trino_BenoDBJNIBridge_gatherMetrics`).
 
 Declare the native methods in the connectors:
 
 - `spark-benostreamdb/.../jni/BenoStreamJNIBridge.scala`:
   `@native def gatherMetrics(): String`
-- `trino-benostreamdb/.../BenoStreamDBJNIBridge.java`:
+- `trino-benostreamdb/.../BenoDBJNIBridge.java`:
   `public static native String gatherMetrics();`
 
 Follow-up (optional, larger): register the parsed metrics into Spark's

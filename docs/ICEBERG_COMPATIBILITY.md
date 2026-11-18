@@ -2,22 +2,22 @@
 
 > **Authoritative Guide:** For the unified guide to Apache Iceberg storage, Python APIs, and zero-copy external engine reads, see [Apache Iceberg Storage & Zero-Copy Interoperability](ICEBERG_STORAGE.md).
 
-This document records which Iceberg V2/V3 features BenoStreamDB writes and reads
+This document records which Iceberg V2/V3 features BenoDB writes and reads
 conformantly, how that is validated, and the known deviations. It is the
 "published compatibility matrix" deliverable of WS4 in
 `plans/production_readiness_plan.md`.
 
 ## How this is validated
 
-Independently of BenoStreamDB's own reader, tables are validated with
+Independently of BenoDB's own reader, tables are validated with
 **PyIceberg** (an independent Apache Iceberg implementation) and against the
 Iceberg spec's structural requirements.
 
 | Layer | Test | What it proves |
 |-------|------|----------------|
 | Structural (Rust) | `tests/test_iceberg_conformance.rs` | The metadata JSON, manifest-list Avro, and data-manifest Avro carry the spec-required fields, field-ids, and types. |
-| Independent reader (Python) | `tests/integration/test_bsdb_to_pyiceberg.py` | PyIceberg loads a BenoStreamDB table and reads its data (schema + values) correctly. |
-| Reverse direction (Python) | `tests/integration/test_pyiceberg_compat.py` | BenoStreamDB reads a PyIceberg-written table. |
+| Independent reader (Python) | `tests/integration/test_bsdb_to_pyiceberg.py` | PyIceberg loads a BenoDB table and reads its data (schema + values) correctly. |
+| Reverse direction (Python) | `tests/integration/test_pyiceberg_compat.py` | BenoDB reads a PyIceberg-written table. |
 
 Run the Python interop tests with the project virtualenv:
 
@@ -62,7 +62,7 @@ Legend: ✅ conformant and machine-checked · ⚠️ documented deviation/extens
 ## Bugs found and fixed by this validation
 
 Validating with an independent reader surfaced four conformance bugs that
-BenoStreamDB's own round-trip tests did not catch:
+BenoDB's own round-trip tests did not catch:
 
 1. **Relative `manifest-list` path** — external readers resolve it against the
    process CWD, not the table location. Now written absolute.

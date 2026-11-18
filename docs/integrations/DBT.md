@@ -1,12 +1,12 @@
 # dbt Adapter (`dbt-benostreamdb`)
 
-The `dbt-benostreamdb` adapter enables analytics engineering, automated data transformations, and data lineage directly over BenoStreamDB and Apache Iceberg tables.
+The `dbt-benostreamdb` adapter enables analytics engineering, automated data transformations, and data lineage directly over BenoDB and Apache Iceberg tables.
 
 ---
 
 ## Overview
 
-With `dbt-benostreamdb`, you can define models using familiar dbt SQL workflows while taking full advantage of BenoStreamDB's native capabilities:
+With `dbt-benostreamdb`, you can define models using familiar dbt SQL workflows while taking full advantage of BenoDB's native capabilities:
 * **Iceberg Table & View Materializations**: Build standard Parquet tables and metadata views without moving data out of your lakehouse.
 * **Incremental Materializations**: Efficient append and merge models leveraging primary keys and deletion vectors.
 * **Vector & Hybrid Search Macros**: Embedded macros for vector distance scoring and hybrid retrieval (`benostreamdb.vector_search(...)`).
@@ -100,7 +100,7 @@ as index building.
 | Python-API features (index builds, embeddings, graph helpers) | yes | no |
 | Best for | laptops, CI, single-node lakehouse, notebooks | Airflow, Cloud Run, multi-team clusters |
 
-The embedded adapter exists precisely so that "run dbt against BenoStreamDB"
+The embedded adapter exists precisely so that "run dbt against BenoDB"
 does not require standing up a Trino cluster — that is the dependency it removes,
 and it is why both paths are kept: the engine is the same, only the transport
 differs. Keep the adapter thin (a SQL adapter over the engine's session) and do
@@ -166,7 +166,7 @@ FROM {{ ref('stg_events') }}
 
 ## Vector & Search Macros
 
-BenoStreamDB exposes helper macros for similarity queries and vector analytics:
+BenoDB exposes helper macros for similarity queries and vector analytics:
 
 ```sql+jinja
 {{ config(materialized='table') }}

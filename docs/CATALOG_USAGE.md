@@ -1,6 +1,6 @@
 # Multi-Catalog Usage Guide
 
-BenoStreamDB supports enterprise-grade data catalogs to provide table discovery, atomic commits, and snapshot isolation across your data lake. 
+BenoDB supports enterprise-grade data catalogs to provide table discovery, atomic commits, and snapshot isolation across your data lake. 
 
 ## Supported Catalogs
 
@@ -44,7 +44,7 @@ table.commit()
 ```
 
 ### JDBC Catalog (`jdbc`: SQLite and PostgreSQL)
-BenoStreamDB's JDBC catalog routes PostgreSQL (`postgres://`, `$1..$N` parameters) and SQLite (`sqlite://`, `sqlite::memory:`, `?` parameters) through `sqlx::AnyPool`, using `VARCHAR(1024)` for `metadata_location` and conditional `WHERE metadata_location = <expected>` updates:
+BenoDB's JDBC catalog routes PostgreSQL (`postgres://`, `$1..$N` parameters) and SQLite (`sqlite://`, `sqlite::memory:`, `?` parameters) through `sqlx::AnyPool`, using `VARCHAR(1024)` for `metadata_location` and conditional `WHERE metadata_location = <expected>` updates:
 
 ```python
 import benostreamdb as bsdb
@@ -84,7 +84,7 @@ table = catalog.load_table("default", "events_analytics")
 ```
 
 ### How it Works
-When you load a table from Hive, BenoStreamDB:
+When you load a table from Hive, BenoDB:
 1.  Queries the HMS for the `metadata_location` parameter in the table properties.
 2.  Loads the corresponding Iceberg manifest from storage (S3/GCS/FS).
 3.  On `commit()`, it writes a new manifest version and atomically updates the `metadata_location` in HMS using a CAS (Compare-and-Swap) operation on the backend database.
@@ -119,7 +119,7 @@ table = catalog.load_table("etl-job-v2", "users")
 
 ## 3. AWS Glue Catalog & Amazon S3 Tables
 
-For AWS deployments, BenoStreamDB supports both **Amazon S3 Tables** (`s3tables`, Iceberg REST over AWS SigV4) and **AWS Glue** (native `aws-sdk-glue` with `version_id` optimistic locking or managed Glue Iceberg REST via `mode = "rest"`).
+For AWS deployments, BenoDB supports both **Amazon S3 Tables** (`s3tables`, Iceberg REST over AWS SigV4) and **AWS Glue** (native `aws-sdk-glue` with `version_id` optimistic locking or managed Glue Iceberg REST via `mode = "rest"`).
 
 ### Amazon S3 Tables (`s3tables`)
 ```python
@@ -181,7 +181,7 @@ unity_tables = bsdb.create_catalog(
 
 ## 4. Iceberg REST Catalog (Snowflake / Apache Polaris & Lakekeeper)
 
-The vendor-neutral REST catalog is the most interoperable way to manage Iceberg tables across different engines (Trino, Spark, Snowflake, BenoStreamDB). BenoStreamDB natively supports the official Iceberg REST OpenAPI specification, including OAuth2 client credentials (`credential` / `client_id` + `client_secret`), static Bearer tokens (`token`), AWS SigV4 signing (`auth = "sigv4"`), and `/v1/config?warehouse=...` auto-discovery.
+The vendor-neutral REST catalog is the most interoperable way to manage Iceberg tables across different engines (Trino, Spark, Snowflake, BenoDB). BenoDB natively supports the official Iceberg REST OpenAPI specification, including OAuth2 client credentials (`credential` / `client_id` + `client_secret`), static Bearer tokens (`token`), AWS SigV4 signing (`auth = "sigv4"`), and `/v1/config?warehouse=...` auto-discovery.
 
 ### Snowflake / Apache Polaris with OAuth2 Client Credentials
 ```python
@@ -219,10 +219,10 @@ table = catalog.load_table("marketing", "campaign_results")
 _(merged from the former `catalog_usage.md`)_
 
 
-This guide walks through configuring a **Zero-Copy Open Data Lakehouse** connecting **BenoStreamDB**, **Apache Polaris**, and **Snowflake**. 
+This guide walks through configuring a **Zero-Copy Open Data Lakehouse** connecting **BenoDB**, **Apache Polaris**, and **Snowflake**. 
 
 With this architecture:
-- **BenoStreamDB** provides sub-2ms hybrid vector (HNSW) and full-text (BM25) search.
+- **BenoDB** provides sub-2ms hybrid vector (HNSW) and full-text (BM25) search.
 - **Apache Polaris** acts as the centralized open Iceberg REST catalog.
 - **Snowflake** queries the exact same Parquet data natively using standard Snowflake SQL without data duplication, ETL pipelines, or storage lock-in.
 
@@ -243,7 +243,7 @@ flowchart LR
     end
 
     subgraph Workloads ["Multi-Engine Execution"]
-        BSDB["BenoStreamDB / bsdb-search<br>• Real-time REST ingestion<br>• Sub-2ms Vector / BM25 Search"]
+        BSDB["BenoDB / bsdb-search<br>• Real-time REST ingestion<br>• Sub-2ms Vector / BM25 Search"]
         Snowflake["Snowflake Cloud Data Warehouse<br>• Native SQL queries & aggregations<br>• Zero-copy joins with enterprise data<br>• BI dashboards & Snowpark ML"]
     end
 
@@ -257,13 +257,13 @@ flowchart LR
 
 ## Prerequisites
 
-1. An **S3 Bucket** (or GCS/Azure container) storing your BenoStreamDB tables.
+1. An **S3 Bucket** (or GCS/Azure container) storing your BenoDB tables.
 2. An active **Apache Polaris** instance (Open-source Polaris or Snowflake-managed Open Catalog).
 3. A **Snowflake** account with `ACCOUNTADMIN` or privileges to create storage and catalog integrations.
 
 ---
 
-## Step 1: Configure BenoStreamDB to Sync with Polaris
+## Step 1: Configure BenoDB to Sync with Polaris
 
 Configure `benostreamdb-search` using environment variables or a `benostream.toml` configuration file.
 
@@ -308,7 +308,7 @@ INFO Initialized external Iceberg catalog from environment catalog_type=Rest nam
 
 ## Step 2: Configure Storage Access in Snowflake (External Volume)
 
-Create an `EXTERNAL VOLUME` in Snowflake pointing to the same S3 bucket where BenoStreamDB writes Parquet files:
+Create an `EXTERNAL VOLUME` in Snowflake pointing to the same S3 bucket where BenoDB writes Parquet files:
 
 ```sql
 CREATE OR REPLACE EXTERNAL VOLUME benostream_s3_volume
@@ -368,9 +368,9 @@ CREATE OR REPLACE ICEBERG TABLE customer_reviews
 
 ---
 
-## Step 5: Ingest via BenoStreamDB and Query in Snowflake
+## Step 5: Ingest via BenoDB and Query in Snowflake
 
-### 1. Ingest Data via BenoStreamDB Search API
+### 1. Ingest Data via BenoDB Search API
 
 Ingest documents via the OpenSearch-compatible REST API:
 
@@ -387,9 +387,9 @@ curl -X POST "http://localhost:9200/customer_reviews/_doc" \
 ```
 
 * **What happens immediately:**
-  1. BenoStreamDB persists the row to Parquet on S3.
-  2. BenoStreamDB indexes the vector in the local HNSW sidecar for sub-2ms ANN search.
-  3. BenoStreamDB triggers an **Iceberg Atomic Swap** to Apache Polaris, advancing the snapshot ID.
+  1. BenoDB persists the row to Parquet on S3.
+  2. BenoDB indexes the vector in the local HNSW sidecar for sub-2ms ANN search.
+  3. BenoDB triggers an **Iceberg Atomic Swap** to Apache Polaris, advancing the snapshot ID.
 
 ### 2. Query Natively in Snowflake
 

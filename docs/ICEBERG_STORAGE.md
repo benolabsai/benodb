@@ -1,14 +1,14 @@
 # Apache Iceberg Storage & Zero-Copy Interoperability
 
-BenoStreamDB writes 100% spec-compliant **Apache Iceberg (V2/V3) tables stored as Apache Parquet**. 
+BenoDB writes 100% spec-compliant **Apache Iceberg (V2/V3) tables stored as Apache Parquet**. 
 
-Because the storage format is standard Iceberg Parquet and the secondary index overlays (HNSW, BM25, Roaring Bitmaps) are decoupled into persistent Puffin sidecars, external query engines—such as **Apache Spark, Trino, DuckDB, Polars, and PyIceberg**—can read BenoStreamDB tables directly with **zero copy, zero export, and zero vendor lock-in**.
+Because the storage format is standard Iceberg Parquet and the secondary index overlays (HNSW, BM25, Roaring Bitmaps) are decoupled into persistent Puffin sidecars, external query engines—such as **Apache Spark, Trino, DuckDB, Polars, and PyIceberg**—can read BenoDB tables directly with **zero copy, zero export, and zero vendor lock-in**.
 
 ---
 
 ## 1. The Indexed Lakehouse Storage Architecture
 
-In BenoStreamDB, table state is decoupled into three structural layers:
+In BenoDB, table state is decoupled into three structural layers:
 
 ```
                           Iceberg Table Root
@@ -91,7 +91,7 @@ table.replace_sort_order(
 table.set_sort_order(["timestamp", "device_id"], [False, True])
 ```
 
-- **Range Pruning**: External engines and BenoStreamDB evaluate min/max bounds in Parquet file metadata to skip unreferenced row groups.
+- **Range Pruning**: External engines and BenoDB evaluate min/max bounds in Parquet file metadata to skip unreferenced row groups.
 - **Compression**: Sorted data clusters identical values, maximizing dictionary encoding and ZSTD run-length compression.
 
 ---
@@ -125,7 +125,7 @@ Supported partition transforms:
 
 ### 2.4 Column Statistics & NDV (Number of Distinct Values)
 
-BenoStreamDB writes exact column statistics into data manifest files automatically during each commit to accelerate cost-based query planning and row-group pruning:
+BenoDB writes exact column statistics into data manifest files automatically during each commit to accelerate cost-based query planning and row-group pruning:
 
 ```python
 # Inspect table metrics and index coverage
@@ -145,7 +145,7 @@ Written automatically per field ID in data manifests:
 
 ### 2.5 Row Lineage & V3 Capabilities
 
-BenoStreamDB supports Iceberg V3 metadata primitives:
+BenoDB supports Iceberg V3 metadata primitives:
 - `next-row-id`: Monotonically increasing 64-bit row identifier in table metadata.
 - `first-row-id` & `added-rows`: Tracked on each snapshot for immutable row lineage.
 - `_last_updated_sequence_number`: Tracks which transaction sequence modified each data file.
@@ -154,9 +154,9 @@ BenoStreamDB supports Iceberg V3 metadata primitives:
 
 ## 3. Zero-Copy External Engine Compatibility
 
-To ensure external readers (Trino, DuckDB, Spark, PyIceberg) load BenoStreamDB tables without modification, the engine strictly enforces Iceberg structural metadata invariants:
+To ensure external readers (Trino, DuckDB, Spark, PyIceberg) load BenoDB tables without modification, the engine strictly enforces Iceberg structural metadata invariants:
 
-| Metadata Component | Requirement for External Readers | Implementation in BenoStreamDB |
+| Metadata Component | Requirement for External Readers | Implementation in BenoDB |
 | :--- | :--- | :--- |
 | `v{N}.metadata.json` | `TableMetadataParser`-compliant JSON | Mandatory kebab-case `schema-id`, non-empty `sort-orders`, and root snapshot IDs. |
 | Manifest Lists (`snap-*.avro`) | Absolute URIs & typed Avro entries | Absolute paths to manifests; typed `partitions.element-id` metadata. |
@@ -171,7 +171,7 @@ Verify zero-copy interoperability using `pyiceberg`:
 ```python
 from pyiceberg.catalog import load_catalog
 
-# Point PyIceberg directly at the BenoStreamDB table directory
+# Point PyIceberg directly at the BenoDB table directory
 catalog = load_catalog("default", **{"type": "filesystem"})
 iceberg_table = catalog.load_table("s3://lakehouse/warehouse/telemetry_events")
 

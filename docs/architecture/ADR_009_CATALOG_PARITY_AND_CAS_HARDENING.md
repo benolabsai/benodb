@@ -9,11 +9,11 @@
 
 ## 1. Context & Operational Motivation
 
-A BenoStreamDB table's identity lives in a catalog, not in its Parquet files. That is what lets a second writer discover the current `metadata_location`, and it is what makes *concurrent* writers safe: two processes can both stage Parquet, but only one may win the metadata pointer update. If a catalog adapter performs an unconditional overwrite, the loser's commit silently erases the winner's snapshot — accepted data disappears with no error.
+A BenoDB table's identity lives in a catalog, not in its Parquet files. That is what lets a second writer discover the current `metadata_location`, and it is what makes *concurrent* writers safe: two processes can both stage Parquet, but only one may win the metadata pointer update. If a catalog adapter performs an unconditional overwrite, the loser's commit silently erases the winner's snapshot — accepted data disappears with no error.
 
 Comparing the adapter surface against [`apache/iceberg-rust`](https://github.com/apache/iceberg-rust) (`rest`, `glue`, `hms`, `sql`, `s3tables`, `memory`) exposed two problems:
 
-1. **Coverage gaps.** BenoStreamDB had no **AWS S3 Tables** catalog (Iceberg REST over SigV4) and no **in-process `memory`** catalog. The missing memory catalog was an operational cost, not just a feature gap: every multi-writer conformance test needed SQLite files or a live server, so concurrency semantics were under-tested by construction.
+1. **Coverage gaps.** BenoDB had no **AWS S3 Tables** catalog (Iceberg REST over SigV4) and no **in-process `memory`** catalog. The missing memory catalog was an operational cost, not just a feature gap: every multi-writer conformance test needed SQLite files or a live server, so concurrency semantics were under-tested by construction.
 
 2. **Optimistic-locking bugs in adapters already shipped.** `jdbc.rs` emitted hardcoded `?` placeholders (invalid on PostgreSQL), stored `{location}/manifest.json` as the metadata pointer while `commit_table` wrote `metadata/v{snap_id}.metadata.json` (corrupting `location` after the first commit), and had no CAS predicate at all. `glue.rs` never passed `version_id` to `UpdateTable`. `hive.rs` never used `alter_table_with_environment_context`'s `expected_parameter` lock. `unity.rs` PATCHed `{"storage_location": ...}` against the Unity Tables API instead of committing through the Unity Iceberg REST surface. `nessie.rs` ignored explicit `set-metadata-location` updates, so metadata-only commits (`update_schema`, `delete`, `vacuum`) could not advance the pointer.
 

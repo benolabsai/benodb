@@ -1,6 +1,6 @@
 # Java JNI Integration
 
-To support big data ecosystems like **Trino** and **Spark**, BenoStreamDB exposes its core functionality to the JVM via the Java Native Interface (JNI).
+To support big data ecosystems like **Trino** and **Spark**, BenoDB exposes its core functionality to the JVM via the Java Native Interface (JNI).
 
 ## Overview
 

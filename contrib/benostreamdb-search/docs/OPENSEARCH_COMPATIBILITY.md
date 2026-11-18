@@ -174,7 +174,7 @@ This ensures upstream clients receive valid, parseable JSON error envelopes rath
 
 ## Positioning
 
-BenoStreamDB-Search is **not** a drop-in replacement for an in-memory, sub-millisecond
+BenoDB-Search is **not** a drop-in replacement for an in-memory, sub-millisecond
 Elasticsearch cluster. It is positioned for **website search, document catalogs, and
 log archives** where a 50–200 ms query latency envelope is imperceptible to users, and
 the object-storage-native, scale-to-zero operational model (on-demand index fetch from
@@ -189,7 +189,7 @@ index builds) delivers a large TCO reduction versus a JVM + hot-SSD ES deploymen
 _(merged from the former `OPENSEARCH_COMPATIBILITY.md`)_
 
 
-This document outlines the strategy for validating BenoStreamDB's production readiness and building an Elasticsearch-compatible REST API wrapper. 
+This document outlines the strategy for validating BenoDB's production readiness and building an Elasticsearch-compatible REST API wrapper. 
 
 The REST API is implemented as a **separate, optional add-on package (`benostreamdb-search`)** in the Cargo workspace. This ensures the core library remains lightweight, and users who only need library-level access or FFI bindings do not pull in HTTP dependencies.
 
@@ -277,34 +277,34 @@ Create a new package `benostreamdb-search` in the Cargo workspace root.
 
 ## Step 5: Positioning: Strengths & Weaknesses vs. Elasticsearch
 
-To effectively market this add-on, we must clearly define how it compares to Elasticsearch (ES) so users understand when to choose BenoStreamDB-Search.
+To effectively market this add-on, we must clearly define how it compares to Elasticsearch (ES) so users understand when to choose BenoDB-Search.
 
 ### 5.1 Strengths (Competitive Advantages)
 1. **Ultra-Low TCO (Total Cost of Ownership)**:
    * *Elasticsearch*: Requires expensive instance groups with huge memory allocations (JVM heaps) and fast, hot SSD storage. 
-   * *BenoStreamDB*: Built for serverless object storage (S3/RustFS). When idle, it costs nothing. Index files (`.hnsw` and `.idx`) are fetched on-demand and cached locally.
+   * *BenoDB*: Built for serverless object storage (S3/RustFS). When idle, it costs nothing. Index files (`.hnsw` and `.idx`) are fetched on-demand and cached locally.
 2. **Open Data Lakehouse Integration**:
    * *Elasticsearch*: Uses a proprietary data format. Getting data out for analysis requires heavy ETLs or expensive scroll APIs.
-   * *BenoStreamDB*: Underpinned by Apache Iceberg and Parquet. Other tools (DuckDB, Trino, Spark) can query the exact same files directly in the data lake without moving data.
+   * *BenoDB*: Underpinned by Apache Iceberg and Parquet. Other tools (DuckDB, Trino, Spark) can query the exact same files directly in the data lake without moving data.
 3. **Dynamic Schema Evolution**:
    * *Elasticsearch*: Changing mapping types or structures often requires creating a new index and running a resource-heavy `_reindex` job.
-   * *BenoStreamDB*: Inherits Iceberg's native schema evolution, allowing column additions, drops, and renaming instantly.
+   * *BenoDB*: Inherits Iceberg's native schema evolution, allowing column additions, drops, and renaming instantly.
 4. **GPU-Accelerated Hybrid Search**:
    * *Elasticsearch*: Vector search runs on standard JVM threads.
-   * *BenoStreamDB*: Native vector indexing with SIMD/GPU acceleration for low-cost, high-scale HNSW execution.
+   * *BenoDB*: Native vector indexing with SIMD/GPU acceleration for low-cost, high-scale HNSW execution.
 
 ### 5.2 Weaknesses (Where ES Wins & How to Position It)
 1. **Sub-Millisecond Query Latency**:
    * *Elasticsearch*: Sub-5ms response times due to aggressive in-memory caching.
-   * *BenoStreamDB*: 50–200ms response times due to S3-native fetch overhead.
-   * *Positioning*: Position BenoStreamDB-Search for **website search, document catalogs, and log archives** where 50–200ms is imperceptible to users, but the 90% hosting cost reduction is highly compelling.
+   * *BenoDB*: 50–200ms response times due to S3-native fetch overhead.
+   * *Positioning*: Position BenoDB-Search for **website search, document catalogs, and log archives** where 50–200ms is imperceptible to users, but the 90% hosting cost reduction is highly compelling.
 2. **Ecosystem & Dashboarding**:
    * *Elasticsearch*: Has mature Kibana integration for visualization and dashboarding.
-   * *BenoStreamDB*: No proprietary visualization frontend.
+   * *BenoDB*: No proprietary visualization frontend.
    * *Leveraging Grafana, Prometheus & Apache Superset*:
      - **Prometheus Metrics Endpoint**: The `benostreamdb-search` REST server will expose a `/metrics` endpoint (via the `prometheus` crate, already a dependency) providing operational telemetry: query latency histograms, ingestion throughput counters, index cache hit rates, and active connection gauges.
      - **Grafana + Prometheus Stack**: Grafana natively scrapes Prometheus endpoints, giving operators real-time operational dashboards (query p95/p99, error rates, ingestion backpressure) out of the box with zero custom code.
-     - **Grafana via DuckDB / Trino (Data Dashboards)**: For data-level dashboards, Grafana connects to DuckDB and Trino. Since our tables are standard Iceberg, Grafana can query and visualize BenoStreamDB data with full SQL support.
+     - **Grafana via DuckDB / Trino (Data Dashboards)**: For data-level dashboards, Grafana connects to DuckDB and Trino. Since our tables are standard Iceberg, Grafana can query and visualize BenoDB data with full SQL support.
      - **Apache Superset**: The premier open-source BI tool for data lakes natively supports Trino, Spark, and DuckDB, offering a robust Kibana-like log viewing and dashboarding experience.
-     - **Elasticsearch API Compatibility**: By ensuring our REST API matches standard Elasticsearch query endpoints, users can configure **Grafana's built-in Elasticsearch datasource** to query BenoStreamDB directly, providing zero-friction dashboard reuse.
+     - **Elasticsearch API Compatibility**: By ensuring our REST API matches standard Elasticsearch query endpoints, users can configure **Grafana's built-in Elasticsearch datasource** to query BenoDB directly, providing zero-friction dashboard reuse.
 

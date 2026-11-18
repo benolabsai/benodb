@@ -29,9 +29,9 @@ except ModuleNotFoundError:
             _match = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.MULTILINE)
     release = _match.group(1) if _match else '0.14.0'
 
-project = 'BenoStreamDB'
-copyright = '2026, Beno Labs and BenoStreamDB Contributors'
-author = 'Beno Labs and BenoStreamDB Contributors'
+project = 'BenoDB'
+copyright = '2026, Beno Labs and BenoDB Contributors'
+author = 'Beno Labs and BenoDB Contributors'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

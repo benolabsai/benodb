@@ -1,6 +1,6 @@
-# BenoStreamDB Admin CLI
+# BenoDB Admin CLI
 
-`bsdb-admin` is the official administrative tooling for BenoStreamDB. It provides cluster operators with safe, easy-to-use commands to manage storage, optimize performance, and clean up historical data.
+`bsdb-admin` is the official administrative tooling for BenoDB. It provides cluster operators with safe, easy-to-use commands to manage storage, optimize performance, and clean up historical data.
 
 ## Installation / Building
 If you are compiling from source, the admin CLI is built alongside the main engine:
@@ -30,7 +30,7 @@ bsdb-admin compact --uri "s3://production-data/events_table" --target-file-size 
 ```
 
 ### 2. `vacuum`
-BenoStreamDB relies on Multi-Version Concurrency Control (MVCC) and copy-on-write semantics. As data is updated, deleted, or compacted, old files are unlinked from the active manifest but remain on disk to allow time-travel queries and safe rollback.
+BenoDB relies on Multi-Version Concurrency Control (MVCC) and copy-on-write semantics. As data is updated, deleted, or compacted, old files are unlinked from the active manifest but remain on disk to allow time-travel queries and safe rollback.
 
 The `vacuum` command permanently deletes these unreferenced historical files to reclaim physical storage space. 
 

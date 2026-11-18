@@ -1,6 +1,6 @@
 # Connectors & Ecosystem Integrations
 
-BenoStreamDB provides native connectors, API bindings, and network gateways across the data engineering and AI ecosystems.
+BenoDB provides native connectors, API bindings, and network gateways across the data engineering and AI ecosystems.
 
 ---
 

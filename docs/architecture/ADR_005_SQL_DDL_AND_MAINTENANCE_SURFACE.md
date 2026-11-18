@@ -6,11 +6,11 @@
 
 ## 1. Problem
 
-BenoStreamDB's capabilities live on the Rust/Python `Table` API. The SQL layer
+BenoDB's capabilities live on the Rust/Python `Table` API. The SQL layer
 (DataFusion + the Flight SQL gateway) exposes only a fraction of them:
 
 - `CREATE TABLE` over Flight SQL creates an ephemeral DataFusion `MemTable`, not a
-  BenoStreamDB/Iceberg table.
+  BenoDB/Iceberg table.
 - There is no SQL surface for indexes, primary keys, schema evolution, or
   maintenance (compaction, vacuum, orphan removal, index recovery).
 - The Flight SQL server starts with an empty session and registers no tables.

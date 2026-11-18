@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="BenoStreamDB.png" alt="BenoStreamDB Logo" width="300">
+  <img src="BenoDB.png" alt="BenoDB Logo" width="300">
 </p>
 
-# BenoStreamDB
+# BenoDB
 **Serverless Index-Streaming Database with Overlay Indexing**
 
 **Links:** [Docs](https://www.benostreamdb.org) · [Benchmarks](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md) · [Changelog](https://github.com/benolabsai/benostreamdb/blob/main/CHANGELOG.md) · [Beno Labs](https://www.benolabsai.com)
 
 > ⚠️ **Developer Preview**
-> BenoStreamDB is an early-stage database engine intended for evaluation, benchmarking, and community feedback. 
+> BenoDB is an early-stage database engine intended for evaluation, benchmarking, and community feedback. 
 > - **API & Storage Mutability:** APIs, configuration schemas, and secondary index sidecar on-disk layouts may evolve between preview releases.
 > - **Workload Suitability:** Not yet recommended for irreplaceable production data or mission-critical workloads requiring enterprise high-availability SLAs. Always back up authoritative data and pin versions.
 > - **Integrity Invariant:** Operations will not silently corrupt state or lose acknowledged writes. If an advisory index sidecar is missing or damaged, queries gracefully fall back to direct Parquet scans while the overlay rebuilds.
@@ -21,23 +21,23 @@
 | **Connectors** | [Apache Spark](https://www.benostreamdb.org/integrations/spark.html) (3.5 & 4.x, exactly-once writes), [Trino](https://www.benostreamdb.org/integrations/trino.html) (bands 482–483 and 484+), [dbt](https://www.benostreamdb.org/integrations/dbt.html) adapter, [MCP](https://www.benostreamdb.org/integrations/mcp.html) server (stdio + HTTP/SSE), [Flight SQL](https://www.benostreamdb.org/integrations/flight_sql.html) | ⚠️ Functional; each guide lists the supported versions |
 | **Experimental** | OpenSearch 7.10 & Qdrant REST gateway compatibility, Arrow Flight SQL server | ⚠️ Functional; APIs and performance tuning are actively evolving |
 
-> **Serverless by default.** BenoStreamDB runs directly against object storage and does not require a database server or always-on cluster. For applications that prefer a network-accessible database endpoint, BenoStreamDB also provides an optional Arrow Flight SQL server interface.
+> **Serverless by default.** BenoDB runs directly against object storage and does not require a database server or always-on cluster. For applications that prefer a network-accessible database endpoint, BenoDB also provides an optional Arrow Flight SQL server interface.
 >
 > **Flight SQL currently provides single-process server access. Distributed/clustered execution is not implied by Flight support.**
 
-An **index-overlay engine for the lakehouse**. BenoStreamDB layers reconstructible, persistent secondary indexes — scalar bitmaps, BM25 Okapi full-text, HNSW/IVF vector search, and CSR graph indexes — onto Parquet data that already lives in object storage, and exposes all of it through standard SQL (DataFusion) with pgvector-compatible syntax.
+An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, persistent secondary indexes — scalar bitmaps, BM25 Okapi full-text, HNSW/IVF vector search, and CSR graph indexes — onto Parquet data that already lives in object storage, and exposes all of it through standard SQL (DataFusion) with pgvector-compatible syntax.
 
 ### Deployment Modes
 
 1. **Embedded (Core)**:
    ```
-   Application (Python / Rust / JVM) ──► BenoStreamDB Engine ──► Object Storage (S3/GCS/Azure/Local)
+   Application (Python / Rust / JVM) ──► BenoDB Engine ──► Object Storage (S3/GCS/Azure/Local)
    ```
    Direct in-process database engine. Zero operational overhead, serverless-native, scales to zero.
 
 2. **Server Mode (Optional Arrow Flight SQL)**:
    ```
-   Remote Clients ──► Arrow Flight SQL (gRPC) ──► BenoStreamDB (Single Process) ──► Object Storage
+   Remote Clients ──► Arrow Flight SQL (gRPC) ──► BenoDB (Single Process) ──► Object Storage
    ```
    Standard, high-performance network database access for polyglot clients and BI tools.
 
@@ -73,14 +73,14 @@ An **index-overlay engine for the lakehouse**. BenoStreamDB layers reconstructib
 > - **Trusted Data Engines** (Core DB, Flight SQL, Spark, Trino, dbt): Retain full access authorized by warehouse credentials.
 > - **Untrusted Gateways** (MCP Agents, Search Gateway): If `.benostream-policy.json` is missing or unspecified, untrusted connectors are conservatively quarantined into **read-only mode across all tables**, restricting writes solely to transient `scratch.*` workspace tables.
 > 
-> *Note on TLS:* The network servers do not terminate TLS natively within the Rust binaries. When deploying over untrusted networks or the public internet, you must deploy BenoStreamDB behind a reverse proxy (like NGINX, Envoy, or an AWS ALB) that terminates TLS. See [SECURITY.md](SECURITY.md) for the full posture.
+> *Note on TLS:* The network servers do not terminate TLS natively within the Rust binaries. When deploying over untrusted networks or the public internet, you must deploy BenoDB behind a reverse proxy (like NGINX, Envoy, or an AWS ALB) that terminates TLS. See [SECURITY.md](SECURITY.md) for the full posture.
 
 
 It is not a storage engine you have to migrate into. You can either write through it, or point it at an **existing Apache Iceberg table it does not own** and build indexes over that data in place. The authoritative Parquet files and the advisory index overlays are stored separately, so indexing never rewrites or duplicates your data.
 
 ## 🎯 Architecture: The Indexed Lakehouse
 
-BenoStreamDB implements an indexed, compute-disaggregated lakehouse architecture that pairs authoritative open table storage with advisory, persistent secondary indexes and a unified retrieval layer. The indexes are **overlays**: they attach to data files as sidecar artifacts and can be layered onto tables BenoStreamDB did not create (see [Operating Modes](#-operating-modes-authoritative-vs-external-iceberg-tables) below).
+BenoDB implements an indexed, compute-disaggregated lakehouse architecture that pairs authoritative open table storage with advisory, persistent secondary indexes and a unified retrieval layer. The indexes are **overlays**: they attach to data files as sidecar artifacts and can be layered onto tables BenoDB did not create (see [Operating Modes](#-operating-modes-authoritative-vs-external-iceberg-tables) below).
 
 ```text
                Iceberg Table
@@ -99,9 +99,9 @@ Authoritative Storage        Advisory Index Overlay
 > 4. **Maintenance Invariant**: Maintenance operations may delete an artifact only if it is neither referenced by any active snapshot nor currently in-flight.
 > 5. **Resource Invariant**: Index builds are gated to a memory-scaled concurrency budget, and production paths follow a no-panic policy — malformed input degrades to an error, never a crash.
 
-BenoStreamDB sits between two categories of system that do not overlap. Vector/graph databases own your data and cannot do general SQL analytics over a lakehouse; lakehouse query engines do SQL over Iceberg/Parquet but have no native vector, full-text, or graph indexing. BenoStreamDB fills that seam:
+BenoDB sits between two categories of system that do not overlap. Vector/graph databases own your data and cannot do general SQL analytics over a lakehouse; lakehouse query engines do SQL over Iceberg/Parquet but have no native vector, full-text, or graph indexing. BenoDB fills that seam:
 
-| Capability | Vector/Graph DBs (Pinecone, Qdrant, Neo4j) | Lakehouse Engines (Trino, Spark, DuckDB) | BenoStreamDB |
+| Capability | Vector/Graph DBs (Pinecone, Qdrant, Neo4j) | Lakehouse Engines (Trino, Spark, DuckDB) | BenoDB |
 |------------|--------------------------------------------|------------------------------------------|--------------|
 | **Data ownership** | Must ingest/duplicate your data | Queries data in place | Queries data in place |
 | **Vector search** | ✅ Native | ❌ Bolt-on | ✅ Native overlay index |
@@ -119,9 +119,9 @@ BenoStreamDB sits between two categories of system that do not overlap. Vector/g
 
 ## ⚡ Iceberg V2/V3 Compatibility
 
-BenoStreamDB implements the core Apache Iceberg table format V2 and V3 features required for its indexed-lakehouse model:
+BenoDB implements the core Apache Iceberg table format V2 and V3 features required for its indexed-lakehouse model:
 
-| Feature | V1 | V2 | V3 | BenoStreamDB |
+| Feature | V1 | V2 | V3 | BenoDB |
 |---------|----|----|----|--------------| 
 | **Sort Orders** | ❌ | ✅ | ✅ | ✅ Implemented |
 | **Partition Evolution** | ❌ | ✅ | ✅ | ✅ Implemented |
@@ -157,22 +157,22 @@ Upgrading to V3 enables row-level operations and enhanced tracking:
 
 ## 🔄 Operating Modes: Authoritative vs. External Iceberg Tables
 
-BenoStreamDB runs in two distinct modes depending on who owns the lakehouse storage:
+BenoDB runs in two distinct modes depending on who owns the lakehouse storage:
 
 | Mode | Who Owns the Parquet Data? | Who Runs Writes & Compaction? | Upstream IAM Required | Where Indexes Live |
 | :--- | :--- | :--- | :--- | :--- |
-| **Authoritative Mode** | BenoStreamDB | BenoStreamDB (`insert`, `compact`) | Read + Write | Inside the table storage prefix |
+| **Authoritative Mode** | BenoDB | BenoDB (`insert`, `compact`) | Read + Write | Inside the table storage prefix |
 | **Detached Overlay Mode** | External (Spark, Flink, Databricks) | External engine | **Read-Only** (`s3:GetObject`) | Separate writable overlay bucket |
 
 ---
 
 ### Working with Tables: Authoritative Mode (Full Read / Write)
 
-In Authoritative Mode, BenoStreamDB acts as the primary lakehouse database. It owns the table lifecycle: writing Parquet data files, committing ACID metadata snapshots, logging streaming writes to the WAL, and running background compaction.
+In Authoritative Mode, BenoDB acts as the primary lakehouse database. It owns the table lifecycle: writing Parquet data files, committing ACID metadata snapshots, logging streaming writes to the WAL, and running background compaction.
 
 ```text
 ┌───────────────────────────────────────────────────────────┐
-│              BenoStreamDB Table Storage Prefix             │
+│              BenoDB Table Storage Prefix             │
 │                      (Read + Write)                       │
 ├───────────────────────────────────────────────────────────┤
 │ • metadata/v1.metadata.json, snap-*.avro, *-m0.avro       │
@@ -239,11 +239,11 @@ table.vacuum(retention_versions=24)
 
 ### Working with External Iceberg Tables: Detached Overlay Mode (Read-Only)
 
-If your data already lives in an Apache Iceberg table created by Spark, Flink, Trino, Snowflake, or Databricks, **you do not need to migrate or copy that data**. BenoStreamDB attaches to it in read-only mode, extracts the schema, and builds rebuildable secondary index overlays in a separate, isolated storage prefix.
+If your data already lives in an Apache Iceberg table created by Spark, Flink, Trino, Snowflake, or Databricks, **you do not need to migrate or copy that data**. BenoDB attaches to it in read-only mode, extracts the schema, and builds rebuildable secondary index overlays in a separate, isolated storage prefix.
 
 ```text
 ┌─────────────────────────────────────────┐          ┌─────────────────────────────────────────┐
-│     Upstream Customer Lakehouse         │          │     BenoStreamDB Overlay Prefix         │
+│     Upstream Customer Lakehouse         │          │     BenoDB Overlay Prefix         │
 │         (Strictly Read-Only)            │          │         (Writable Sidecars)             │
 ├─────────────────────────────────────────┤          ├─────────────────────────────────────────┤
 │ • metadata/v1.metadata.json             │          │ • detached_catalog.json (lineage/sync)  │
@@ -254,7 +254,7 @@ If your data already lives in an Apache Iceberg table created by Spark, Flink, T
 ```
 
 #### Step 1: Mount the External Table
-Call `Table.mount_external_iceberg()`. Provide the upstream table URI (where the customer's Iceberg metadata and Parquet files live) and your separate overlay storage URI (where BenoStreamDB writes its index sidecars):
+Call `Table.mount_external_iceberg()`. Provide the upstream table URI (where the customer's Iceberg metadata and Parquet files live) and your separate overlay storage URI (where BenoDB writes its index sidecars):
 
 ```python
 import benostreamdb as bsdb
@@ -265,7 +265,7 @@ table = bsdb.Table.mount_external_iceberg(
     overlay_storage_uri="s3://my-managed-indexes/events/"       # Overlay Bucket (Writable)
 )
 ```
-* **Storage Invariant**: BenoStreamDB creates an object store client with read-only access to `table_uri`. It physically cannot rewrite, delete, or alter the customer's Parquet files.
+* **Storage Invariant**: BenoDB creates an object store client with read-only access to `table_uri`. It physically cannot rewrite, delete, or alter the customer's Parquet files.
 
 #### Step 2: Declare the Primary Key (`table.set_primary_key`)
 External Iceberg tables often lack explicit primary key constraints in their metadata. On a mounted table, you declare the business entity key:
@@ -296,7 +296,7 @@ table.add_index("status", "bitmap")
 
 #### Step 4: Keep Indexes in Sync with Upstream Mutations & Compactions
 When the upstream engine (Spark, Flink, or Databricks) writes new rows or runs table compaction (`rewriteDataFiles`):
-1. **Zero-Cost Change Detection**: Iceberg commits a new `v{N+1}.metadata.json` file. BenoStreamDB's `DetachedOverlayCatalog` tails the root metadata pointer with a single lightweight HTTP `GET` (zero S3 `LIST` calls).
+1. **Zero-Cost Change Detection**: Iceberg commits a new `v{N+1}.metadata.json` file. BenoDB's `DetachedOverlayCatalog` tails the root metadata pointer with a single lightweight HTTP `GET` (zero S3 `LIST` calls).
 2. **Differential Indexing**: When an upstream snapshot advances, only newly added or newly compacted Parquet files are indexed. Surviving Parquet files keep their existing overlays.
 3. **Automated Background Sync**:
    ```python
@@ -334,7 +334,7 @@ df = session.sql("""
 
 #### Step 6: Declare Embedding Provenance (Core Guard)
 
-Tables can declare which model produced their vectors. BenoStreamDB stores this as Iceberg table
+Tables can declare which model produced their vectors. BenoDB stores this as Iceberg table
 properties and enforces it in the engine — not only in the MCP server:
 
 ```python
@@ -396,7 +396,7 @@ the engine and the catalog (direct Parquet/object-store mutation) remain outside
 
 ### 🔌 Core Connectors (3 Minutes to First Query)
 
-BenoStreamDB's primary integration surface is the lakehouse stack — **Arrow Flight SQL**, **Trino**, **Apache Spark**, and **dbt**. Every connector reads and writes the same Apache Iceberg tables through the Rust engine, with no export step and no second copy of the data.
+BenoDB's primary integration surface is the lakehouse stack — **Arrow Flight SQL**, **Trino**, **Apache Spark**, and **dbt**. Every connector reads and writes the same Apache Iceberg tables through the Rust engine, with no export step and no second copy of the data.
 
 | Connector | Artifact | Entry point |
 | :--- | :--- | :--- |
@@ -442,7 +442,7 @@ pip install benostreamdb
 ```
 
 **Windows Users:**
-BenoStreamDB is optimized for Linux/POSIX. Windows users should use **WSL2**.
+BenoDB is optimized for Linux/POSIX. Windows users should use **WSL2**.
 
 
 ### GPU Acceleration (Optional)
@@ -479,7 +479,7 @@ See [Python Vector API Documentation](https://www.benostreamdb.org/guides/python
 
 ### pgvector SQL Compatibility
 
-BenoStreamDB provides full pgvector-compatible SQL syntax for vector operations:
+BenoDB provides full pgvector-compatible SQL syntax for vector operations:
 
 ```sql
 -- Use familiar pgvector operators
@@ -501,11 +501,11 @@ LIMIT 10;
 ```
 
 > **💡 pgvector Compatibility Note on `<~>` (Hamming) & `<%>` (Jaccard):**  
-> In BenoStreamDB, `<~>` and `<%>` operate directly on standard float `::vector` embeddings (evaluating binary indicator sets and quantized vectors) for developer convenience. In upstream PostgreSQL `pgvector`, these two operators are restricted exclusively to the `bit` data type.  
+> In BenoDB, `<~>` and `<%>` operate directly on standard float `::vector` embeddings (evaluating binary indicator sets and quantized vectors) for developer convenience. In upstream PostgreSQL `pgvector`, these two operators are restricted exclusively to the `bit` data type.  
 > 
 > **PostgreSQL Conversion Equivalent:**
 > ```sql
-> -- BenoStreamDB:
+> -- BenoDB:
 > SELECT * FROM documents ORDER BY embedding <~> '[1, 0, 1]'::vector LIMIT 10;
 > 
 > -- PostgreSQL (pgvector 0.7.0+): requires binary_quantize() to produce bit types
@@ -552,7 +552,7 @@ results = table.to_pandas(
 
 ## 🔄 Fluent Query API
 
-BenoStreamDB features a fluent query API in Rust with method chaining. Python uses the `to_pandas()` API with filter and vector_filter arguments.
+BenoDB features a fluent query API in Rust with method chaining. Python uses the `to_pandas()` API with filter and vector_filter arguments.
 
 ### Rust Fluent API
 
@@ -591,7 +591,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### BenoQuant Isotropic Quantization (TQ8 / TQ4) & Native SQ8
 
-BenoStreamDB provides native vector quantization algorithms designed for out-of-core memory efficiency and high-dimensional variance equalization:
+BenoDB provides native vector quantization algorithms designed for out-of-core memory efficiency and high-dimensional variance equalization:
 
 - **TQ8 / HNSW-TQ8 (8-bit TurboQuant)**: Rotated INT8 quantization using a randomized Fast Walsh-Hadamard Transform ($H \cdot D$). Equalizes dimensional variance across anisotropic vector spaces (such as dense LLM embeddings), eliminating centroid skew and delivering +11.3% higher throughput (163.6 QPS at 94.55% Recall@10 on 10M BigANN) with reduced median and tail latencies. **Optimal for power-of-two dimensions ($D \in \{128, 256, 512, 1024, 2048\}$)** where zero padding is required.
 - **TQ4 / HNSW-TQ4 (4-bit TurboQuant)**: Ultra-compact 4-bit nibble packing (64 bytes per 128 dims) with an IEEE 754-2008 binary16 length normalization scalar ($\alpha = \frac{\langle y, \hat{y} \rangle}{\|\hat{y}\|^2}$), packing 128-dim vectors into 66 bytes total. Nibble arithmetic centered at 7.5 prevents norm bias and quantization collapse.
@@ -614,7 +614,7 @@ table.add_index("embedding", "hnsw")
 
 ### Voronoi Puffin Sharding & Out-of-Core Memory Management
 
-When operating on multi-million or 100M+ vector tables, BenoStreamDB maintains out-of-core memory safety through physical Voronoi shard compaction, table-level cluster indexing, and advisory memory budgeting:
+When operating on multi-million or 100M+ vector tables, BenoDB maintains out-of-core memory safety through physical Voronoi shard compaction, table-level cluster indexing, and advisory memory budgeting:
 
 ```python
 # 1. Build table-level cluster index across rolling 512 MiB Puffin shards (Rayon parallelized)
@@ -640,7 +640,7 @@ bsdb.clear_cache(all=True)
 
 ### Python Vector Distance API with GPU Acceleration
 
-BenoStreamDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
+BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
 import benostreamdb as bsdb
@@ -751,7 +751,7 @@ unverified.
 
 ### Overlay Indexing
 
-BenoStreamDB stores indexes as **sidecar files** alongside Parquet data:
+BenoDB stores indexes as **sidecar files** alongside Parquet data:
 
 ```
 s3://bucket/table/
@@ -800,7 +800,7 @@ s3://bucket/table/
 
 ### Layered Indexing (Existing Iceberg Tables)
 
-Because indexes are overlays, BenoStreamDB can index data it does not own. `Table.register_external` points at an existing Iceberg table's metadata, maps its schema, imports the current snapshot, and builds index overlays over the referenced Parquet files — without rewriting, copying, or taking ownership of the data.
+Because indexes are overlays, BenoDB can index data it does not own. `Table.register_external` points at an existing Iceberg table's metadata, maps its schema, imports the current snapshot, and builds index overlays over the referenced Parquet files — without rewriting, copying, or taking ownership of the data.
 
 ```python
 import benostreamdb as bsdb
@@ -845,7 +845,7 @@ LRU/TinyLFU + TTI, so overflow evicts the least-recently-used entries. The
 
 > [!NOTE]
 > **MERGE INTO Support**
-> BenoStreamDB implements `MERGE INTO` **natively in its SQL layer**. DataFusion's planner has no logical plan for `MERGE`, so the engine intercepts the parsed statement before planning and translates it into the key-based upsert (`Table::merge`, Merge-on-Read) and delete (`Table::delete_async`) primitives. Supported clauses:
+> BenoDB implements `MERGE INTO` **natively in its SQL layer**. DataFusion's planner has no logical plan for `MERGE`, so the engine intercepts the parsed statement before planning and translates it into the key-based upsert (`Table::merge`, Merge-on-Read) and delete (`Table::delete_async`) primitives. Supported clauses:
 >
 > ```sql
 > MERGE INTO target t USING source s ON t.id = s.id
@@ -859,7 +859,7 @@ LRU/TinyLFU + TTI, so overflow evicts the least-recently-used entries. The
 > The `ON` condition must be an equi-join on the target's key column(s). Clauses are evaluated in order with first-match-wins semantics. The **Spark connector** additionally intercepts Spark's row-level `MERGE INTO` / `UPDATE` / `DELETE` operations (`BenoStreamMergeBuilder` → `BenoStreamRowLevelOperation`) and sends Iceberg position deletes plus appends through the JNI bridge. The **Trino connector** implements Trino's MERGE SPI (`beginMerge`/`finishMerge` + a `ConnectorMergeSink`) and a write path (`beginInsert` + `ConnectorPageSink`), so `INSERT` and `MERGE INTO` work through Trino as well.
 
 ### Spark
-The Spark connector supports **Spark 3.5, 4.0, and 4.1** via a shared JNI FFI bridge. It intercepts row-level operations (like `MERGE INTO`) to take advantage of BenoStreamDB's fast indexing and supports configuring GPU backends.
+The Spark connector supports **Spark 3.5, 4.0, and 4.1** via a shared JNI FFI bridge. It intercepts row-level operations (like `MERGE INTO`) to take advantage of BenoDB's fast indexing and supports configuring GPU backends.
 
 ```scala
 // Read
@@ -883,7 +883,7 @@ spark.conf.set("spark.benostream.gpu.device", "cuda")
 ```
 
 ### Trino
-The Trino connector is **read/write**. Reads push scalar and vector filtering down to the BenoStreamDB core via JNI, drastically reducing IO. Writes go through a `ConnectorPageSink` (Trino `Page` → Arrow → native append), `CREATE TABLE AS SELECT` creates the table then writes, and `MERGE INTO` is handled by Trino's MERGE SPI (`beginMerge`/`finishMerge` + a `ConnectorMergeSink`).
+The Trino connector is **read/write**. Reads push scalar and vector filtering down to the BenoDB core via JNI, drastically reducing IO. Writes go through a `ConnectorPageSink` (Trino `Page` → Arrow → native append), `CREATE TABLE AS SELECT` creates the table then writes, and `MERGE INTO` is handled by Trino's MERGE SPI (`beginMerge`/`finishMerge` + a `ConnectorMergeSink`).
 
 Configure the warehouse root and GPU backend in the catalog properties:
 
@@ -921,14 +921,14 @@ benostream.gpu-device=cuda
 ```
 
 ### Arrow Flight SQL Gateway
-BenoStreamDB provides an optional high-performance Arrow Flight SQL server (`server/flight_sql`, crate `benostreamdb-flight`) running over gRPC (port 50051). This enables any JDBC, ODBC, ADBC, or Arrow-native client (including BI tools and distributed query engines) to query BenoStreamDB with zero-copy Arrow serialization and native index pushdown.
+BenoDB provides an optional high-performance Arrow Flight SQL server (`server/flight_sql`, crate `benostreamdb-flight`) running over gRPC (port 50051). This enables any JDBC, ODBC, ADBC, or Arrow-native client (including BI tools and distributed query engines) to query BenoDB with zero-copy Arrow serialization and native index pushdown.
 
 ```bash
 cargo run -p benostreamdb-flight
 ```
 
 ### dbt (`dbt-benostreamdb`)
-Official dbt adapter for BenoStreamDB over Arrow Flight SQL. Provides native vector search macros and custom materializations:
+Official dbt adapter for BenoDB over Arrow Flight SQL. Provides native vector search macros and custom materializations:
 
 - **Vector Macros**: `vector_distance(...)`, `knn_search(...)`, `vector_avg(...)`, `type_vector(...)`, `type_sparsevec(...)` with pgvector-compatible operators.
 - **Custom Materializations**: Table and incremental materialization with support for `append`, `delete+insert`, and partition-looping `insert_overwrite`.
@@ -956,7 +956,7 @@ df = flight.execute_pandas("SELECT * FROM market_data WHERE symbol = 'NVDA'")
 
 > ⚠️ **Untested:** The Snowflake integration is in developer preview based on the open Iceberg REST and External Volume specifications. Live production certification is in progress.
 
-BenoStreamDB can mount and index **Snowflake Iceberg Tables** residing on customer-managed External Volumes (Amazon S3, GCS, or Azure Blob) in Detached Overlay Mode with zero data duplication and zero Snowflake compute credits:
+BenoDB can mount and index **Snowflake Iceberg Tables** residing on customer-managed External Volumes (Amazon S3, GCS, or Azure Blob) in Detached Overlay Mode with zero data duplication and zero Snowflake compute credits:
 
 ```python
 import benostreamdb as bsdb
@@ -1021,10 +1021,10 @@ cargo run -p benostreamdb-search
 
 # Index + search (ES 7.10 wire format)
 curl -X POST localhost:9200/articles/_doc -H 'content-type: application/json' \
-     -d '{"title":"Hello","body":"Welcome to BenoStreamDB"}'
+     -d '{"title":"Hello","body":"Welcome to BenoDB"}'
 curl -X POST localhost:9200/articles/_refresh
 curl -X POST localhost:9200/articles/_search -H 'content-type: application/json' \
-     -d '{"query":{"match":{"body":"BenoStreamDB"}}}'
+     -d '{"query":{"match":{"body":"BenoDB"}}}'
 ```
 
 ```python
@@ -1046,7 +1046,7 @@ results = search.hybrid_search(
 
 ### MCP Server (AI Agent Tools)
 
-`benostreamdb-mcp` (`contrib/benostreamdb-mcp`) exposes BenoStreamDB to LLM agents (Claude Desktop, Cursor, VS Code, Antigravity IDE) as JSON-RPC tools. It ships 12 tools — including `execute_sql`, `hybrid_search`, `graph_rag_search`, `ingest_records`, `list_embedding_models`, and persistent agent memory (`store_memory` / `recall_memory`) — and runs local, no-LLM embeddings by default (`BAAI/bge-small-en-v1.5`, 384-d), so ingestion and memory need no external embedding API.
+`benostreamdb-mcp` (`contrib/benostreamdb-mcp`) exposes BenoDB to LLM agents (Claude Desktop, Cursor, VS Code, Antigravity IDE) as JSON-RPC tools. It ships 12 tools — including `execute_sql`, `hybrid_search`, `graph_rag_search`, `ingest_records`, `list_embedding_models`, and persistent agent memory (`store_memory` / `recall_memory`) — and runs local, no-LLM embeddings by default (`BAAI/bge-small-en-v1.5`, 384-d), so ingestion and memory need no external embedding API.
 
 ```bash
 # Run instantly without local compilation
@@ -1153,7 +1153,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 The crate is dual-licensed under **MIT AND Apache-2.0** (see [`Cargo.toml`](https://github.com/benolabsai/benostreamdb/blob/main/Cargo.toml)).
 
-This project contains modified source code from various upstream open-source projects (including `hnsw_rs` for pre-filtering support), which were originally licensed under Apache 2.0. BenoStreamDB maintains compliance by retaining all original copyright notices and providing prominent notice of modifications in the relevant source files.
+This project contains modified source code from various upstream open-source projects (including `hnsw_rs` for pre-filtering support), which were originally licensed under Apache 2.0. BenoDB maintains compliance by retaining all original copyright notices and providing prominent notice of modifications in the relevant source files.
 
 ## 🙏 Acknowledgments
 
@@ -1168,6 +1168,6 @@ This project contains modified source code from various upstream open-source pro
 
 ---
 
-© 2026 Beno Labs. All rights reserved. BenoStreamDB™ is protected by U.S. Patent Pending (App. No. 64/194,119).
+© 2026 Beno Labs. All rights reserved. BenoDB™ is protected by U.S. Patent Pending (App. No. 64/194,119).
 
 

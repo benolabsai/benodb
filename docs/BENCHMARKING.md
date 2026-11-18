@@ -1,6 +1,6 @@
 ?# Benchmarking: how to reproduce every number
 
-Status: runnable methodology. Owner: BenoStreamDB core.
+Status: runnable methodology. Owner: BenoDB core.
 Companion docs: [`BENCHMARKING_PLAN.md`](BENCHMARKING_PLAN.md) (the full plan:
 datasets, competitor set, metrics schema), [`RESOURCE_LIMITS.md`](RESOURCE_LIMITS.md)
 (memory/CPU knobs), [`CONCURRENCY.md`](CONCURRENCY.md) (writer/reader model).
@@ -24,7 +24,7 @@ Every published result must satisfy all five:
    driver, envelope, dataset, HNSW parameters).
 3. **Identical envelope and equivalent configuration.** Every participant —
    server engines *and* the runner that executes each client, including
-   BenoStreamDB — runs under the same `--cpus` / `--mem` cgroup limits, against
+   BenoDB — runs under the same `--cpus` / `--mem` cgroup limits, against
    the same dataset, query workload, `k`, and index parameters (HNSW
    `m`/`ef_construction`/`ef_search`, etc.), with recall held at parity. A
    comparison across different envelopes *or* different configurations is
@@ -76,7 +76,7 @@ config, engine version — never on hostname, PID or timestamps.
 Two practical consequences:
 
 - After changing RAM timings or the CPU voltage/frequency curve, re-run the
-  **whole** sweep, competitors included. Re-running only BenoStreamDB produces a
+  **whole** sweep, competitors included. Re-running only BenoDB produces a
   table that cannot be read.
 - Compare versions by interleaving builds on the *current* state (A/B/A/B), not
   by diffing a fresh run against stored artifacts from an older state.
@@ -159,12 +159,12 @@ reproduce the report.
 | # | Section | What it measures | Artifacts |
 |---|---|---|---|
 | 1 | `gpu_cdist` | GPU distance kernels | `results/gpu_cdist.json` |
-| 2 | `vector_ann` | BenoStreamDB self-characterization, `hnsw` + `hnsw_tq8`, 8 datasets | `ann_benchmarks/results/*` |
+| 2 | `vector_ann` | BenoDB self-characterization, `hnsw` + `hnsw_tq8`, 8 datasets | `ann_benchmarks/results/*` |
 | 3 | `vector_matrix` | competitor matrix, CPU+GPU pass, enveloped | `competitors/results/*.json` |
 | 4 | `vector_row` | full row: 11 engines x 8 datasets through the compose stack | `competitors/results/*.json` |
 | 5 | `graph` | synthetic + `snap-web-google` + `snap-roadnet-ca` | `graph/results/*` |
 | 6 | `sql` | ClickBench 500k vs DuckDB/DataFusion | `sql/results/*` |
-| 7 | `beir` | scifact / nfcorpus / arguana: BenoStreamDB vs Tantivy vs OpenSearch | `beir/results/*` |
+| 7 | `beir` | scifact / nfcorpus / arguana: BenoDB vs Tantivy vs OpenSearch | `beir/results/*` |
 | 8 | `filters` | pathological predicates | `results/production_filters.*` |
 | 9 | `production` | concurrency sweep, maintenance, **skew (§7)**, **soak (§8)** | `results/production_*` |
 
@@ -237,14 +237,14 @@ benchmarks/competitors/docker_bench.sh --build-wheel \
 ```
 
 `--m`, `--ef-construction`, `--ef-search`, `--metric`, `--k`, `--limit`, and
-`--queries` map 1:1 onto the BenoStreamDB harness flags, so the same
+`--queries` map 1:1 onto the BenoDB harness flags, so the same
 configuration runs on both sides without translation.
 
 **Like-for-like rule & Iso-Recall evaluation.** 
 1. **Index-Only Isolation:** Competitor adapters return vector IDs only (no payload
-   fetch). The rollup therefore reports BenoStreamDB's **pure-index** QPS
+   fetch). The rollup therefore reports BenoDB's **pure-index** QPS
    (`pure_index_qps`), not its full search+row-fetch number, and LanceDB projects
-   only `id` in its search. Comparing BenoStreamDB's full-search QPS against a
+   only `id` in its search. Comparing BenoDB's full-search QPS against a
    competitor's search-only QPS conflates index traversal with columnar Parquet
    decoding and PyArrow RecordBatch construction (§4.1). Full end-to-end query
    latency is measured separately in §3 and §6.
@@ -287,7 +287,7 @@ at `/opt/bench/data/clickbench.parquet`; the query is a group-by aggregate.
 
 The lexical suite lives in `benchmarks/beir/` and compares BM25 across three
 engines on BEIR datasets (`scifact`, `nfcorpus`, `arguana`) under one container
-envelope: BenoStreamDB (embedded overlay index), Tantivy (embedded Rust IR), and
+envelope: BenoDB (embedded overlay index), Tantivy (embedded Rust IR), and
 OpenSearch (server-backed, the long-running compose service).
 
 ```bash
@@ -302,7 +302,7 @@ The runner writes `{engine}_{dataset}_lexical_bm25_{device}.json` into
 `benchmarks/beir/results/`, which is where `generate_summary.py` reads §4 from.
 
 `BEIR_MODE=hybrid` runs `run_hybrid.py` instead (dense + sparse fused with RRF);
-its participants are BenoStreamDB and LanceDB, and it is not part of the sweep.
+its participants are BenoDB and LanceDB, and it is not part of the sweep.
 See [`../benchmarks/beir/`](https://github.com/benolabsai/benostreamdb/tree/main/benchmarks/beir).
 
 ---
@@ -310,7 +310,7 @@ See [`../benchmarks/beir/`](https://github.com/benolabsai/benostreamdb/tree/main
 ## 5. Resource envelope
 
 `--cpus` sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS`; `--mem` sets the container
-cgroup `deploy.resources.limits.memory`. The BenoStreamDB side is constrained by
+cgroup `deploy.resources.limits.memory`. The BenoDB side is constrained by
 `RAYON_NUM_THREADS`, `BSDB_MAX_CONCURRENCY`, and the ingest RAM backpressure
 (see [`RESOURCE_LIMITS.md`](RESOURCE_LIMITS.md)).
 
@@ -489,7 +489,7 @@ cargo test --test test_json_path_index
 `docker_bench.sh` writes `results/rollup.md` from the JSON records produced
 **during that run** (mtime-filtered by `RUN_START`), so stale results from a
 previous dataset or device are never double-counted. The rollup uses
-`pure_index_qps` for BenoStreamDB (see §4.1).
+`pure_index_qps` for BenoDB (see §4.1).
 
 The narrative report is [`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md);
 `benchmarks/generate_summary.py` renders the summary tables.
@@ -543,14 +543,14 @@ mtime table as the only provenance.
 - **The SIFT comparison is 20,000 vectors.** The dedicated in-memory engines
   (FAISS, hnswlib) are optimised for a narrower problem than an Iceberg-native
   architecture. Do not market the numbers as broad claims. Say:
-  *"BenoStreamDB delivers sub-millisecond vector search while maintaining
+  *"BenoDB delivers sub-millisecond vector search while maintaining
   transactional Iceberg tables and persistent overlay indexes"* — not
-  *"BenoStreamDB is faster than FAISS."*
+  *"BenoDB is faster than FAISS."*
 - **GPU is slower on small datasets — by design.** On the 20k SIFT run the GPU
   pass is slower than CPU for both engines: fixed PCIe transfer and kernel-launch
   overheads dominate, the harness measures single-query latency (batch = 1, so
   there is no GPU parallelism to exploit), and HNSW search is a sequential
-  pointer-chasing walk rather than dense math. BenoStreamDB's GPU path
+  pointer-chasing walk rather than dense math. BenoDB's GPU path
   (`benostream-gpu-ann`) accelerates index *construction*, not query. GPU wins at
   scale: millions of vectors, large batch queries, dense/flat or IVF-PQ search.
 - **Overlay indexes trade build cost and storage for query speed and

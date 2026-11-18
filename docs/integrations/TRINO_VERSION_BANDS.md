@@ -90,8 +90,8 @@ in one shared source tree so logic can never silently diverge.
 
 | Differing member | Shared base | Band `d` shell | Band `e` shell |
 |------------------|-------------|----------------|----------------|
-| `finishMerge` | `AbstractBenoStreamDBMetadata` | returns `void` | returns `Optional<ConnectorOutputMetadata>` |
-| `createMergeSink` | `AbstractBenoStreamDBPageSinkProvider` | 5 args | 6 args with `MemoryContext` |
+| `finishMerge` | `AbstractBenoDBMetadata` | returns `void` | returns `Optional<ConnectorOutputMetadata>` |
+| `createMergeSink` | `AbstractBenoDBPageSinkProvider` | 5 args | 6 args with `MemoryContext` |
 
 Band shells live in `src/main/java-trino-d` and `src/main/java-trino-e`, and are
 wired in by `build-helper-maven-plugin` using the `trino.band` property.
@@ -175,7 +175,7 @@ coordinate is `2.22`, not `2.22.3`.
 `TestCrossCatalogJoin` runs inside a real `DistributedQueryRunner` with a second
 first-party catalog and asserts three things:
 
-- a scalar join between a BenoStreamDB table and a foreign catalog
+- a scalar join between a BenoDB table and a foreign catalog
 - a `system.vector_search` result joined directly against a foreign catalog,
   with no intermediate materialisation
 - a cross-catalog aggregate
@@ -197,7 +197,7 @@ That tier is not yet implemented.
 
 ### Iceberg zero-copy join
 
-BenoStreamDB writes a custom `_manifest/v2.json` layout, not standard Iceberg
+BenoDB writes a custom `_manifest/v2.json` layout, not standard Iceberg
 metadata. Trino's Iceberg connector reads standard metadata only, so it cannot
 join our tables directly today. Zero-copy join with a real Iceberg catalog
 requires one of:
@@ -265,7 +265,7 @@ and the engine derives the signatures. Two non-obvious requirements:
 | `hybrid_score` | ours | alpha clamped to [0,1] |
 | `reciprocal_rank_fusion` | ours | sums 1/(k+rank) over positive ranks |
 
-`TestBenoStreamDBQueries` asserts that the five registered functions are visible
+`TestBenoDBQueries` asserts that the five registered functions are visible
 and evaluate correctly, and pins the semantics of the built-ins (including that
 opposing vectors yield 2.0 for cosine, i.e. no cap at 1).
 
@@ -274,7 +274,7 @@ opposing vectors yield 2.0 for cosine, i.e. no cap at 1).
 Because a built-in cannot be overridden per catalog, engine-side scoring for our
 tables comes from pushdown instead: `system.vector_search` and
 `system.hybrid_search` return `distance` / `rrf_score` computed inside the Rust
-session. A hand-written `cosine_distance(col, ...)` on a BenoStreamDB table is
+session. A hand-written `cosine_distance(col, ...)` on a BenoDB table is
 evaluated by Trino. If matching Spark bit-for-bit matters for that case, the
 path is a custom Trino type (`Plugin.getTypes()`) so the function has a distinct
 signature rather than a shadowed one.

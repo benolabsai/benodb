@@ -1,6 +1,6 @@
 # Apache Spark Connector
 
-The BenoStreamDB Spark connector is a **fully native** Apache Spark DataSource V2 connector: reads, writes, DDL, catalog metadata, and row-level operations (DELETE / UPDATE / MERGE) all execute inside the BenoStreamDB Rust engine via JNI and the Arrow C Data Interface. It provides universal vector search, secondary index pushdown, stored procedures, and streaming capabilities.
+The BenoDB Spark connector is a **fully native** Apache Spark DataSource V2 connector: reads, writes, DDL, catalog metadata, and row-level operations (DELETE / UPDATE / MERGE) all execute inside the BenoDB Rust engine via JNI and the Arrow C Data Interface. It provides universal vector search, secondary index pushdown, stored procedures, and streaming capabilities.
 
 There is **no Iceberg runtime dependency** for Spark 4.x builds. (Spark 3.5 predates the native DSv2 `ProcedureCatalog`/`CALL` API, so the optional `spark-3.5` build links `iceberg-spark-runtime` in `provided` scope solely to expose stored procedures; tables, reads, writes, and row-level ops on 3.5 are native too.)
 
@@ -11,7 +11,7 @@ There is **no Iceberg runtime dependency** for Spark 4.x builds. (Spark 3.5 pred
 * **Apache Spark**: 3.5.x, 4.0.x, 4.1.x, or 4.2.x
 * **Java**: 17 (required for Spark 3.5; supported on 4.x)
 * **Scala**: 2.12 (Spark 3.5) / 2.13 (Spark 4.x) — one artifact per Scala binary covers every Spark minor in that line
-* **BenoStreamDB Native Library**: `libbenostreamdb.so` (bundled in the JAR resources, or on `java.library.path`)
+* **BenoDB Native Library**: `libbenostreamdb.so` (bundled in the JAR resources, or on `java.library.path`)
 
 ---
 
@@ -55,7 +55,7 @@ val spark = SparkSession.builder()
   .config("spark.sql.catalog.benostream.warehouse", "s3://my-lakehouse/warehouse")
   .getOrCreate()
 
-// Register BenoStreamDB vector search and similarity UDFs
+// Register BenoDB vector search and similarity UDFs
 import com.benostreamdb.spark.functions.BenoStreamFunctions
 BenoStreamFunctions.register(spark)
 ```
@@ -79,7 +79,7 @@ per-file read would resurrect deleted rows.
 
 ### 1. Vector Search & Similarity Functions
 
-BenoStreamDB provides native SQL functions and DataFrame extensions for high-dimensional vector search.
+BenoDB provides native SQL functions and DataFrame extensions for high-dimensional vector search.
 
 #### Catalog Functions (no registration required)
 
@@ -146,7 +146,7 @@ val withDist = df.withVectorDistance(
 
 ### 2. Sparse Vectors & Hybrid Search (SPLADE / BM25)
 
-BenoStreamDB supports learned sparse vectors (such as SPLADE or BM25 term weights) represented as Arrow `Struct<indices: List<Int64>, values: List<Float32>>`:
+BenoDB supports learned sparse vectors (such as SPLADE or BM25 term weights) represented as Arrow `Struct<indices: List<Int64>, values: List<Float32>>`:
 
 ```sql
 -- Compute sparse dot product across token weights
@@ -226,7 +226,7 @@ JVM. For cross-process streaming use the Flight SQL subscription ticket.
 Supported predicates (`=`, `<`, `<=`, `>`, `>=`, `IN (...)`, `IS [NOT] NULL`, `LIKE 'prefix%'`, `AND`/`OR`/`NOT`) are translated to SQL and pushed into the engine's DataFusion planner through `openQuery`, which applies the scalar/Bitmap, Bloom, and lexical indexes during planning — pruning data files and row splits before any Parquet is decoded by Spark executors:
 
 ```scala
-// Prunes unindexed Parquet splits using BenoStreamDB bitmap indexes
+// Prunes unindexed Parquet splits using BenoDB bitmap indexes
 val activeUsers = spark.read
   .format("benostream")
   .load("s3://my-lakehouse/tables/users")
@@ -237,7 +237,7 @@ val activeUsers = spark.read
 
 ### 4. Index Lifecycle & Catalog Procedures
 
-On Spark 4.x, manage BenoStreamDB indexes and primary keys directly through native Spark stored procedures under `benostream.system` (the catalog above implements the DSv2 `ProcedureCatalog` API). Every procedure routes straight into the engine over JNI, so it applies to native BenoStreamDB tables as well as externally mapped ones. (`list_indexes`, `optimize`, and `compact` are aliases.)
+On Spark 4.x, manage BenoDB indexes and primary keys directly through native Spark stored procedures under `benostream.system` (the catalog above implements the DSv2 `ProcedureCatalog` API). Every procedure routes straight into the engine over JNI, so it applies to native BenoDB tables as well as externally mapped ones. (`list_indexes`, `optimize`, and `compact` are aliases.)
 
 ```sql
 -- Add an index to a column: algorithm is one of

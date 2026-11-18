@@ -1,6 +1,6 @@
 # Supported Surface & Build Matrix
 
-Status: living document. Owner: BenoStreamDB core.
+Status: living document. Owner: BenoDB core.
 
 This document is the authoritative map between **what we ship** (the release
 workflow in [`.github/workflows/release.yml`](https://github.com/benolabsai/benostreamdb/blob/main/.github/workflows/release.yml))

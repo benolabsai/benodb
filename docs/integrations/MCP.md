@@ -6,7 +6,7 @@
 
 ## Overview
 
-The MCP server allows LLMs and autonomous AI agents (such as Claude Desktop, Cursor, and Antigravity) to interact directly with BenoStreamDB lakehouse tables without bespoke API integrations:
+The MCP server allows LLMs and autonomous AI agents (such as Claude Desktop, Cursor, and Antigravity) to interact directly with BenoDB lakehouse tables without bespoke API integrations:
 * **Discover Tables**: Introspect available datasets, node tables, and edge tables.
 * **Inspect Schemas**: Read Arrow and Iceberg table schemas as MCP resources.
 * **Execute SQL**: Run analytical queries, pgvector distance operations, and graph traversals.

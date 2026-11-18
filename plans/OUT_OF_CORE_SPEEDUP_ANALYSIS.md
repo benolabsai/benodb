@@ -1,6 +1,6 @@
 # Out-of-Core Query Path Speedup Analysis
 
-**BenoStreamDB v0.17.0 — Table-Level Cluster Index**
+**BenoDB v0.17.0 — Table-Level Cluster Index**
 **Constraint: All proposals must work through S3 `object_store::get_range()` — no local-only mmap tricks.**
 
 ## Implementation Status Tracker

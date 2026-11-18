@@ -2,7 +2,7 @@
 
 - **Status**: Proposed / Under Implementation
 - **Date**: 2026-10-03
-- **Authors**: BenoStreamDB Core Team
+- **Authors**: BenoDB Core Team
 - **Target Version**: v0.13.0+
 - **Companion Documents**:
   - [`docs/ARCHITECTURE.md`](https://www.benostreamdb.org/guides/architecture.html) (Lakehouse Storage Architecture)
@@ -14,7 +14,7 @@
 
 ## 1. Executive Summary
 
-BenoStreamDB pairs authoritative, open Apache Iceberg table storage with derived, advisory overlay indexes (Vector HNSW-TurboQuant, BM25 lexical, Roaring Bitmaps, and Bloom filters). Treating overlay indexes as **disposable accelerators** ensures 100% open-format compatibility and zero lock-in: if an index is lost or corrupted, the table degrades gracefully to raw Parquet scans.
+BenoDB pairs authoritative, open Apache Iceberg table storage with derived, advisory overlay indexes (Vector HNSW-TurboQuant, BM25 lexical, Roaring Bitmaps, and Bloom filters). Treating overlay indexes as **disposable accelerators** ensures 100% open-format compatibility and zero lock-in: if an index is lost or corrupted, the table degrades gracefully to raw Parquet scans.
 
 However, in large-scale deployments, loose sidecar management presents two structural risks:
 1. **Object Count Explosion ($O(M \times N)$)**: Multiple index files per Parquet segment can multiply S3/GCS object counts by 5x–10x, leading to cloud storage rate limiting, high `PUT`/`LIST` costs, and slow metadata planning.
@@ -31,7 +31,7 @@ This document specifies the **Tightened Index Artifact Contract**:
 
 ### 2.1 The Disposable Accelerator Invariant
 
-BenoStreamDB establishes the core invariant:
+BenoDB establishes the core invariant:
 $$\text{Correctness}(\text{Table}) \equiv \text{Correctness}(\text{Parquet Data}) \quad \forall \text{ queries}$$
 
 Indexes do not store authoritative data. They are derived mathematical projections (nearest-neighbor graphs, inverted postings, bitmap filters) that map queries to row offsets within specific Parquet files. If an index is deleted, query results remain identical—only execution latency changes.
@@ -164,7 +164,7 @@ Execute Accelerated Scan        Degrade to Parquet Scan         Trigger Backgrou
 
 ## 4. Compound Index Bundles (Apache Iceberg Puffin Specification)
 
-To resolve the object explosion problem, BenoStreamDB adopts **Apache Iceberg Puffin** as the standard compound container format for secondary index artifacts.
+To resolve the object explosion problem, BenoDB adopts **Apache Iceberg Puffin** as the standard compound container format for secondary index artifacts.
 
 ### 4.1 Physical Puffin File Layout
 
@@ -215,7 +215,7 @@ One of the most compelling applications of the tightened overlay design is **acc
 ### 5.2 Architecture: Detached Overlay Namespace
 
 ```text
-Upstream Authoritative Lake (Read-Only)          BenoStreamDB Acceleration Tier (Read-Write)
+Upstream Authoritative Lake (Read-Only)          BenoDB Acceleration Tier (Read-Write)
 ┌──────────────────────────────────────┐        ┌───────────────────────────────────────────┐
 │ s3://enterprise-data/warehouse/      │        │ s3://ai-team-overlays/indexes/            │
 │   ├── metadata/                      │        │   ├── detached_catalog.json               │
@@ -228,7 +228,7 @@ Upstream Authoritative Lake (Read-Only)          BenoStreamDB Acceleration Tier 
 ```
 
 ### 5.3 Synchronization Protocol
-1. **Catalog Registration**: BenoStreamDB mounts the external table via its metadata URI (`s3://enterprise-data/warehouse/metadata/v104.metadata.json`) with an external overlay storage prefix (`s3://ai-team-overlays/indexes/`).
+1. **Catalog Registration**: BenoDB mounts the external table via its metadata URI (`s3://enterprise-data/warehouse/metadata/v104.metadata.json`) with an external overlay storage prefix (`s3://ai-team-overlays/indexes/`).
 2. **Snapshot Pinning**: The detached catalog records `upstream_snapshot_id = 104`.
 3. **Out-of-Band Upstream Mutation Handling**:
    - If the upstream team appends `part-0003.parquet` and advances to `v105`:
@@ -243,7 +243,7 @@ Upstream Authoritative Lake (Read-Only)          BenoStreamDB Acceleration Tier 
 
 ## 6. Merge-On-Read (MOR) Lifecycle for Secondary Indexes
 
-To achieve sub-millisecond management latencies and eliminate cloud storage rate-limiting, BenoStreamDB applies **Merge-On-Read (MOR)** principles directly to secondary index lifecycles, replacing legacy Copy-On-Write (COW) behaviors.
+To achieve sub-millisecond management latencies and eliminate cloud storage rate-limiting, BenoDB applies **Merge-On-Read (MOR)** principles directly to secondary index lifecycles, replacing legacy Copy-On-Write (COW) behaviors.
 
 ### 6.1 `drop_index`: Instantaneous $O(1)$ Metadata Tombstoning vs. Synchronous Physical Deletion
 
@@ -467,7 +467,7 @@ In multi-tenant deployments where multiple teams share the same underlying Icebe
 
 ## Appendix A: Implementation Cross-Reference Map
 
-This appendix maps ADR-001 specification elements to their concrete implementations in the BenoStreamDB codebase.
+This appendix maps ADR-001 specification elements to their concrete implementations in the BenoDB codebase.
 
 ### A.1 Core Data Structures
 

@@ -1,6 +1,6 @@
 # Resource Limits and Back-pressure
 
-BenoStreamDB is a long-running process, so every resource it can exhaust has an
+BenoDB is a long-running process, so every resource it can exhaust has an
 explicit admission limit. This is the single reference for the knobs; each one is
 also documented at its implementation site.
 
@@ -22,7 +22,7 @@ rewrite segments while reads are saturated, so the transient open-file count is
 `Too many open files (os error 24)` — a failed query.
 
 - **Requirement:** raise the descriptor limit to **≥ 65536** for the process
-  running BenoStreamDB (`LimitNOFILE=65536` in the systemd unit, `ulimit -n 65536`
+  running BenoDB (`LimitNOFILE=65536` in the systemd unit, `ulimit -n 65536`
   in a shell, or the container `nofile` ulimit). The benchmark runner sets this
   (`benchmarks/competitors/docker-compose.bench.yml`).
 - **Engine behaviour:** a transient EMFILE during a segment read is retried with

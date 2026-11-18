@@ -25,11 +25,11 @@ correct one.
 
 ## 2. What the code does today
 
-- [`BenoStreamDBSplitManager.java:35`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamDBSplitManager.java#L35)
+- [`BenoDBSplitManager.java:35`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBSplitManager.java#L35)
   builds only `SELECT * FROM t` plus an optional `WHERE` from `applyFilter`.
-- [`AbstractBenoStreamDBMetadata.java:268`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/AbstractBenoStreamDBMetadata.java#L268)
+- [`AbstractBenoDBMetadata.java:268`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/AbstractBenoDBMetadata.java#L268)
   is the only pushdown hook implemented.
-- [`BenoStreamDBJNIBridge.java:30`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamDBJNIBridge.java#L30)
+- [`BenoDBJNIBridge.java:30`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBJNIBridge.java#L30)
   declares `vectorSearch`, but no Java code calls it.
 - There is no `getProcedures`, `getTableFunctions`, or `getFunctionProvider`.
 - [`TRINO.md:87`](https://www.benostreamdb.org/integrations/trino.html) marks vector pushdown as
@@ -73,7 +73,7 @@ flowchart LR
     A[Trino SQL] --> B[ConnectorTableFunction.analyze]
     B --> C[VectorSearchHandle]
     C --> D[ConnectorMetadata.applyTableFunction]
-    D --> E[BenoStreamDBTableHandle with pushdownSql]
+    D --> E[BenoDBTableHandle with pushdownSql]
     E --> F[SplitManager]
     F --> G[openQuery tableUri sql]
     G --> H[DataFusion KNN plan]
@@ -93,9 +93,9 @@ connector only has to produce that SQL and carry it to the split.
 - Document the actual current surface: scans, scalar predicate pushdown, writes,
   MERGE, schema/table listing.
 - Correct the stale comments in
-  [`BenoStreamDBSplitManager.java:13`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamDBSplitManager.java#L13)
+  [`BenoDBSplitManager.java:13`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBSplitManager.java#L13)
   and
-  [`BenoStreamDBPageSource.java:21`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamDBPageSource.java#L21)
+  [`BenoDBPageSource.java:21`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBPageSource.java#L21)
   that claim vector pushdown.
 
 This is a standalone fix and should land before any article or connector claim.
@@ -104,7 +104,7 @@ This is a standalone fix and should land before any article or connector claim.
 
 ### 6.1 Java native method
 
-Add to `BenoStreamDBJNIBridge.java`:
+Add to `BenoDBJNIBridge.java`:
 
 ```java
 public static native boolean addIndex(String tableUri, String column, String algorithm);
@@ -119,7 +119,7 @@ class:
 
 ```rust
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_addIndex(
+pub extern "system" fn Java_com_benostreamdb_trino_BenoDBJNIBridge_addIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -140,22 +140,22 @@ public final class BenoStreamProcedures {
     private final String warehouse;
 
     public void addIndex(ConnectorSession session, String table, String column, String algorithm) {
-        String uri = BenoStreamDBTableUri.resolve(warehouse, table);
-        if (!BenoStreamDBJNIBridge.addIndex(uri, column, algorithm)) {
+        String uri = BenoDBTableUri.resolve(warehouse, table);
+        if (!BenoDBJNIBridge.addIndex(uri, column, algorithm)) {
             throw new TrinoException(GENERIC_INTERNAL_ERROR,
-                "BenoStreamDB add_index failed for " + table + "." + column);
+                "BenoDB add_index failed for " + table + "." + column);
         }
     }
 }
 ```
 
-Add `BenoStreamDBTableUri.resolve(warehouse, "schema.table")`; pass through
+Add `BenoDBTableUri.resolve(warehouse, "schema.table")`; pass through
 values that already contain `://`.
 
 ### 6.4 Connector registration
 
-In the inner `BenoStreamDBConnector` in
-[`BenoStreamDBConnectorFactory.java:29`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamDBConnectorFactory.java#L29),
+In the inner `BenoDBConnector` in
+[`BenoDBConnectorFactory.java:29`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBConnectorFactory.java#L29),
 implement:
 
 ```java
@@ -222,7 +222,7 @@ Verified SPI: `Descriptor.descriptor(List<String>, List<Type>)`,
 
 ### 7.3 Metadata
 
-Implement in `BenoStreamDBMetadata`:
+Implement in `BenoDBMetadata`:
 
 ```java
 @Override
@@ -230,17 +230,17 @@ public Optional<TableFunctionApplicationResult<ConnectorTableHandle>> applyTable
         ConnectorSession session, ConnectorTableFunctionHandle functionHandle) {
     VectorSearchHandle h = (VectorSearchHandle) functionHandle;
     List<ColumnHandle> columns = tableColumns(h.table());
-    columns.add(new BenoStreamDBColumnHandle("distance", DOUBLE));
+    columns.add(new BenoDBColumnHandle("distance", DOUBLE));
     String sql = VectorSearchSql.build("t", h);
     return Optional.of(new TableFunctionApplicationResult<>(
-        new BenoStreamDBTableHandle(schema, table, Optional.empty(), Optional.of(sql)),
+        new BenoDBTableHandle(schema, table, Optional.empty(), Optional.of(sql)),
         columns));
 }
 ```
 
 ### 7.4 Table handle and split
 
-Add an optional `pushdownSql` to `BenoStreamDBTableHandle`, including JSON
+Add an optional `pushdownSql` to `BenoDBTableHandle`, including JSON
 creator, `equals`, and `hashCode`.
 
 `getSplits` chooses:
@@ -278,13 +278,13 @@ Rules:
 
 ### 7.6 Column mapping
 
-`BenoStreamDBPageSource` maps Arrow fields by name. The synthetic `distance`
+`BenoDBPageSource` maps Arrow fields by name. The synthetic `distance`
 column must be present in both the handle's column list and the Arrow result.
 Add a test that projects `id`, `title`, and `distance`.
 
 ### 7.7 Registration
 
-Implement `Connector.getTableFunctions()` on `BenoStreamDBConnector` and return
+Implement `Connector.getTableFunctions()` on `BenoDBConnector` and return
 the vector and (later) graph functions.
 
 ## 8. Phase 3: graph table functions (3–5 days)
@@ -338,11 +338,11 @@ snapshot consistency; reject that option.
 
 **Modified**
 
-- `BenoStreamDBConnectorFactory.java` — `getProcedures`, `getTableFunctions`
-- `AbstractBenoStreamDBMetadata.java` — `applyTableFunction`, shared schema resolver
-- `BenoStreamDBTableHandle.java` — `pushdownSql`
-- `BenoStreamDBSplitManager.java` — prefer `pushdownSql`
-- `BenoStreamDBJNIBridge.java` — `addIndex`, `buildIndex`
+- `BenoDBConnectorFactory.java` — `getProcedures`, `getTableFunctions`
+- `AbstractBenoDBMetadata.java` — `applyTableFunction`, shared schema resolver
+- `BenoDBTableHandle.java` — `pushdownSql`
+- `BenoDBSplitManager.java` — prefer `pushdownSql`
+- `BenoDBJNIBridge.java` — `addIndex`, `buildIndex`
 - `src/core/ffi.rs` — Trino JNI exports
 - `docs/integrations/TRINO.md` — supported surface and roadmap
 
@@ -378,7 +378,7 @@ create a small table via the Python SDK, then run the SQL above. Capture
    Jackson-serializable with a stable shape.
 5. **Native packaging.** New JNI exports require rebuilding
    `libbenostreamdb` and shipping it with the plugin; symbol names must match
-   `com.benostreamdb.trino.BenoStreamDBJNIBridge`.
+   `com.benostreamdb.trino.BenoDBJNIBridge`.
 6. **Procedure blocking.** Index builds on large tables can exceed Trino call
    timeouts; document the out-of-band path.
 7. **SQL injection.** Table, column, filter, and vector inputs need validation;

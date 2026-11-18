@@ -1,4 +1,4 @@
-# BenoStreamDB Roadmap & Architecture Status
+# BenoDB Roadmap & Architecture Status
 
 **Vision**: Make Apache Iceberg executable as a high-performance database with rebuildable secondary index overlays (CSR graph, HNSW vector, BM25 text, Roaring bitmaps).
 
@@ -21,7 +21,7 @@
 
 ## 🏛️ Architectural Foundations (Completed)
 
-BenoStreamDB implements an **indexed, compute-disaggregated lakehouse architecture**:
+BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
 1. **The Overlay Invariant**: Parquet data files in Apache Iceberg are the authoritative source of truth. All secondary indexes (CSR graph, HNSW vector, BM25 text, Roaring bitmaps) are **advisory, rebuildable sidecar overlays**. If an index is lost or deleted, queries fall back to Parquet scans while the overlay rebuilds.
 2. **Serverless-First, Server-Optional**: The core database is an in-process, embeddable library (Python/Rust/JVM) operating directly against object storage (S3/GCS/Azure/Local). Arrow Flight SQL provides an optional single-process network access layer for remote clients and BI tools.
 3. **Lakehouse Independence**: All core connectors (`dbt-benostreamdb`, `spark-benostreamdb`, `trino-benostreamdb`) and optional servers (`server/flight_sql`) operate independently of contrib compatibility packages.
@@ -59,7 +59,7 @@ BenoStreamDB implements an **indexed, compute-disaggregated lakehouse architectu
     longer block forever when process RSS is already at/above the cap for reasons
     the write cannot relieve.
 - **MCP Server (`contrib/benostreamdb-mcp`)**:
-  - Dedicated MCP server exposing BenoStreamDB tables, schemas, SQL queries, and
+  - Dedicated MCP server exposing BenoDB tables, schemas, SQL queries, and
     hybrid vector/graph retrieval as native tools for Claude Desktop, Cursor, and
     Antigravity. Windows `.msi` installer via `cargo-wix`.
   - **0.13.0:** local, no-LLM embeddings (pure-Rust Candle BERT, BGE-small by
@@ -183,7 +183,7 @@ Themes are ordered by priority.
 > overlay index engine already treats any Parquet file as data. The authoritative
 > data files and the advisory index overlays are stored completely separately
 > (`s3://my-index-bucket/overlays/`), so the upstream table does not even need to
-> know BenoStreamDB exists. The existing
+> know BenoDB exists. The existing
 > `Table.register_external(overlay_uri, iceberg_metadata_uri)` path already
 > attaches an overlay to an external, read-only Iceberg table without write
 > permission on the upstream storage or catalog.

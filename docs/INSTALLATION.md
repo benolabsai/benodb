@@ -16,13 +16,13 @@ maturin develop
 maturin develop --features cuda
 
 # Windows Users
-# BenoStreamDB is optimized for Linux/POSIX environments.
+# BenoDB is optimized for Linux/POSIX environments.
 # Windows users should use WSL2 (Windows Subsystem for Linux).
 ```
 
 ## ⚠️ Deployment Security
 
-**BenoStreamDB's network servers are not hardened for untrusted networks.**
+**BenoDB's network servers are not hardened for untrusted networks.**
 The network servers (`benostreamdb-flight`, `bsdb-search`, and `contrib/benostreamdb-mcp`)
 ship with **no native TLS**. While they support **stateless authentication** (via
 `BSDB_API_KEY` or JWT tokens), they should be deployed on a **trusted internal network**
@@ -81,7 +81,7 @@ See [Python Vector API Documentation](PYTHON_VECTOR_API.md) for detailed GPU set
 
 ## pgvector SQL Compatibility
 
-BenoStreamDB provides full pgvector-compatible SQL syntax for vector operations:
+BenoDB provides full pgvector-compatible SQL syntax for vector operations:
 
 ```sql
 -- Use familiar pgvector operators
@@ -143,7 +143,7 @@ results = table.to_pandas(
 
 # 🔄 Fluent Query API
 
-BenoStreamDB features a modern fluent query API that supports method chaining for both Python and Rust:
+BenoDB features a modern fluent query API that supports method chaining for both Python and Rust:
 
 ### Python Fluent API
 
@@ -215,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### Python Vector Distance API with GPU Acceleration
 
-BenoStreamDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
+BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
 import benostreamdb as bsdb
@@ -340,7 +340,7 @@ measured end-to-end workload is the full-site Wikipedia Graph RAG demo — see
 
 ### Overlay Indexing
 
-BenoStreamDB stores indexes as **sidecar files** alongside Parquet data:
+BenoDB stores indexes as **sidecar files** alongside Parquet data:
 
 ```
 s3://bucket/table/
@@ -525,7 +525,7 @@ We welcome contributions! See [CONTRIBUTING.md](https://github.com/benolabsai/be
 The Python wrapper is licensed under the **MIT License**.
 The underlying Rust engine and core database logic is licensed under the **Apache License 2.0**.
 
-This project contains modified source code from various upstream open-source projects (including `hnsw_rs` for pre-filtering support), which were originally licensed under Apache 2.0. BenoStreamDB maintains compliance by retaining all original copyright notices and providing prominent notice of modifications in the relevant source files.
+This project contains modified source code from various upstream open-source projects (including `hnsw_rs` for pre-filtering support), which were originally licensed under Apache 2.0. BenoDB maintains compliance by retaining all original copyright notices and providing prominent notice of modifications in the relevant source files.
 
 ## 🙏 Acknowledgments
 
@@ -543,12 +543,12 @@ This project contains modified source code from various upstream open-source pro
 _(merged from the former `INSTALLATION.md`)_
 
 
-This guide covers two ways to use BenoStreamDB:
+This guide covers two ways to use BenoDB:
 
 1. **The `bsdb-search` REST server** — an OpenSearch / Elasticsearch 7.10-compatible
    API (plus a Qdrant v1.x-compatible API; see
    [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md)) served on top of the
-   BenoStreamDB engine.
+   BenoDB engine.
 2. **The Python client** — direct, in-process access to the engine via `pyo3` bindings.
 
 ---
@@ -608,14 +608,14 @@ curl -s localhost:9200/ | jq
 
 # Index a document (auto-creates the index on first write)
 curl -s -X POST localhost:9200/articles/_doc -H 'content-type: application/json' \
-  -d '{"title":"Hello","body":"Welcome to BenoStreamDB"}' | jq
+  -d '{"title":"Hello","body":"Welcome to BenoDB"}' | jq
 
 # Make it searchable
 curl -s -X POST localhost:9200/articles/_refresh | jq
 
 # Lexical (BM25) search
 curl -s -X POST localhost:9200/articles/_search -H 'content-type: application/json' \
-  -d '{"query":{"match":{"body":"BenoStreamDB"}}}' | jq
+  -d '{"query":{"match":{"body":"BenoDB"}}}' | jq
 
 # Vector (HNSW) search
 curl -s -X POST localhost:9200/articles/_search -H 'content-type: application/json' \
@@ -645,7 +645,7 @@ supported / unsupported matrix.
 
 ## 2. The Python client
 
-The core engine ships `pyo3` bindings so you can use BenoStreamDB in-process
+The core engine ships `pyo3` bindings so you can use BenoDB in-process
 without the REST server.
 
 ### Install
@@ -683,7 +683,7 @@ rows = table.read(filter="body LIKE '%fox%'")
 
 ### Vector Quantization with TurboQuant (TQ8 / TQ4)
 
-BenoStreamDB includes **TurboQuant™** out-of-the-box in the free community core engine. TurboQuant uses Fast Walsh-Hadamard Transform (FWHT) followed by scalar quantization to deliver outlier-robust compression with high recall retention:
+BenoDB includes **TurboQuant™** out-of-the-box in the free community core engine. TurboQuant uses Fast Walsh-Hadamard Transform (FWHT) followed by scalar quantization to deliver outlier-robust compression with high recall retention:
 
 - **TQ8 (8-bit)**: 4x RAM and disk compression with >99% recall retention. Ideal default for production RAG and semantic search.
 - **TQ4 (4-bit)**: 8x RAM and disk compression for massive datasets.

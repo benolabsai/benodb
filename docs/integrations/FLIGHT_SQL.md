@@ -1,12 +1,12 @@
 # Arrow Flight SQL Gateway (`benostreamdb-flight`)
 
-`benostreamdb-flight` provides a high-performance Apache Arrow Flight and Flight SQL network interface over BenoStreamDB.
+`benostreamdb-flight` provides a high-performance Apache Arrow Flight and Flight SQL network interface over BenoDB.
 
 ---
 
 ## Architecture & Deployment Model
 
-BenoStreamDB is **serverless-first**: applications with native language support (Python, Rust, JVM via Spark/Trino) embed the engine directly in-process without needing a database server.
+BenoDB is **serverless-first**: applications with native language support (Python, Rust, JVM via Spark/Trino) embed the engine directly in-process without needing a database server.
 
 For network clients, polyglot applications (Go, C++, Node.js), and BI tools that communicate via JDBC/ODBC/ADBC, the optional Flight SQL server exposes the engine over standard gRPC.
 
@@ -25,7 +25,7 @@ Client Application (JDBC / ODBC / ADBC / Go / C++ / BI tools)
             BenoStreamSession
                     │
                     ▼
-       DataFusion Query Engine + BenoStreamDB Core
+       DataFusion Query Engine + BenoDB Core
 ```
 
 ---
@@ -106,7 +106,7 @@ with conn.cursor() as cur:
 INSTALL flight;
 LOAD flight;
 
--- Query BenoStreamDB via Flight SQL
+-- Query BenoDB via Flight SQL
 SELECT * FROM flight_sql_query('grpc://127.0.0.1:50051', 'SELECT * FROM documents');
 ```
 

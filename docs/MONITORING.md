@@ -1,6 +1,6 @@
-# BenoStreamDB Monitoring & Operations
+# BenoDB Monitoring & Operations
 
-BenoStreamDB is designed to be highly observable and easy to operate in serverless, ephemeral environments as well as traditional long-running daemon setups.
+BenoDB is designed to be highly observable and easy to operate in serverless, ephemeral environments as well as traditional long-running daemon setups.
 
 ## Observability by deployment mode
 
@@ -14,7 +14,7 @@ metrics regardless of how the engine is deployed.
 | **Flight SQL server** (`benostreamdb-flight`) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
 | **Search gateway** (`bsdb-search`) | `http://<BSDB_SEARCH_BIND>:<BSDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
 | **Gateway / Iceberg REST bins** | `GET /metrics` (gateway), `GET /v1/metrics` (iceberg_rest) | `GET /health`, `GET /v1/health` |
-| **Spark / Trino connectors** | `BenoStreamJNIBridge.gatherMetrics()` / `BenoStreamDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
+| **Spark / Trino connectors** | `BenoStreamJNIBridge.gatherMetrics()` / `BenoDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
 
 The search gateway's `/metrics` serves **both** its own `bsdb_search_*` registry
 and the core engine's `bsdb_*` metrics, so one scrape covers the whole
@@ -30,7 +30,7 @@ process.
 > The listener defaults to **localhost**. Set `BSDB_METRICS_BIND=0.0.0.0` only
 > when a scraper runs on another host, and front it with auth/TLS.
 >
-> **⚠️ Security:** none of these endpoints authenticate. Run every BenoStreamDB
+> **⚠️ Security:** none of these endpoints authenticate. Run every BenoDB
 > server on a **trusted internal network**, behind a gateway/reverse proxy that
 > terminates TLS and enforces authentication. Do **not** expose them to the
 > public internet. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md).
@@ -97,7 +97,7 @@ Recorded with the `metrics` facade (query planner, compaction, manifest commit):
 
 ## Telemetry & Tracing
 
-BenoStreamDB leverages a push-based OpenTelemetry (OTLP) pipeline to export distributed traces. Because it often runs in serverless functions (like AWS Lambda) where instances may be frozen between invocations, the `Table` API explicitly flushes traces on teardown (via the `Drop` trait) to ensure no data is lost.
+BenoDB leverages a push-based OpenTelemetry (OTLP) pipeline to export distributed traces. Because it often runs in serverless functions (like AWS Lambda) where instances may be frozen between invocations, the `Table` API explicitly flushes traces on teardown (via the `Drop` trait) to ensure no data is lost.
 
 ### Configuration
 

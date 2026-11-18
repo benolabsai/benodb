@@ -1,6 +1,6 @@
 # Trino Connector
 
-The BenoStreamDB Trino connector queries your datasets with distributed SQL. It
+The BenoDB Trino connector queries your datasets with distributed SQL. It
 implements the Trino SPI and delegates IO to the Rust core over JNI, so vectors,
 keyword indexes, and graph traversals run in the engine rather than in Trino.
 
@@ -322,7 +322,7 @@ Otherwise the single-split SQL path is used, which is why the default is off.
 
 Retrieval results join foreign catalogs directly in one statement; nothing is
 exported or copied. This is the same code path exercised by
-`TestCrossCatalogJoin`. An Iceberg catalog registered against a BenoStreamDB
+`TestCrossCatalogJoin`. An Iceberg catalog registered against a BenoDB
 table directory works the same way; see [ICEBERG.md](ICEBERG.md).
 
 ```sql
@@ -342,7 +342,7 @@ These are deliberate and documented rather than hidden:
   would only ever observe commits from its own process.
 - **Iceberg reads are zero-copy.** Table metadata, manifests, Parquet, and
   delete files are spec-compliant, so Trino's Iceberg connector can
-  `CALL iceberg.system.register_table(...)` against a BenoStreamDB table
+  `CALL iceberg.system.register_table(...)` against a BenoDB table
   directory and read the same files without copying — including position
   deletes. Equality deletes are Avro, as the spec allows, and Trino reads them.
   See [ICEBERG.md](ICEBERG.md) for the contract and the exact commands.

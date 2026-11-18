@@ -1,6 +1,6 @@
 # REST Search Gateway (`benostreamdb-search`)
 
-`benostreamdb-search` is a multi-protocol HTTP search gateway that exposes BenoStreamDB tables over standard search engine wire formats.
+`benostreamdb-search` is a multi-protocol HTTP search gateway that exposes BenoDB tables over standard search engine wire formats.
 
 ---
 
@@ -67,7 +67,7 @@ curl -X PUT http://localhost:9200/articles -H "Content-Type: application/json" -
 
 # Ingest a document
 curl -X POST http://localhost:9200/articles/_doc/1 -H "Content-Type: application/json" -d '{
-  "title": "BenoStreamDB Lakehouse Search",
+  "title": "BenoDB Lakehouse Search",
   "category": "database"
 }'
 
@@ -99,10 +99,10 @@ curl -X POST http://localhost:9200/articles/_warmup -H "Content-Type: applicatio
 ```python
 from qdrant_client import QdrantClient
 
-# Connect to the BenoStreamDB Qdrant interface
+# Connect to the BenoDB Qdrant interface
 client = QdrantClient(url="http://localhost:6333", api_key="your-api-key")
 
-# List collections (maps to BenoStreamDB tables)
+# List collections (maps to BenoDB tables)
 collections = client.get_collections()
 
 # Search points

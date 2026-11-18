@@ -1,6 +1,6 @@
 # Configuration Guide
 
-BenoStreamDB is designed to be highly configurable through environment variables, runtime options, and a centralized configuration file.
+BenoDB is designed to be highly configurable through environment variables, runtime options, and a centralized configuration file.
 
 ## Environment Variables
 
@@ -249,7 +249,7 @@ per-deployment-mode endpoints.
 
 You can use a TOML file to manage complex configurations, especially for catalogs and multi-cloud storage.
 
-BenoStreamDB looks for this file in the following order:
+BenoDB looks for this file in the following order:
 1. Environment variable `BSDB_CONFIG`
 2. `./benostream.toml` (current directory)
 3. `~/.benostream/config.toml`
@@ -285,7 +285,7 @@ token_refresh_interval_secs = 300
 
 ## Storage Credentials
 
-BenoStreamDB uses the standard `object-store` crate, which automatically picks up credentials from:
+BenoDB uses the standard `object-store` crate, which automatically picks up credentials from:
 - **AWS**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, or IAM Roles.
 - **GCP**: `GOOGLE_APPLICATION_CREDENTIALS` (JSON key file path).
 - **Azure**: `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_KEY`.
@@ -340,7 +340,7 @@ let batches = table.query_with_config("SELECT * FROM documents", config).await?;
 _(merged from the former `CONFIGURATION.md`)_
 
 
-This guide covers configuration parameters for tuning vector search performance in BenoStreamDB.
+This guide covers configuration parameters for tuning vector search performance in BenoDB.
 
 ## Configuration Parameters
 

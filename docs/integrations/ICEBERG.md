@@ -2,9 +2,9 @@
 
 > **Authoritative Guide:** For the comprehensive guide to Apache Iceberg storage architecture, Python APIs, and conformance specifications, see [Apache Iceberg Storage & Zero-Copy Interoperability](https://www.benostreamdb.org/guides/iceberg_storage.html).
 
-BenoStreamDB already stores its data as Parquet and already writes Iceberg-shaped
+BenoDB already stores its data as Parquet and already writes Iceberg-shaped
 metadata. Making that metadata **spec-compliant** means an Iceberg reader can open
-a BenoStreamDB table directory directly: no export, no rewrite, no second copy of
+a BenoDB table directory directly: no export, no rewrite, no second copy of
 the data. Trino's Iceberg connector, PyIceberg, and any other Iceberg client read
 the exact files the engine wrote — including vector columns.
 
@@ -99,9 +99,9 @@ dropped rather than carried forward.
   split.
 - **Equality deletes stay Avro**, which the spec also allows.
 - The engine's own `_manifest/vN.json` remains the internal source of truth for
-  the delete list, so the split does not change how BenoStreamDB applies them.
+  the delete list, so the split does not change how BenoDB applies them.
 
-## Reading a BenoStreamDB table with Trino
+## Reading a BenoDB table with Trino
 
 Configure an Iceberg catalog as usual (`rest`, `hive_metastore`, `glue`, `jdbc`,
 or `nessie`) and register the table directory:
@@ -176,9 +176,9 @@ Verified output for a table with `id BIGINT, name VARCHAR, vec DOUBLE[]`:
   Avro equality deletes. Clients that only implement position deletes (for
   example PyIceberg, in any format) cannot consume them, so such a table may
   need compaction before being read by those clients.
-- **Index metadata is BenoStreamDB-specific.** `index_files`, `file_checksum`,
+- **Index metadata is BenoDB-specific.** `index_files`, `file_checksum`,
   and the per-column `indexes` array are stored as extra Avro fields / JSON keys.
   Iceberg readers ignore unknown fields, so they are inert for external reads;
-  vector/graph acceleration remains a BenoStreamDB feature.
+  vector/graph acceleration remains a BenoDB feature.
 - **Data files are uncompressed** (`Compression::UNCOMPRESSED`). Valid, but larger
   than a typical Iceberg writer's output.
