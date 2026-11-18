@@ -926,7 +926,7 @@ impl Table {
 
     /// Segment entries of the snapshot this handle reads.
     ///
-    /// Resolved through [`Table::manifest_manager`] so a pinned handle reports
+    /// Resolved through `Table::manifest_manager` so a pinned handle reports
     /// the pinned version's segment set, the same one its queries read.
     pub async fn get_snapshot_segments(&self) -> Result<Vec<ManifestEntry>> {
         let (_, all_entries, _) = self.manifest_manager().load_latest_full().await?;
