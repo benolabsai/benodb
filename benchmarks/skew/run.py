@@ -27,7 +27,7 @@ import networkx as nx
 import numpy as np
 import pyarrow as pa
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def generate_powerlaw_graph(nodes: int = 20000, edges_target: int = 100000, seed: int = 42):
@@ -238,7 +238,7 @@ def benchmark_relational_skew(n_rows: int = 200000, num_keys: int = 10000) -> Di
 
 def main():
     print("=" * 70)
-    print("BenoStreamDB Skewed Data Benchmark Suite (§7.6)")
+    print("BenoDB Skewed Data Benchmark Suite (§7.6)")
     print("=" * 70)
 
     # 1. Graph Degree Skew
@@ -248,7 +248,7 @@ def main():
     sql_res = benchmark_relational_skew(n_rows=200000, num_keys=10000)
 
     report = {
-        "engine": "benostreamdb",
+        "engine": "benodb",
         "workload": "skewed_data_distributions",
         "host": f"{platform.processor() or platform.machine()} ({platform.system()})",
         "graph": graph_res,
@@ -259,7 +259,7 @@ def main():
     md_lines = [
         "# Skewed Data & Power-Law Distribution Benchmark (§7.6)",
         "",
-        "- **Engine**: BenoStreamDB (Unified CSR Graph Engine + Apache Iceberg SQL)",
+        "- **Engine**: BenoDB (Unified CSR Graph Engine + Apache Iceberg SQL)",
         f"- **Host**: {report['host']}",
         "- **Workloads**: Scale-Free Power-Law Graph Traversal & Zipfian Hot-Key Querying",
         "",

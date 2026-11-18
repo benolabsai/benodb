@@ -32,12 +32,12 @@ use anyhow::{Context, Result};
 use arrow::array::{Array, FixedSizeListArray, Float64Array, Int32Array, Int64Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::{IndexAlgorithm, ManifestManager};
-use benostreamdb::core::metadata::TableMetadata;
-use benostreamdb::core::table::builder::TableBuilder;
-use benostreamdb::core::table::{VectorSearchParams, WalDurability};
-use benostreamdb::Table;
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::{IndexAlgorithm, ManifestManager};
+use benodb::core::metadata::TableMetadata;
+use benodb::core::table::builder::TableBuilder;
+use benodb::core::table::{VectorSearchParams, WalDurability};
+use benodb::Table;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use object_store::memory::InMemory;
@@ -437,7 +437,7 @@ async fn multi_writer_v2_differential_matches_union_model() -> Result<()> {
         }
     }
 
-    let store = benostreamdb::core::storage::create_object_store(uri)?;
+    let store = benodb::core::storage::create_object_store(uri)?;
     let mut check_rng = Lcg::new(0xC4EC_0001);
     {
         let verify = open_shared(uri, &wal_root.path().join("verify_a")).await?;
@@ -672,7 +672,7 @@ async fn multi_writer_v3_differential_and_row_lineage_is_exact() -> Result<()> {
         }
     }
 
-    let store = benostreamdb::core::storage::create_object_store(uri)?;
+    let store = benodb::core::storage::create_object_store(uri)?;
     let verify = open_shared(uri, &wal_root.path().join("verify_v3")).await?;
     verify.wait_for_background_tasks_async().await?;
 
@@ -1063,7 +1063,7 @@ async fn s3_multi_writer_differential_matches_model() -> Result<()> {
         }
     }
 
-    let store = benostreamdb::core::storage::create_object_store(&uri)?;
+    let store = benodb::core::storage::create_object_store(&uri)?;
     let verify = open_shared(&uri, &wal_root.path().join("verify_s3")).await?;
     verify.wait_for_background_tasks_async().await?;
 

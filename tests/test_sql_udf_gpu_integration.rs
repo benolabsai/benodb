@@ -4,10 +4,10 @@
 ///
 /// This test verifies that SQL distance UDFs can use GPU acceleration
 /// when a GPU context is configured via the global context.
-use benostreamdb::core::index::gpu::{
+use benodb::core::index::gpu::{
     get_thread_gpu_context, set_thread_gpu_context, ComputeContext,
 };
-use benostreamdb::core::sql::vector_udf::all_vector_udfs;
+use benodb::core::sql::vector_udf::all_vector_udfs;
 use datafusion::arrow::array::{FixedSizeListArray, Float32Array};
 use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::execution::FunctionRegistry;

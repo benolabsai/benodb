@@ -1,6 +1,6 @@
 import pyarrow as pa
 import pytest
-from benostreamdb import Table
+from benodb import Table
 
 @pytest.fixture
 def dbt_edge_table(tmpdir):
@@ -110,7 +110,7 @@ def test_dbt_node_similarity_sql(dbt_edge_table):
 def test_dbt_macro_file_syntax():
     """Verify dbt macro SQL file contains valid Jinja syntax and all expected macro definitions."""
     import jinja2
-    macro_path = "dbt-benostreamdb/dbt/include/benostreamdb/macros/graph.sql"
+    macro_path = "dbt-benodb/dbt/include/benodb/macros/graph.sql"
     with open(macro_path, "r") as f:
         content = f.read()
     env = jinja2.Environment()

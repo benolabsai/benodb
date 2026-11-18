@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "workload": "skewed_data_distributions",
   "host": "x86_64 (Linux)",
   "graph": {

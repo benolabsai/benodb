@@ -1,6 +1,6 @@
 import tempfile
 import pytest
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import uuid
 import os

@@ -4,7 +4,7 @@ use anyhow::Result;
 use arrow::array::{BooleanArray, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 
 #[tokio::test]

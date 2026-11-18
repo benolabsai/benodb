@@ -11,7 +11,7 @@ currently inert because written segments carry empty `column_stats`, so
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 @pytest.fixture()

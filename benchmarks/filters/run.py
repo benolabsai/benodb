@@ -3,7 +3,7 @@
 """Pathological Filters & Differential Oracle Benchmark (§7.5 in Benchmarking Plan).
 
 Evaluates query latency, predicate pushdown efficiency, and differential oracle
-correctness between BenoStreamDB (Apache Iceberg table + DataFusion pushdown)
+correctness between BenoDB (Apache Iceberg table + DataFusion pushdown)
 and DuckDB across pathological, selective, high-cardinality, and wildcard filters.
 
 Usage:
@@ -28,7 +28,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 try:
-    import benostreamdb as bsdb
+    import benodb as bsdb
 except ImportError:
     pass
 
@@ -84,7 +84,7 @@ def generate_synthetic_dataset(rows: int, seed: int = 42) -> pa.Table:
         "",
         "search query",
         "online store",
-        "benostreamdb speed",
+        "benodb speed",
         "high performance vector db",
         "graph analytics",
         "clickbench olap",
@@ -154,15 +154,15 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
     pq.write_table(pa_table, parquet_path, row_group_size=20_000)
 
     try:
-        # 1. Setup BenoStreamDB Table
-        print("Ingesting into BenoStreamDB (Apache Iceberg native table)...", flush=True)
+        # 1. Setup BenoDB Table
+        print("Ingesting into BenoDB (Apache Iceberg native table)...", flush=True)
         t_ingest_0 = time.perf_counter()
         bsdb_table = bsdb.Table(f"file://{tmpdir}/bsdb_table")
         bsdb_table.write(pa_table)
         bsdb_table.commit()
         bsdb_table.wait_for_background_tasks()
         bsdb_ingest_s = time.perf_counter() - t_ingest_0
-        print(f"BenoStreamDB ingest took {bsdb_ingest_s:.2f}s", flush=True)
+        print(f"BenoDB ingest took {bsdb_ingest_s:.2f}s", flush=True)
 
         # 2. Setup DuckDB Oracle
         con = duckdb.connect()
@@ -208,7 +208,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
             duck_rows = len(duck_res_arrow)
             duck_hash = hash_arrow_table(duck_res_arrow)
 
-            # BenoStreamDB
+            # BenoDB
             bsdb_warm = []
             bsdb_res_arrow = None
             for i in range(warm_runs + 1):
@@ -259,7 +259,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
             })
 
         report = {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "competitor": "duckdb",
             "workload": "pathological_filters_differential_oracle",
             "host": f"{platform.processor() or platform.machine()} ({platform.system()})",
@@ -272,13 +272,13 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
         md_lines = [
             "# Pathological Filters & Differential Oracle Benchmark (§7.5)",
             "",
-            "- **Engine**: BenoStreamDB (Apache Iceberg table + DataFusion pushdown)",
+            "- **Engine**: BenoDB (Apache Iceberg table + DataFusion pushdown)",
             "- **Competitor Oracle**: DuckDB (in-process analytical SQL)",
             f"- **Dataset**: ClickBench schema with {rows:,} rows (multi-column mixed types)",
             f"- **Host**: {report['host']}",
             f"- **Measured DataFusion Session & Planning Overhead**: **{session_overhead_ms:.2f} ms** per query",
             "",
-            "| Filter Test Case | Selectivity | BenoStreamDB Total | Session / Plan Overhead | Pure Compute / Scan | DuckDB p50 | Differential Oracle Match | Status |",
+            "| Filter Test Case | Selectivity | BenoDB Total | Session / Plan Overhead | Pure Compute / Scan | DuckDB p50 | Differential Oracle Match | Status |",
             "|---|---|---|---|---|---|---|---|",
         ]
 
@@ -296,7 +296,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
         md_lines.append("### DataFusion Execution & Overhead Analysis")
         md_lines.append(f"1. **Per-Query Session Overhead ({session_overhead_ms:.2f} ms)**: In the current Python API (`table.sql()`), each query instantiates a new DataFusion `SessionContext` and registers all standard scalar/aggregate functions, vector operators, and graph UDFs from scratch before planning begins.")
         md_lines.append("2. **Morsel Execution vs Async Channels**: DuckDB executes queries synchronously using C++ morsel work-stealing, whereas DataFusion routes batches across 32 async Tokio channels (`RoundRobinBatch(32)`), introducing channel serialization overhead on sub-million row tables.")
-        md_lines.append("3. **Differential Oracle Invariance**: Across all selective, low-selectivity (99.5%), high-cardinality `IN` lists (50 items), and string wildcards, BenoStreamDB achieves 100% mathematical equality against DuckDB with no pathological performance cliff.")
+        md_lines.append("3. **Differential Oracle Invariance**: Across all selective, low-selectivity (99.5%), high-cardinality `IN` lists (50 items), and string wildcards, BenoDB achieves 100% mathematical equality against DuckDB with no pathological performance cliff.")
 
         md_report = "\n".join(md_lines) + "\n"
 

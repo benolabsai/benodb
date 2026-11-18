@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MuSiQue Multi-Hop GraphRAG Benchmark for BenoStreamDB.
+"""MuSiQue Multi-Hop GraphRAG Benchmark for BenoDB.
 
 Evaluates multi-hop question answering and evidence retrieval on the official
 MuSiQue benchmark (musique_ans_v1.0_dev.jsonl, 2,417 multi-hop questions):
@@ -8,7 +8,7 @@ MuSiQue benchmark (musique_ans_v1.0_dev.jsonl, 2,417 multi-hop questions):
 - Evaluates:
     1. Baseline Vector Search (Hop-1 pure vector retrieval)
     2. In-Process SQL Recursive Join (DataFusion CTE graph traversal)
-    3. Topological GraphRAG (BenoStreamDB Personalized PageRank graph_rag_search)
+    3. Topological GraphRAG (BenoDB Personalized PageRank graph_rag_search)
     4. Two-Stage Graph Merge + In-Process Rerank: Hop-1 HNSW seeds, 1-hop CSR
        entity expansion into a merged candidate pool, then a local cross-encoder
        (MiniLM-L6 / BGE-base) re-scores the pool. No external API calls, no
@@ -80,7 +80,7 @@ import psutil
 import pyarrow as pa
 
 DEFAULT_DATA_DIR = "/home/ralbright/data/datasets/musique"
-DEFAULT_SCRATCH_DIR = "/home/ralbright/projects/benostreamdb/benchmarks/scratch_musique"
+DEFAULT_SCRATCH_DIR = "/home/ralbright/projects/benodb/benchmarks/scratch_musique"
 MUSIQUE_DEV_URL = "https://huggingface.co/datasets/voidful/MuSiQue/resolve/main/musique_ans_v1.0_dev.jsonl"
 MUSIQUE_DEV_BYTES = 30_439_728
 GIB = 1024 ** 3
@@ -310,7 +310,7 @@ def apply_hardware(args):
     print(f"  query threads: {args.threads}   BSDB_CACHE_GB: {args.cache_gb}   preload budget: {args.preload_gb:.1f} GiB")
     print("=" * 80 + "\n", flush=True)
 
-    # Export process-wide environment variables BEFORE importing benostreamdb
+    # Export process-wide environment variables BEFORE importing benodb
     os.environ.setdefault("BSDB_DISK_CACHE", "off")
     os.environ.setdefault("BSDB_DISK_CACHE_GB", "0")
     os.environ["BSDB_CACHE_GB"] = str(args.cache_gb)
@@ -338,7 +338,7 @@ def ensure_dataset(data_dir: str) -> str:
 
     if cur_bytes < MUSIQUE_DEV_BYTES:
         print(f"[musique] Downloading {MUSIQUE_DEV_BYTES - cur_bytes:,} bytes to {dest}...")
-        headers = {"Range": f"bytes={cur_bytes}-{MUSIQUE_DEV_BYTES - 1}", "User-Agent": "BenoStreamDB-Benchmark/1.0"}
+        headers = {"Range": f"bytes={cur_bytes}-{MUSIQUE_DEV_BYTES - 1}", "User-Agent": "BenoDB-Benchmark/1.0"}
         req = urllib.request.Request(MUSIQUE_DEV_URL, headers=headers)
         with urllib.request.urlopen(req) as resp, open(dest, "ab") as f:
             while True:
@@ -1689,7 +1689,7 @@ def run_evaluation(corpus_table, edge_table, unique_passages, records: list, top
                 retrieved_ids = finalize(expanded_ids)
 
             elif mode == "topological_ppr":
-                # BenoStreamDB native graph_rag_search (PPR over seed documents)
+                # BenoDB native graph_rag_search (PPR over seed documents)
                 try:
                     gr = corpus_table.graph_rag_search(
                         query=q_embed.tolist(),
@@ -1910,7 +1910,7 @@ def save_report(results: dict, top_k: int, out_dir: str, corpus_meta: dict | Non
     labels = {
         "vector_only": "Hop-1 Pure Vector Search (Baseline)",
         "sql_recursive_join": "In-Process DataFusion SQL Recursive Join",
-        "topological_ppr": "**BenoStreamDB Native GraphRAG (PPR)**",
+        "topological_ppr": "**BenoDB Native GraphRAG (PPR)**",
         "two_stage_minilm": "Two-Stage Merge + MiniLM-L6 Cross-Encoder (in-process)",
         "two_stage_bge": "Two-Stage Merge + BGE-base Cross-Encoder (in-process)",
         "two_stage_ensemble": "**Two-Stage Merge + MiniLM/BGE Ensemble (in-process)**",
@@ -2043,7 +2043,7 @@ def main():
     preset_args, _ = preset_parser.parse_known_args()
     selected_preset = RUN_PRESETS.get(preset_args.preset, {})
 
-    parser = argparse.ArgumentParser(description="MuSiQue Multi-Hop GraphRAG benchmark for BenoStreamDB")
+    parser = argparse.ArgumentParser(description="MuSiQue Multi-Hop GraphRAG benchmark for BenoDB")
     parser.add_argument("--preset", choices=list(RUN_PRESETS), default=preset_args.preset,
                         help="Apply a release preset: storage = engine-native rows only, poc (default "
                              "shape) = engine rows plus one MiniLM rerank row, research = every "
@@ -2174,7 +2174,7 @@ def main():
     if args.preset:
         print(f"[musique] --preset {args.preset}: {selected_preset or 'benchmark defaults'}", flush=True)
 
-    # Enforce hardware constraints and export caching env vars BEFORE importing benostreamdb
+    # Enforce hardware constraints and export caching env vars BEFORE importing benodb
     apply_hardware(args)
 
     # Fail fast on an unavailable accelerator rather than mid-way through a run.
@@ -2201,7 +2201,7 @@ def main():
         print(f"[musique] Corpus encode devices: {', '.join(b.device for b in encode_backends)}",
               flush=True)
 
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     dataset_path = ensure_dataset(args.data_dir)
     records = load_musique_records(dataset_path, args.max_questions)

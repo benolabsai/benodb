@@ -11,7 +11,7 @@ production code, not as an acceptable error strategy.
 | Code | Rule |
 | --- | --- |
 | Production library code (`src/**` compiled without `cfg(test)`) | No `unwrap()` / `expect()` / `panic!` except documented invariants |
-| Production binaries (`src/bin/{bsdb,gateway,iceberg_rest,bsdb-admin}.rs`, `benostreamdb-search/src/main.rs`) | Same rule |
+| Production binaries (`src/bin/{bsdb,gateway,iceberg_rest,bsdb-admin}.rs`, `benodb-search/src/main.rs`) | Same rule |
 | `#[cfg(test)] mod tests` blocks | Exempt — tests may unwrap freely |
 | `tests/**` integration crates | Exempt |
 | `build.rs` | Build scripts are exempt in spirit, but `build.rs` was converted to return `Result` anyway |
@@ -36,7 +36,7 @@ Prefer, in order:
 
 ### Ratchet (`scripts/no_panic_check.sh`)
 
-Because `src/lib.rs` and `benostreamdb-search/src/lib.rs` already carry
+Because `src/lib.rs` and `benodb-search/src/lib.rs` already carry
 `#![deny(warnings)]`, flipping the restriction lints to hard errors immediately
 would fail the build on every not-yet-remediated site. Until remediation
 completes, enforcement is a **ratchet**:
@@ -95,7 +95,7 @@ total, or narrowly allowlisted at function scope (see the allowlist section).
   module-level exemption therefore still covers. Converting those entry points to
   `Result` changes upstream signatures; it is tracked here as the only
   user-reachable panic path left in the library.
-- **Binary targets.** `src/bin/*` and `benostreamdb-search/src/main.rs` are not
+- **Binary targets.** `src/bin/*` and `benodb-search/src/main.rs` are not
   covered by this ratchet: `cargo clippy --bin <name>` re-lints the same-package
   lib and does not reliably emit the bin's own diagnostics. They are remediated
   directly and are covered by the staged feature once bin-root attributes land.

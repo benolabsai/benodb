@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-use benostreamdb::{Table, RecordBatch};
-use benostreamdb::manifest::ManifestEntry;
+use benodb::{Table, RecordBatch};
+use benodb::manifest::ManifestEntry;
 use arrow::array::{Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use std::sync::Arc;

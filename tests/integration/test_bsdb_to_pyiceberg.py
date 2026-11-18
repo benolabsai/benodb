@@ -19,7 +19,7 @@ import tempfile
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 pyiceberg = pytest.importorskip("pyiceberg")
 from pyiceberg.table import StaticTable  # noqa: E402

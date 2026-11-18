@@ -2,19 +2,19 @@
 # pyright: reportMissingImports=false
 """Iceberg / Delta Lake round-trip harness.
 
-Proves **table-format interop**: write a table with BenoStreamDB (Apache
+Proves **table-format interop**: write a table with BenoDB (Apache
 Iceberg), then read it back through Spark or Trino (Iceberg), and compare
 against Delta Lake for format cost. This is the Tier-2 "storage / table format"
 baseline from `docs/BENCHMARKING_PLAN.md` §3.
 
-The point is not speed — it is that a BenoStreamDB-written Iceberg table is
+The point is not speed — it is that a BenoDB-written Iceberg table is
 readable by the standard ecosystem, and that the overlay indexes do not change
 the data. Each run emits the same JSON record shape as the competitor runner
 (`benchmarks/competitors/run_competitor.py`) so it lands in the same rollup.
 
 Usage:
 
-    # Write with BenoStreamDB, read back with Spark (Iceberg)
+    # Write with BenoDB, read back with Spark (Iceberg)
     python benchmarks/iceberg_roundtrip/run.py --engine spark --rows 100000
 
     # Read back with Trino (Iceberg connector)
@@ -23,7 +23,7 @@ Usage:
     # Delta Lake format-cost comparison
     python benchmarks/iceberg_roundtrip/run.py --engine delta --rows 100000
 
-    # Reuse an existing BenoStreamDB table instead of writing a fresh one
+    # Reuse an existing BenoDB table instead of writing a fresh one
     python benchmarks/iceberg_roundtrip/run.py --engine spark --table-uri /data/t
 """
 from __future__ import annotations
@@ -58,11 +58,11 @@ def make_table(n: int):
 
 
 # --------------------------------------------------------------------------- #
-# BenoStreamDB writer (Iceberg)
+# BenoDB writer (Iceberg)
 # --------------------------------------------------------------------------- #
-def write_benostreamdb(uri: str, n: int) -> float:
-    """Write `n` rows into a BenoStreamDB Iceberg table at `uri`."""
-    import benostreamdb as bsdb
+def write_benodb(uri: str, n: int) -> float:
+    """Write `n` rows into a BenoDB Iceberg table at `uri`."""
+    import benodb as bsdb
 
     t0 = time.time()
     table = bsdb.Table(uri)
@@ -168,7 +168,7 @@ def main() -> None:
     ap.add_argument(
         "--table-uri",
         default=None,
-        help="Reuse an existing BenoStreamDB Iceberg table instead of writing one.",
+        help="Reuse an existing BenoDB Iceberg table instead of writing one.",
     )
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
@@ -186,7 +186,7 @@ def main() -> None:
             if not uri:
                 tmpdir = tempfile.mkdtemp(prefix="bsdb_iceberg_")
                 uri = tmpdir
-                write_s = write_benostreamdb(uri, args.rows)
+                write_s = write_benodb(uri, args.rows)
             else:
                 write_s = None
             res = read_spark(uri) if args.engine == "spark" else read_trino(uri)

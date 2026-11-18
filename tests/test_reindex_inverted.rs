@@ -10,10 +10,10 @@
 use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::puffin::{PuffinReader, PuffinWriter, PUFFIN_BLOB_LEXICAL_BM25};
-use benostreamdb::core::search::KeywordSearchParams;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::puffin::{PuffinReader, PuffinWriter, PUFFIN_BLOB_LEXICAL_BM25};
+use benodb::core::search::KeywordSearchParams;
+use benodb::Table;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

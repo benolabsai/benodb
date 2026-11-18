@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""3-Way Intra-Engine Ablation Test Harness for BenoStreamDB: SQ8 vs. Vanilla TQ8 vs. BenoQuant BQ8.
+"""3-Way Intra-Engine Ablation Test Harness for BenoDB: SQ8 vs. Vanilla TQ8 vs. BenoQuant BQ8.
 
-Evaluates three quantization and graph routing paradigms directly inside BenoStreamDB:
+Evaluates three quantization and graph routing paradigms directly inside BenoDB:
 1. SQ8: Standard Uniform Scalar Quantization without coordinate rotation.
 2. Vanilla TQ8: Google's Fast Walsh-Hadamard Transform (FWHT) without Rademacher sign modulation.
 3. BenoQuant BQ8: Deterministic Rademacher-modulated FWHT (H * D).
@@ -27,7 +27,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-CACHE_DIR = "/home/ralbright/projects/benostreamdb/benchmarks/ann_benchmarks/data"
+CACHE_DIR = "/home/ralbright/projects/benodb/benchmarks/ann_benchmarks/data"
 DATASET_METRIC = {
     "sift-128-euclidean": "l2",
     "gist-960-euclidean": "l2",
@@ -86,7 +86,7 @@ def dir_size_mb(path: str) -> float:
 
 def worker_run(dataset: str, mode: str, limit: int, queries: int, k: int, m: int, ef_c: int, ef_s: int, threads: int = 32):
     """Worker function executed inside an isolated subprocess."""
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     metric = DATASET_METRIC.get(dataset, "l2")
     train, test, neighbors = load_dataset(dataset, limit)

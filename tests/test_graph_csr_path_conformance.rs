@@ -13,8 +13,8 @@ use std::sync::Arc;
 use arrow::array::Int64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::Table;
 use tempfile::tempdir;
 
 /// WS1 path-conformance: after `add_index` + `write_async` + `commit_async`, the
@@ -78,7 +78,7 @@ async fn graph_csr_index_is_registered_as_v2_with_files_on_disk() -> anyhow::Res
 
     // Resolve the tiered manifest list exactly as the reader does.
     let manager =
-        benostreamdb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
+        benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
     let entries = manager.load_all_entries(&manifest).await?;
 
     let all_index_files: Vec<_> = entries
@@ -121,7 +121,7 @@ async fn graph_csr_index_is_registered_as_v2_with_files_on_disk() -> anyhow::Res
             );
             let bytes = std::fs::read(&full)?;
             let reader =
-                benostreamdb::core::puffin::PuffinReader::new(std::io::Cursor::new(bytes))?;
+                benodb::core::puffin::PuffinReader::new(std::io::Cursor::new(bytes))?;
             let types: Vec<&str> = reader
                 .footer()
                 .blobs
@@ -129,9 +129,9 @@ async fn graph_csr_index_is_registered_as_v2_with_files_on_disk() -> anyhow::Res
                 .map(|b| b.r#type.as_str())
                 .collect();
             for expected in [
-                benostreamdb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_OFFSETS,
-                benostreamdb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_EDGES,
-                benostreamdb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_DICT,
+                benodb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_OFFSETS,
+                benodb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_EDGES,
+                benodb::core::puffin::PUFFIN_BLOB_GRAPH_CSR_DICT,
             ] {
                 assert!(
                     types.contains(&expected),

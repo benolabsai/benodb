@@ -1,4 +1,4 @@
-import benostreamdb as bs
+import benodb as bs
 import numpy as np
 
 t = bs.open_table("/home/ralbright/projects/benolabs/benchmark_db")

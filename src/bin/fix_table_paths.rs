@@ -16,8 +16,8 @@
 //! cargo run --release --bin fix_table_paths -- file:///new/location/nodes
 //! ```
 
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::storage::create_object_store;
+use benodb::core::manifest::ManifestManager;
+use benodb::core::storage::create_object_store;
 use object_store::path::Path;
 
 /// Longest common directory prefix of a set of paths, ending in `/`.

@@ -1,0 +1,121 @@
+package com.benodb.trino;
+
+import io.trino.spi.connector.ConnectorSplit;
+import io.trino.spi.HostAddress;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * A single scan of a BenoDB table.
+ *
+ * The split carries the table URI and the SQL query (with the pushed-down
+ * predicate) that the page source runs through the engine's session. The engine
+ * does the parallelism internally, so there is no file-range split fan-out.
+ */
+public class BenoDBSplit implements ConnectorSplit {
+    private final String tableUri;
+    private final String sql;
+    private final Optional<HybridSearchHandle> hybridSearch;
+    /**
+     * JSON map of {@code alias -> table URI}. Present only for multi-table
+     * statements such as {@code graph_rag_search}; the page source then runs the
+     * SQL through {@code openQueryMulti} instead of {@code openQuery}.
+     */
+    private final Optional<String> tablesJson;
+    /**
+     * Data file backing this split. Present for multi-split scans (plain,
+     * unfiltered table reads): the page source then opens a file-scoped session
+     * instead of running {@code sql} against the whole table.
+     */
+    private final Optional<String> filePath;
+
+    @JsonCreator
+    public BenoDBSplit(
+        @JsonProperty("tableUri") String tableUri,
+        @JsonProperty("sql") String sql,
+        @JsonProperty("hybridSearch") Optional<HybridSearchHandle> hybridSearch,
+        @JsonProperty("tablesJson") Optional<String> tablesJson,
+        @JsonProperty("filePath") Optional<String> filePath) {
+        this.tableUri = tableUri;
+        this.sql = sql;
+        this.hybridSearch = hybridSearch == null ? Optional.empty() : hybridSearch;
+        this.tablesJson = tablesJson == null ? Optional.empty() : tablesJson;
+        this.filePath = filePath == null ? Optional.empty() : filePath;
+    }
+
+    public BenoDBSplit(
+            String tableUri,
+            String sql,
+            Optional<HybridSearchHandle> hybridSearch,
+            Optional<String> tablesJson) {
+        this(tableUri, sql, hybridSearch, tablesJson, Optional.empty());
+    }
+
+    public BenoDBSplit(
+            String tableUri, String sql, Optional<HybridSearchHandle> hybridSearch) {
+        this(tableUri, sql, hybridSearch, Optional.empty(), Optional.empty());
+    }
+
+    public BenoDBSplit(String tableUri, String sql) {
+        this(tableUri, sql, Optional.empty(), Optional.empty(), Optional.empty());
+    }
+
+    @JsonProperty
+    public Optional<String> getTablesJson() {
+        return tablesJson;
+    }
+
+    @JsonProperty
+    public Optional<String> getFilePath() {
+        return filePath;
+    }
+
+    @Override
+    public boolean isRemotelyAccessible() {
+        return true;
+    }
+
+    @Override
+    public List<HostAddress> getAddresses() {
+        return Collections.emptyList();
+    }
+
+    @JsonProperty
+    public String getTableUri() {
+        return tableUri;
+    }
+
+    @JsonProperty
+    public String getSql() {
+        return sql;
+    }
+
+    @JsonProperty
+    public Optional<HybridSearchHandle> getHybridSearch() {
+        return hybridSearch;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        BenoDBSplit that = (BenoDBSplit) o;
+        return Objects.equals(tableUri, that.tableUri)
+                && Objects.equals(sql, that.sql)
+                && Objects.equals(hybridSearch, that.hybridSearch)
+                && Objects.equals(filePath, that.filePath);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(tableUri, sql, hybridSearch, filePath);
+    }
+}

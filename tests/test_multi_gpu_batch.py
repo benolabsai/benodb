@@ -7,7 +7,7 @@ try:
 except ImportError:
     pytest = None
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 def _cuda_device_usable(device):
     """Return True only if `device` can actually execute a kernel.

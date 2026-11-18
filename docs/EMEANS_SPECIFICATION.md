@@ -2,7 +2,7 @@
 
 **Document Status:** Approved Architecture Plan  
 **Target Release:** BenoDB `v0.16.0`  
-**Tracking Issue:** [benolabsai/benostreamdb#124](https://github.com/benolabsai/benostreamdb/issues/124)  
+**Tracking Issue:** [benolabsai/benodb#124](https://github.com/benolabsai/benodb/issues/124)  
 **Feature Branch:** `feature/e-means`  
 **Author:** Richard Albright (BenoLabs)  
 
@@ -156,8 +156,8 @@ This executes in **1 CPU cycle per subvector for 32 vector distances**, operatin
 ## 6. Architecture & Deliverables
 
 ```
-benostreamdb/
-├── benostream-gpu-ann/               # Bumped to v0.2.0
+benodb/
+├── benodb-gpu-ann/               # Bumped to v0.2.0
 │   ├── src/
 │   │   ├── e_means.rs                # e-means engine (Meta FAIR scaling laws, donor splits)
 │   │   ├── fastscan.rs               # In-register SIMD 4-bit FastScan codebook & AVX2 kernels

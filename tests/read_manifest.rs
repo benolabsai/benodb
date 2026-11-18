@@ -17,9 +17,9 @@ use std::sync::Arc;
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::{IndexAlgorithm, ManifestManager};
-use benostreamdb::core::storage::create_object_store;
-use benostreamdb::Table;
+use benodb::core::manifest::{IndexAlgorithm, ManifestManager};
+use benodb::core::storage::create_object_store;
+use benodb::Table;
 use tempfile::tempdir;
 
 fn batch(start: i32, n: i32) -> RecordBatch {

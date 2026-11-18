@@ -15,7 +15,7 @@ use arrow::array::{Array, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 
-use benostreamdb::core::table::Table;
+use benodb::core::table::Table;
 
 fn schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![

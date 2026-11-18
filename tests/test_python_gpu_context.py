@@ -4,7 +4,7 @@ Unit tests for GPU Context API
 Tests Requirements: 2.1, 2.2, 2.3, 2.6
 """
 import pytest
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def test_auto_detect():

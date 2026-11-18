@@ -14,9 +14,9 @@ use std::sync::Arc;
 use arrow::array::{FixedSizeListArray, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::{Table, VectorSearchParams};
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::{Table, VectorSearchParams};
 use tempfile::tempdir;
 
 fn embedding_schema(dim: usize) -> Arc<Schema> {

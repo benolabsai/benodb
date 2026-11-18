@@ -21,7 +21,7 @@ An edge table in BenoDB represents relationships between entities. To guarantee 
 You can create a standardized edge table with automated indexing using `Table.create_edge_table`:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create an edge table with automated sidecar index generation
 edge_table = bsdb.Table.create_edge_table(
@@ -60,7 +60,7 @@ BenoDB provides complete bi-directional interoperability with NetworkX, supporti
 
 ```python
 import networkx as nx
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Build or load a graph in NetworkX
 G = nx.DiGraph()
@@ -344,9 +344,9 @@ results = doc_table.hybrid_search(
 
 ---
 
-## 7. Analytics Engineering with dbt (`dbt-benostreamdb`)
+## 7. Analytics Engineering with dbt (`dbt-benodb`)
 
-The official `dbt-benostreamdb` adapter plugin provides native Jinja macros for all Graph UDFs, allowing analytics engineers to model, transform, and materialize graph analytics tables into Apache Iceberg directly within dbt projects:
+The official `dbt-benodb` adapter plugin provides native Jinja macros for all Graph UDFs, allowing analytics engineers to model, transform, and materialize graph analytics tables into Apache Iceberg directly within dbt projects:
 
 ```jinja
 -- models/entity_pagerank.sql

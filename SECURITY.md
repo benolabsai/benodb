@@ -2,15 +2,15 @@
 
 ## ⚠️ Deployment Security Posture
 
-**BenoStreamDB is not hardened for untrusted networks.** The network servers
-(`benostreamdb-flight`, `bsdb-search`, the gateway, and the Iceberg REST binary)
+**BenoDB is not hardened for untrusted networks.** The network servers
+(`benodb-flight`, `bsdb-search`, the gateway, and the Iceberg REST binary)
 ship with **no TLS**. They support **stateless authentication** (API key and/or
 JWT — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#authentication-search-gateway--flight-sql)),
 but it is **opt-in**: with no credential configured the servers are open. They
 are designed to run on a **trusted internal network**, behind a gateway or
 reverse proxy that terminates TLS.
 
-- **Do not** expose any BenoStreamDB server directly to the public internet or
+- **Do not** expose any BenoDB server directly to the public internet or
   to an untrusted network.
 - Bind to `127.0.0.1` (the default for the metrics listener, the search
   gateway, and Flight SQL) or an internal interface only.
@@ -35,7 +35,7 @@ both allow-lists and to that document.
 
 ## Supported Versions
 
-BenoStreamDB is a fast-moving project: only the **latest release** is
+BenoDB is a fast-moving project: only the **latest release** is
 supported. Older versions are not maintained — please upgrade before reporting
 an issue.
 
@@ -48,19 +48,19 @@ an issue.
 
 ### Responsible Disclosure
 
-We take the security of BenoStreamDB seriously. If you discover a security vulnerability, please report it responsibly following the guidelines below.
+We take the security of BenoDB seriously. If you discover a security vulnerability, please report it responsibly following the guidelines below.
 
 **Do not** open a public GitHub issue for security concerns.
 
 ### How to Report
 
-1. **Email**: Send a detailed report to `security@benostreamdb.org`
+1. **Email**: Send a detailed report to `security@benodb.org`
 2. **Encryption**: For sensitive findings, encrypt your report using the PGP key below
 3. **Include**: Steps to reproduce, impact assessment, and any proof-of-concept code
 
 ### PGP Key
 
-PGP key will be published at [https://benostreamdb.org/.well-known/security.txt](https://benostreamdb.org/.well-known/security.txt) once the public key infrastructure is provisioned.
+PGP key will be published at [https://benodb.org/.well-known/security.txt](https://benodb.org/.well-known/security.txt) once the public key infrastructure is provisioned.
 
 ### Scope
 
@@ -89,7 +89,7 @@ PGP key will be published at [https://benostreamdb.org/.well-known/security.txt]
 
 ### Response Expectations
 
-BenoStreamDB is a free, open-source project maintained by a single developer
+BenoDB is a free, open-source project maintained by a single developer
 on a **best-effort basis**. There is no commercial support contract and no
 guaranteed response time, but security reports are prioritised over feature
 work.

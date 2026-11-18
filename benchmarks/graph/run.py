@@ -2,7 +2,7 @@
 """Graph Benchmark Runner: Evaluates graph algorithms across engines.
 
 Supported Engines:
-- benostreamdb (Native CSR & Graph RAG graph engine)
+- benodb (Native CSR & Graph RAG graph engine)
 - networkx (In-memory Python reference baseline)
 - neo4j (Graph Database with GDS plugin)
 - cugraph (GPU-accelerated graph analytics)
@@ -14,7 +14,7 @@ Algorithms:
 
 Usage:
     python benchmarks/graph/run.py --nodes 20000 --edges 100000 --algorithms pagerank,connected_components,shortest_path
-    python benchmarks/graph/run.py --graph-edges data/ldbc_sample.txt --engines benostreamdb,networkx --out results/graph_ldbc.md
+    python benchmarks/graph/run.py --graph-edges data/ldbc_sample.txt --engines benodb,networkx --out results/graph_ldbc.md
 """
 
 from __future__ import annotations
@@ -140,8 +140,8 @@ def ensure_graph_dataset(
     return cache_path
 
 
-def run_benostreamdb(edges: np.ndarray, algorithm: str, source: int, target: int, damping: float, iterations: int) -> Dict[str, Any]:
-    import benostreamdb as bsdb
+def run_benodb(edges: np.ndarray, algorithm: str, source: int, target: int, damping: float, iterations: int) -> Dict[str, Any]:
+    import benodb as bsdb
     import pyarrow as pa
 
     tmpdir = tempfile.mkdtemp(prefix="bsdb_graph_")
@@ -217,7 +217,7 @@ def run_benostreamdb(edges: np.ndarray, algorithm: str, source: int, target: int
         elapsed = time.perf_counter() - t0
 
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "available": True,
             "build_s": build_s,
             "index_kb": round(index_bytes / 1024, 1),
@@ -453,7 +453,7 @@ def main():
     parser.add_argument("--max-edges", type=int, default=0, help="Cap edges for a named dataset (0 = all)")
     parser.add_argument("--nodes", type=int, default=20000, help="Number of nodes for synthetic graph")
     parser.add_argument("--edges", type=int, default=100000, help="Number of edges for synthetic graph")
-    parser.add_argument("--engines", default="benostreamdb,networkx", help="Comma-separated engines to run")
+    parser.add_argument("--engines", default="benodb,networkx", help="Comma-separated engines to run")
     parser.add_argument("--algorithms", default="pagerank,connected_components,shortest_path", help="Comma-separated algorithms")
     parser.add_argument("--source", type=int, default=0, help="Source node for shortest path")
     parser.add_argument("--target", type=int, default=10, help="Target node for shortest path")
@@ -481,7 +481,7 @@ def main():
     algorithms = [a.strip() for a in args.algorithms.split(",") if a.strip()]
 
     runners = {
-        "benostreamdb": run_benostreamdb,
+        "benodb": run_benodb,
         "networkx": run_networkx,
         "neo4j": run_neo4j,
         "cugraph": run_cugraph,

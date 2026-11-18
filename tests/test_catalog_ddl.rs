@@ -3,8 +3,8 @@
 //! Extensive end-to-end tests for the SQL DDL / maintenance surface
 //! (`src/core/sql/catalog_ddl.rs`).
 
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::sql::BenoStreamTableProvider;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::sql::BenoStreamTableProvider;
 use datafusion::sql::TableReference;
 use tempfile::tempdir;
 
@@ -19,7 +19,7 @@ async fn table_of(
     db: &str,
     schema: &str,
     table: &str,
-) -> anyhow::Result<std::sync::Arc<benostreamdb::Table>> {
+) -> anyhow::Result<std::sync::Arc<benodb::Table>> {
     let provider = session
         .get_ctx()
         .table_provider(TableReference::full(db, schema, table))
@@ -522,7 +522,7 @@ async fn set_does_not_touch_process_env() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn is_handled_classification() {
-    use benostreamdb::core::sql::catalog_ddl::{classify, is_handled, Handled};
+    use benodb::core::sql::catalog_ddl::{classify, is_handled, Handled};
     assert!(is_handled("CREATE DATABASE db;"));
     assert!(is_handled("CREATE SCHEMA db.s;"));
     assert!(is_handled("CREATE TABLE db.s.t (id INT);"));

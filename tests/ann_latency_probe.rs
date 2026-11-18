@@ -11,10 +11,10 @@ use arrow::array::{FixedSizeListArray, Int32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
 
-use benostreamdb::core::index::{VectorMetric, VectorValue};
-use benostreamdb::core::manifest::{IndexAlgorithm, ManifestManager};
-use benostreamdb::core::planner::VectorSearchParams;
-use benostreamdb::core::table::Table;
+use benodb::core::index::{VectorMetric, VectorValue};
+use benodb::core::manifest::{IndexAlgorithm, ManifestManager};
+use benodb::core::planner::VectorSearchParams;
+use benodb::core::table::Table;
 
 fn vector_schema(dim: usize) -> Arc<Schema> {
     Arc::new(Schema::new(vec![

@@ -25,8 +25,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 pip install maturin
 
 # Clone and build
-git clone https://github.com/benolabsai/benostreamdb.git
-cd benostreamdb
+git clone https://github.com/benolabsai/benodb.git
+cd benodb
 cargo build --release
 ```
 
@@ -271,7 +271,7 @@ Releases are tagged and published by the maintainer. The process involves:
 
 ## Questions or Issues?
 
-- Open a [GitHub Issue](https://github.com/benolabsai/benostreamdb/issues) for bugs or feature requests
+- Open a [GitHub Issue](https://github.com/benolabsai/benodb/issues) for bugs or feature requests
 - For discussions, use the Discussions tab or reach out directly
 
 ---

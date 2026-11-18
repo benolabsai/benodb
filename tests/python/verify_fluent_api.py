@@ -12,8 +12,8 @@ import pandas as pd
 def test_fluent_api():
     """Test the fluent query API implementation."""
     try:
-        import benostreamdb
-        print("✅ Successfully imported benostreamdb")
+        import benodb
+        print("✅ Successfully imported benodb")
         
         # Create a temporary database
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -21,7 +21,7 @@ def test_fluent_api():
             
             # Initialize table with sample data
             print("🔧 Creating test table...")
-            table = benostreamdb.Table(db_path)
+            table = benodb.Table(db_path)
             
             # Test data setup
             test_data = pd.DataFrame({
@@ -104,7 +104,7 @@ def test_fluent_api():
             return True
             
     except ImportError as e:
-        print(f"❌ Failed to import benostreamdb: {e}")
+        print(f"❌ Failed to import benodb: {e}")
         print("Make sure the Python package is built and installed")
         return False
     except Exception as e:
@@ -115,11 +115,11 @@ def test_datafusion_integration():
     """Test DataFusion SQL integration with fluent API."""
     print("\n🔍 Testing DataFusion Integration...")
     try:
-        import benostreamdb
+        import benodb
         
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test_datafusion.db")
-            table = benostreamdb.Table(db_path)
+            table = benodb.Table(db_path)
             
             # Test SQL execution alongside fluent API
             test_query = "SELECT COUNT(*) as total FROM table_name WHERE age > 25"

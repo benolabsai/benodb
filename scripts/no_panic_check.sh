@@ -8,7 +8,7 @@
 # `scripts/no_panic_baseline.txt`.
 #
 # Why a ratchet instead of a hard `#![deny(clippy::unwrap_used)]`:
-# both `src/lib.rs` and `benostreamdb-search/src/lib.rs` already carry
+# both `src/lib.rs` and `benodb-search/src/lib.rs` already carry
 # `#![deny(warnings)]`, so enabling the restriction lints as errors today would
 # fail the build on every not-yet-remediated site. The hard attribute is staged
 # behind the `no-panic` cargo feature (see the crate roots) and is turned on in
@@ -83,16 +83,16 @@ run_clippy() {
 
 total=0
 
-run_clippy "benostreamdb (lib):" --lib ${feature_args[@]+"${feature_args[@]}"}
+run_clippy "benodb (lib):" --lib ${feature_args[@]+"${feature_args[@]}"}
 total=$((total + COUNT))
 
-run_clippy "benostreamdb-search (lib):" -p benostreamdb-search --lib
+run_clippy "benodb-search (lib):" -p benodb-search --lib
 total=$((total + COUNT))
 
-run_clippy "benostreamdb-flight (bin):" -p benostreamdb-flight --bin benostreamdb-flight
+run_clippy "benodb-flight (bin):" -p benodb-flight --bin benodb-flight
 total=$((total + COUNT))
 
-run_clippy "benostreamdb-mcp (bin):" -p benostreamdb-mcp --bin benostreamdb-mcp
+run_clippy "benodb-mcp (bin):" -p benodb-mcp --bin benodb-mcp
 total=$((total + COUNT))
 
 # NOTE: binary targets are intentionally not counted here. `cargo clippy --bin

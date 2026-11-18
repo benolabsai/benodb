@@ -11,10 +11,10 @@ metrics regardless of how the engine is deployed.
 | Deployment mode | Metrics endpoint | Health |
 |---|---|---|
 | **Embedded library** (Python / Rust) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`), enabled by the `observability` feature | `/health`, `/readyz` |
-| **Flight SQL server** (`benostreamdb-flight`) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
+| **Flight SQL server** (`benodb-flight`) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
 | **Search gateway** (`bsdb-search`) | `http://<BSDB_SEARCH_BIND>:<BSDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
 | **Gateway / Iceberg REST bins** | `GET /metrics` (gateway), `GET /v1/metrics` (iceberg_rest) | `GET /health`, `GET /v1/health` |
-| **Spark / Trino connectors** | `BenoStreamJNIBridge.gatherMetrics()` / `BenoDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
+| **Spark / Trino connectors** | `BenoDBJNIBridge.gatherMetrics()` / `BenoDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
 
 The search gateway's `/metrics` serves **both** its own `bsdb_search_*` registry
 and the core engine's `bsdb_*` metrics, so one scrape covers the whole
@@ -33,7 +33,7 @@ process.
 > **⚠️ Security:** none of these endpoints authenticate. Run every BenoDB
 > server on a **trusted internal network**, behind a gateway/reverse proxy that
 > terminates TLS and enforces authentication. Do **not** expose them to the
-> public internet. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md).
+> public internet. See [SECURITY.md](https://github.com/benolabsai/benodb/blob/main/SECURITY.md).
 
 ## Metric catalog
 
@@ -107,7 +107,7 @@ Tracing is disabled by default. To enable tracing, set the `JAEGER_ENABLED` envi
 |----------------------|-------------|---------|
 | `JAEGER_ENABLED` | Set to `true` to enable OpenTelemetry exporting. | `false` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | The destination URL for OTLP traces. | `http://localhost:4317` (OTLP/gRPC default) |
-| `RUST_LOG` | The log level filter (e.g., `info`, `benostreamdb=debug`). | `info` |
+| `RUST_LOG` | The log level filter (e.g., `info`, `benodb=debug`). | `info` |
 
 ### Core Instrumentation
 We instrument key paths to provide visibility into latency and bottlenecks:

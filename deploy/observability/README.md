@@ -27,7 +27,7 @@ docker compose -f deploy/observability/docker-compose.observability.yml up -d
 
 ```bash
 export BSDB_OTLP_ENDPOINT=http://localhost:4318
-export BSDB_SERVICE_NAME=benostreamdb        # resource service.name
+export BSDB_SERVICE_NAME=benodb        # resource service.name
 export BSDB_OTLP_INTERVAL_SECS=15
 # optional auth/multi-tenant headers:
 # export BSDB_OTLP_HEADERS="authorization=Bearer <token>,x-tenant=acme"
@@ -42,7 +42,7 @@ metrics bridge) all expose the same registry, so one pipeline covers every host.
 
 ## Dashboard
 
-`grafana/dashboards/benostreamdb.json` panels (all `bsdb_*` metrics):
+`grafana/dashboards/benodb.json` panels (all `bsdb_*` metrics):
 
 - Ingest rows/sec, total rows, ingest RSS, back-pressure pauses/sec
 - Vector search latency p50/p99 (`bsdb_search_latency_seconds`)
@@ -60,7 +60,7 @@ metrics bridge) all expose the same registry, so one pipeline covers every host.
 | `BSDB_OTLP_ENDPOINT` | (unset) | enables OTLP push; e.g. `http://localhost:4318` |
 | `BSDB_OTLP_INTERVAL_SECS` | `15` | push period |
 | `BSDB_OTLP_HEADERS` | (unset) | comma-separated `key=value` headers |
-| `BSDB_SERVICE_NAME` | `benostreamdb` | OTLP `service.name` |
+| `BSDB_SERVICE_NAME` | `benodb` | OTLP `service.name` |
 | `BSDB_METRICS_BIND` | `127.0.0.1` | `/metrics` bind address |
 | `BSDB_METRICS_PORT` | `9090` | `/metrics` port |
 

@@ -1,6 +1,6 @@
 import sys
 import os
-import benostreamdb as bsdb
+import benodb as bsdb
 import pytest
 import time
 import requests

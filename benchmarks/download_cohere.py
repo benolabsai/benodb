@@ -67,7 +67,7 @@ def download_resumable(url: str, dest_path: str, target_bytes: int, log_interval
     # Add standard User-Agent for HuggingFace CDN
     headers = {
         "Range": f"bytes={cur_bytes}-{target_bytes - 1}",
-        "User-Agent": "BenoStreamDB-Cohere-Downloader/1.0",
+        "User-Agent": "BenoDB-Cohere-Downloader/1.0",
     }
     req = urllib.request.Request(url, headers=headers)
 
@@ -129,7 +129,7 @@ def verify_file(dest_path: str, meta: dict) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download Cohere-10M dataset for BenoStreamDB")
+    parser = argparse.ArgumentParser(description="Download Cohere-10M dataset for BenoDB")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR,
                         help=f"Target directory on storage drive (default: {DEFAULT_DATA_DIR})")
     parser.add_argument("--files", choices=["all", "base", "queries", "gt"], default="all",

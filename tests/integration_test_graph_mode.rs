@@ -15,9 +15,9 @@ use std::sync::Arc;
 use arrow::array::UInt64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::sql::graph_udf::graph_view::GraphMode;
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::sql::graph_udf::graph_view::GraphMode;
+use benodb::core::table::Table;
 use tempfile::tempdir;
 
 /// Build an edge table with a CSR graph index over `source`/`target`.
@@ -206,10 +206,10 @@ async fn regional_drift_is_mode_invariant() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn udafs_are_mode_invariant() -> anyhow::Result<()> {
-    use benostreamdb::core::sql::session::BenoStreamSession;
+    use benodb::core::sql::session::BenoStreamSession;
     // Surface the graph-loading debug logs if a mode diverges.
     let _ = tracing_subscriber::fmt()
-        .with_env_filter("benostreamdb=debug")
+        .with_env_filter("benodb=debug")
         .with_test_writer()
         .try_init();
     let dir = tempdir()?;

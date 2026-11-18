@@ -114,7 +114,7 @@ fn compute_single_distance(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
@@ -162,7 +162,7 @@ pub fn py_l2(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 0.0, 0.0])
 /// >>> b = np.array([0.0, 1.0, 0.0])
@@ -209,7 +209,7 @@ pub fn py_cosine(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
@@ -256,7 +256,7 @@ pub fn py_inner_product(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
@@ -303,7 +303,7 @@ pub fn py_l1(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0, 4.0])
 /// >>> b = np.array([1.0, 0.0, 3.0, 5.0])
@@ -351,7 +351,7 @@ pub fn py_hamming(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 1.0, 0.0, 0.0])
 /// >>> b = np.array([1.0, 0.0, 1.0, 0.0])
@@ -488,7 +488,7 @@ fn compute_batch_distances(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> query = np.array([1.0, 2.0, 3.0])
 /// >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -536,7 +536,7 @@ pub fn py_l2_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
@@ -586,7 +586,7 @@ pub fn py_cosine_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 2.0, 3.0])
 ///     >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -636,7 +636,7 @@ pub fn py_inner_product_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([0.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -680,7 +680,7 @@ pub fn py_l1_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 0.0, 1.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0]])
@@ -729,7 +729,7 @@ pub fn py_hamming_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 1.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 1.0, 0.0, 0.0], [1.0, 0.0, 1.0, 0.0]])
@@ -786,7 +786,7 @@ pub fn py_jaccard_batch<'py>(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> # Create a sparse vector with non-zero values at indices 0, 5, 10
 /// >>> sparse = bsdb.SparseVector([0, 5, 10], [1.0, 2.0, 3.0], 100)
@@ -900,7 +900,7 @@ impl PySparseVector {
     ///
     /// Examples
     /// --------
-    /// >>> import benostreamdb as bsdb
+    /// >>> import benodb as bsdb
     /// >>> sparse = bsdb.SparseVector([0, 2], [1.0, 3.0], 5)
     /// >>> dense = sparse.to_dense()
     /// >>> print(dense)
@@ -968,7 +968,7 @@ fn validate_sparse_indices(indices: &[u32], dim: usize) -> PyResult<()> {
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> a = bsdb.SparseVector([0, 5], [1.0, 2.0], 10)
 /// >>> b = bsdb.SparseVector([0, 3], [1.0, 3.0], 10)
 /// >>> distance = bsdb.l2_sparse(a, b)
@@ -1018,7 +1018,7 @@ pub fn py_l2_sparse(
 ///     ValueError: If vectors have different dimensions
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> # Two sparse vectors in 1000-dimensional space
 ///     >>> a = bsdb.SparseVector([0, 100, 500], [1.0, 2.0, 3.0], 1000)
@@ -1077,7 +1077,7 @@ pub fn py_cosine_sparse(
 ///     ValueError: If vectors have different dimensions
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> # Sparse vectors with some overlapping non-zero indices
 ///     >>> a = bsdb.SparseVector([0, 2, 4], [1.0, 2.0, 3.0], 10)
@@ -1256,7 +1256,7 @@ fn pack_binary_vector(values: &[f32]) -> Vec<u8> {
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> # Two binary vectors: 10110101 and 10101100
 /// >>> a = np.array(\[0b10110101\], dtype=np.uint8)
@@ -1394,7 +1394,7 @@ pub fn py_jaccard_distance_batch<'py>(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> # Unpacked binary vectors (will be auto-packed)
 /// >>> a = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0])
@@ -1459,7 +1459,7 @@ pub fn py_hamming_auto(
 ///
 /// Examples
 /// --------
-/// >>> import benostreamdb as bsdb
+/// >>> import benodb as bsdb
 /// >>> import numpy as np
 /// >>> a = np.array(\[0b10110101\], dtype=np.uint8)
 /// >>> b = np.array(\[0b10101100\], dtype=np.uint8)
@@ -1524,7 +1524,7 @@ pub fn py_jaccard_packed(
 ///     ValueError: If vectors have different lengths or contain non-binary values
 ///
 /// Example:
-///     >>> import benostreamdb as bsdb
+///     >>> import benodb as bsdb
 ///     >>> import numpy as np
 ///     >>> # Unpacked binary vectors representing sets
 ///     >>> a = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0])

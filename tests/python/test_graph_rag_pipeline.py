@@ -2,7 +2,7 @@ import os
 import tempfile
 import pyarrow as pa
 import pytest
-from benostreamdb import Table, GraphRagResult
+from benodb import Table, GraphRagResult
 
 @pytest.fixture
 def rag_doc_table(tmpdir):

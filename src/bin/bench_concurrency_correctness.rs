@@ -22,8 +22,8 @@ use anyhow::Result;
 use arrow::array::{Int32Array, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::table::builder::TableBuilder;
-use benostreamdb::Table;
+use benodb::core::table::builder::TableBuilder;
+use benodb::Table;
 use tempfile::tempdir;
 
 fn make_batch(start: i32, n: i32) -> RecordBatch {

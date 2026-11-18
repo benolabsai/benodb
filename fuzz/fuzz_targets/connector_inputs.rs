@@ -48,6 +48,6 @@ fuzz_target!(|data: &[u8]| {
     ]));
 
     runtime.block_on(async {
-        let _ = benostreamdb::core::planner::FilterExpr::parse_sql(input, schema).await;
+        let _ = benodb::core::planner::FilterExpr::parse_sql(input, schema).await;
     });
 });

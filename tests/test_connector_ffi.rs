@@ -4,8 +4,8 @@
 use arrow::array::{Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::ffi::BenoStreamSession;
-use benostreamdb::Table;
+use benodb::core::ffi::BenoStreamSession;
+use benodb::Table;
 use std::path::Path;
 use std::sync::Arc;
 

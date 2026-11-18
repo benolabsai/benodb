@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.search
-    image: benostreamdb/search:${BSDB_VERSION:-latest}
+    image: benodb/search:${BSDB_VERSION:-latest}
     container_name: bsdb-search
     restart: unless-stopped
     ports:
@@ -63,7 +63,7 @@ services:
           memory: ${SEARCH_MEMORY:-4G}
           cpus: "${SEARCH_CPUS:-2.0}"
     volumes:
-      - search-cache:/home/benostream/.benostreamdb
+      - search-cache:/home/benostream/.benodb
     networks:
       - benostream_net
 
@@ -74,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.flight
-    image: benostreamdb/flight:${BSDB_VERSION:-latest}
+    image: benodb/flight:${BSDB_VERSION:-latest}
     container_name: bsdb-flight
     restart: unless-stopped
     ports:
@@ -106,7 +106,7 @@ services:
           memory: ${FLIGHT_MEMORY:-4G}
           cpus: "${FLIGHT_CPUS:-2.0}"
     volumes:
-      - flight-cache:/home/benostream/.benostreamdb
+      - flight-cache:/home/benostream/.benodb
     networks:
       - benostream_net
 

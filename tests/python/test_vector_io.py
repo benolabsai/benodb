@@ -13,7 +13,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 DIM = 16
 N = 500

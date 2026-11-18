@@ -18,7 +18,7 @@ Control the physical layout of data for optimal query performance.
 ### API
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/table")
 
@@ -45,7 +45,7 @@ Change partitioning strategy without rewriting data.
 ### API
 
 ```python
-from benostreamdb import PartitionField
+from benodb import PartitionField
 
 # Initial partition spec
 table.update_spec([
@@ -197,7 +197,7 @@ Define default values for schema evolution.
 ### Complete V2/V3 Workflow
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 
 # Create table with V2/V3 features

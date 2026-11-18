@@ -604,7 +604,7 @@ pub async fn execute_vector_search_with_config(
     );
 
     // Record planning duration
-    metrics::histogram!("benostreamdb.query.planning_duration")
+    metrics::histogram!("benodb.query.planning_duration")
         .record(planning_start.elapsed().as_secs_f64());
 
     // Semaphore to limit concurrent HNSW loads
@@ -804,7 +804,7 @@ pub async fn execute_vector_search_with_config(
             all_results_with_distances.extend(batches);
         }
 
-        metrics::histogram!("benostreamdb.query.execution_duration")
+        metrics::histogram!("benodb.query.execution_duration")
             .record(total_start.elapsed().as_secs_f64());
         return merge_and_rerank_vector_results(all_results_with_distances, request.k, 0);
     }
@@ -910,7 +910,7 @@ pub async fn execute_vector_search_with_config(
     let search_start = std::time::Instant::now();
     let results: Vec<anyhow::Result<Vec<(String, RecordBatch, Vec<f32>)>>> =
         join_all(search_futures).await;
-    metrics::histogram!("benostreamdb.query.segment_search_duration")
+    metrics::histogram!("benodb.query.segment_search_duration")
         .record(search_start.elapsed().as_secs_f64());
 
     // Collect successful results, failing if any segment search fails
@@ -938,7 +938,7 @@ pub async fn execute_vector_search_with_config(
         "Vector search found {} total batches across all segments",
         all_results_with_distances.len()
     );
-    metrics::histogram!("benostreamdb.query.execution_duration")
+    metrics::histogram!("benodb.query.execution_duration")
         .record(total_start.elapsed().as_secs_f64());
     merge_and_rerank_vector_results(all_results_with_distances, request.k, 0)
 }

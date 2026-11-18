@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "workload": "maintenance_saturation",
   "concurrency": 8,
   "baseline_p99_ms": 283.12,

@@ -1,4 +1,4 @@
-# Competitor + BenoStreamDB benchmark stack with a single, shared hardware
+# Competitor + BenoDB benchmark stack with a single, shared hardware
 # profile so every participant is measured under an identical envelope.
 #
 #   BENCH_CPUS=8 BENCH_MEM=16g \
@@ -9,8 +9,8 @@
 #     docker compose -f benchmarks/competitors/docker-compose.bench.yml \
 #     --profile run run --rm bench
 #
-#   # Run BenoStreamDB through the same runner image (installs the abi3 wheel):
-#   ENGINE=benostreamdb DATASET=sift-128-euclidean LIMIT=20000 QUERIES=500 \
+#   # Run BenoDB through the same runner image (installs the abi3 wheel):
+#   ENGINE=benodb DATASET=sift-128-euclidean LIMIT=20000 QUERIES=500 \
 #     docker compose -f benchmarks/competitors/docker-compose.bench.yml \
 #     --profile run run --rm bench
 #
@@ -48,7 +48,7 @@ x-bench-env: &bench-env
   # BEIR lexical/hybrid workload (WORKLOAD=beir). One process runs every engine
   # under this container's envelope; the dataset is mounted read-only.
   BEIR_DATASET: "${BEIR_DATASET:-scifact}"
-  BEIR_ENGINES: "${BEIR_ENGINES:-benostreamdb,tantivy,opensearch}"
+  BEIR_ENGINES: "${BEIR_ENGINES:-benodb,tantivy,opensearch}"
   BEIR_MODE: "${BEIR_MODE:-lexical}"
   GRAPH_EDGES: "${GRAPH_EDGES:-}"
   GRAPH_DATASET: "${GRAPH_DATASET:-graph}"
@@ -265,7 +265,7 @@ services:
       retries: 60
     <<: *envelope
 
-  # --- Runner (competitors AND BenoStreamDB) under the SAME envelope -------- #
+  # --- Runner (competitors AND BenoDB) under the SAME envelope -------- #
   bench:
     build:
       context: ../..

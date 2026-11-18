@@ -1,6 +1,6 @@
-# Model Context Protocol (MCP) Server (`benostreamdb-mcp`)
+# Model Context Protocol (MCP) Server (`benodb-mcp`)
 
-`benostreamdb-mcp` is an AI agent tool server implementing the open Model Context Protocol (MCP) over JSON-RPC stdio.
+`benodb-mcp` is an AI agent tool server implementing the open Model Context Protocol (MCP) over JSON-RPC stdio.
 
 ---
 
@@ -20,25 +20,25 @@ The MCP server allows LLMs and autonomous AI agents (such as Claude Desktop, Cur
 
 ### Recommended: Run via `uvx` (No Installation Required)
 
-You can launch `benostreamdb-mcp` instantly with [`uvx`](https://github.com/astral-sh/uv), which automatically downloads the prebuilt native binary from PyPI:
+You can launch `benodb-mcp` instantly with [`uvx`](https://github.com/astral-sh/uv), which automatically downloads the prebuilt native binary from PyPI:
 
 ```bash
-uvx benostreamdb-mcp
+uvx benodb-mcp
 ```
 
 ### Alternative: Install via Pip
 
 ```bash
-pip install benostreamdb-mcp
-benostreamdb-mcp
+pip install benodb-mcp
+benodb-mcp
 ```
 
 ### From Source via Cargo
 
 ```bash
-cargo build --release -p benostreamdb-mcp
+cargo build --release -p benodb-mcp
 ```
-The compiled binary will be placed at `target/release/benostreamdb-mcp`.
+The compiled binary will be placed at `target/release/benodb-mcp`.
 
 ---
 
@@ -51,9 +51,9 @@ Add the server to your MCP client configuration (e.g., `claude_desktop_config.js
 ```json
 {
   "mcpServers": {
-    "benostreamdb": {
+    "benodb": {
       "command": "uvx",
-      "args": ["benostreamdb-mcp"],
+      "args": ["benodb-mcp"],
       "env": {
         "BSDB_WAREHOUSE": "/path/to/warehouse",
         "BSDB_GPU_DEVICE": "auto"
@@ -68,8 +68,8 @@ Add the server to your MCP client configuration (e.g., `claude_desktop_config.js
 ```json
 {
   "mcpServers": {
-    "benostreamdb": {
-      "command": "/path/to/target/release/benostreamdb-mcp",
+    "benodb": {
+      "command": "/path/to/target/release/benodb-mcp",
       "env": {
         "BSDB_WAREHOUSE": "/path/to/warehouse",
         "BSDB_GPU_DEVICE": "auto"
@@ -86,8 +86,8 @@ cloud-hosted agent that cannot spawn a subprocess, run the HTTP + SSE transport
 (MCP spec 2024-11-05):
 
 ```bash
-benostreamdb-mcp --transport sse --bind 0.0.0.0:8080
-# or: BSDB_MCP_TRANSPORT=sse BSDB_MCP_BIND=0.0.0.0:8080 benostreamdb-mcp
+benodb-mcp --transport sse --bind 0.0.0.0:8080
+# or: BSDB_MCP_TRANSPORT=sse BSDB_MCP_BIND=0.0.0.0:8080 benodb-mcp
 ```
 
 | Endpoint | Method | Purpose |
@@ -127,7 +127,7 @@ The agent can invoke the following tools:
 ### Resources
 
 Tables are exposed as read-only resources:
-* URI format: `benostreamdb://tables/{schema}/{table}`
+* URI format: `benodb://tables/{schema}/{table}`
 * Content: JSON schema representation including field types, partitions, and index coverage.
 
 ---
@@ -136,6 +136,6 @@ Tables are exposed as read-only resources:
 
 An AI agent uses the MCP server to solve retrieval tasks in a structured sequence:
 1. **Discover**: Calls `list_graph_tables` to identify available tables.
-2. **Schema**: Reads `benostreamdb://tables/default/documents` to understand available columns and vector dimensions.
+2. **Schema**: Reads `benodb://tables/default/documents` to understand available columns and vector dimensions.
 3. **Retrieve**: Calls `execute_sql` with pgvector similarity operators (`<->`, `<=>`) or graph table functions (`graph_neighbors`).
 4. **Synthesize**: Answers the user request using the grounded result set.

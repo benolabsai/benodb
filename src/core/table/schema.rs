@@ -91,8 +91,8 @@ impl Table {
     ///
     /// # Example
     /// ```no_run
-    /// # use benostreamdb::core::table::Table;
-    /// # use benostreamdb::core::manifest::PartitionField;
+    /// # use benodb::core::table::Table;
+    /// # use benodb::core::manifest::PartitionField;
     /// # async fn example(table: &Table) -> anyhow::Result<()> {
     /// table.update_spec(&[
     ///     PartitionField::new_single(1, Some(1000), "month".into(), "month".into()),

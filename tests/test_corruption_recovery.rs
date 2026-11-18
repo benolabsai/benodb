@@ -3,8 +3,8 @@
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::Table;
 use std::fs;
 use std::io::Write;
 use std::sync::Arc;

@@ -5,7 +5,7 @@ Tests various error scenarios including disk full, network failures,
 invalid data, schema mismatches, and resource exhaustion.
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pytest
 import os

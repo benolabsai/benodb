@@ -1,7 +1,7 @@
 # Benchmark runner image: contains the harness plus every competitor *client*.
 #
 # It runs with the SAME cgroup profile (--cpus/--memory) as the server engines
-# and as BenoStreamDB, so every participant is measured under an identical
+# and as BenoDB, so every participant is measured under an identical
 # envelope. See docker_bench.sh.
 #
 # Build:
@@ -36,7 +36,7 @@ COPY benchmarks/beir/run_hybrid.py /opt/bench/beir_hybrid.py
 COPY benchmarks/competitors/run_bench.sh /opt/bench/run_bench.sh
 RUN chmod +x /opt/bench/run_bench.sh
 
-# BenoStreamDB itself: install the abi3 wheel if one is mounted at /wheels.
+# BenoDB itself: install the abi3 wheel if one is mounted at /wheels.
 # The manylinux_2_28 abi3 wheel (built via `maturin build --zig
 # --compatibility manylinux_2_28`) loads on this Python 3.12 base (see
 # docker_bench.sh --build-wheel).

@@ -14,7 +14,7 @@ use anyhow::Result;
 use arrow::array::Int64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 
 fn batch(ids: Vec<i64>) -> RecordBatch {

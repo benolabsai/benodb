@@ -1,6 +1,6 @@
 import pyarrow as pa
 import pytest
-from benostreamdb import Table
+from benodb import Table
 import os
 
 @pytest.fixture

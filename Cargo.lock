@@ -1227,27 +1227,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
-name = "benostream-gpu-ann"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "cudarc",
- "libloading 0.7.4",
- "metal 0.27.0",
- "num_cpus",
- "pollster",
- "rand 0.8.6",
- "rand_chacha 0.3.1",
- "rayon",
- "roaring",
- "thiserror 2.0.18",
- "tracing",
- "wgpu",
-]
-
-[[package]]
-name = "benostreamdb"
+name = "benodb"
 version = "0.17.0"
 dependencies = [
  "ahash",
@@ -1267,7 +1247,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "axum 0.7.9",
  "base64 0.22.1",
- "benostream-gpu-ann",
+ "benodb-gpu-ann",
  "bincode",
  "bytemuck",
  "bytes",
@@ -1352,13 +1332,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "benostreamdb-flight"
+name = "benodb-flight"
 version = "0.17.0"
 dependencies = [
  "arrow",
  "arrow-flight",
  "axum 0.7.9",
- "benostreamdb",
+ "benodb",
  "datafusion",
  "futures",
  "prost 0.14.4",
@@ -1371,7 +1351,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "benostreamdb-mcp"
+name = "benodb-gpu-ann"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "cudarc",
+ "libloading 0.7.4",
+ "metal 0.27.0",
+ "num_cpus",
+ "pollster",
+ "rand 0.8.6",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "roaring",
+ "thiserror 2.0.18",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "benodb-mcp"
 version = "0.17.0"
 dependencies = [
  "anyhow",
@@ -1379,7 +1379,7 @@ dependencies = [
  "arrow-json",
  "axum 0.8.9",
  "base64 0.22.1",
- "benostreamdb",
+ "benodb",
  "calamine",
  "candle-core",
  "candle-nn",
@@ -1403,7 +1403,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "benostreamdb-search"
+name = "benodb-search"
 version = "0.17.0"
 dependencies = [
  "anyhow",
@@ -1411,7 +1411,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "base64 0.22.1",
- "benostreamdb",
+ "benodb",
  "chrono",
  "dhat",
  "futures",

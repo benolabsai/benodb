@@ -63,7 +63,7 @@ jobs:
         run: |
           pip install maturin
           maturin build --features python
-          pip install "$(ls target/wheels/benostreamdb-*.whl)[dev]"
+          pip install "$(ls target/wheels/benodb-*.whl)[dev]"
 
       - name: Run soak/stress suite
         run: pytest tests/stress -v

@@ -104,12 +104,12 @@ are needed for the Docker path.
 ## 3. Quick start
 
 ```bash
-# CPU baseline: faiss hnswlib lancedb pgvector opensearch benostreamdb
+# CPU baseline: faiss hnswlib lancedb pgvector opensearch benodb
 benchmarks/competitors/docker_bench.sh --build-wheel \
     --cpus 8 --mem 16g \
     --dataset sift-128-euclidean --limit 20000 --queries 500
 
-# GPU pass (faiss, benostreamdb, cugraph), same envelope
+# GPU pass (faiss, benodb, cugraph), same envelope
 benchmarks/competitors/docker_bench.sh --gpu --cpus 8 --mem 16g
 
 # Both passes, tagged device=cpu and device=gpu
@@ -175,14 +175,14 @@ reproduce the report.
 | `ONLY` | (all) | comma-separated section names, e.g. `ONLY=vector_row,graph` |
 | `CPUS` / `MEM` | `8` / `16g` | envelope for the containerised section only |
 | `SWEEP_PYTHON` | `.venv/bin/python` | interpreter that measures *and* summarizes |
-| `BEIR_ENGINES` | `benostreamdb,tantivy,opensearch` | engines for §7, run inside the runner container |
+| `BEIR_ENGINES` | `benodb,tantivy,opensearch` | engines for §7, run inside the runner container |
 | `DRY_RUN` | `0` | print the plan, run nothing |
 | `KEEP_GOING` | `1` | continue after a failing section |
 | `SOAK_REPORT` | set by the script | output path for §8; do not override |
 
 `SWEEP_PYTHON` is deliberately not called `PYTHON`: a conda or pyenv install
 commonly exports that, and the sweep would then run under an interpreter with no
-`benostreamdb` wheel while still passing its first sections.
+`benodb` wheel while still passing its first sections.
 
 ### What the sweep enforces
 
@@ -214,7 +214,7 @@ commonly exports that, and the sweep would then run under an interpreter with no
 - **OpenSearch has no host port.** It is only addressable as
   `http://opensearch:9200` on the compose network, so the BEIR comparison must run
   inside the `bench` runner (`WORKLOAD=beir`). Running `benchmarks/beir/run.py` on
-  the host still works for the two embedded engines (`benostreamdb`, `tantivy`),
+  the host still works for the two embedded engines (`benodb`, `tantivy`),
   but it cannot reach the server engine and will silently report a two-engine
   table.
 
@@ -261,7 +261,7 @@ configuration runs on both sides without translation.
 ```bash
 benchmarks/competitors/docker_bench.sh --workload graph \
     --cpus 8 --mem 16g \
-    --graph-engines "networkx neo4j cugraph benostreamdb" \
+    --graph-engines "networkx neo4j cugraph benodb" \
     --algorithm pagerank \
     --graph-nodes 10000 --graph-edges-count 50000
 ```
@@ -276,7 +276,7 @@ A synthetic edge list is generated deterministically (seed 42) and mounted at
 ```bash
 benchmarks/competitors/docker_bench.sh --workload sql \
     --cpus 8 --mem 16g \
-    --sql-engines "duckdb datafusion clickhouse benostreamdb" \
+    --sql-engines "duckdb datafusion clickhouse benodb" \
     --sql-rows 500000
 ```
 
@@ -293,7 +293,7 @@ OpenSearch (server-backed, the long-running compose service).
 ```bash
 # what the sweep runs, once per dataset
 WORKLOAD=beir BEIR_DATASET=scifact \
-BEIR_ENGINES=benostreamdb,tantivy,opensearch DEVICE=cpu \
+BEIR_ENGINES=benodb,tantivy,opensearch DEVICE=cpu \
   docker compose -f benchmarks/competitors/docker-compose.bench.yml \
   --project-directory benchmarks/competitors --profile run run --rm bench
 ```
@@ -303,7 +303,7 @@ The runner writes `{engine}_{dataset}_lexical_bm25_{device}.json` into
 
 `BEIR_MODE=hybrid` runs `run_hybrid.py` instead (dense + sparse fused with RRF);
 its participants are BenoDB and LanceDB, and it is not part of the sweep.
-See [`../benchmarks/beir/`](https://github.com/benolabsai/benostreamdb/tree/main/benchmarks/beir).
+See [`../benchmarks/beir/`](https://github.com/benolabsai/benodb/tree/main/benchmarks/beir).
 
 ---
 
@@ -337,7 +337,7 @@ DATASET_DIR=/path/to/bigann \
   docker compose -f benchmarks/docker-compose.neurips.yml run --rm neurips
 ```
 
-[`run_neurips_bigann.py`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/run_neurips_bigann.py) reads the cgroup
+[`run_neurips_bigann.py`](https://github.com/benolabsai/benodb/blob/main/benchmarks/run_neurips_bigann.py) reads the cgroup
 limits itself when the profile does not pin them (`hardware = "auto"`) and derives:
 
 | Knob | Derivation |
@@ -371,7 +371,7 @@ index**, and prints the fastest operating point that clears recall ≥ 0.90 / 0.
 0.98 — the row the
 leaderboard compares against.
 
-Results are written to [`benchmarks/results/neurips_bigann/`](https://github.com/benolabsai/benostreamdb/tree/main/benchmarks/results/neurips_bigann):
+Results are written to [`benchmarks/results/neurips_bigann/`](https://github.com/benolabsai/benodb/tree/main/benchmarks/results/neurips_bigann):
 
 - `<tag>.json` — every operating point with full provenance: dataset paths, the
   ground-truth source, engine version + git revision, the envelope, and the grid.
@@ -442,7 +442,7 @@ Each record follows the plan's schema (§6 of
 
 ```json
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "workload": "vector",
   "available": true,
   "build_s": 1.23,
@@ -470,9 +470,9 @@ These are enforced by tests, not by inspection:
 
 | Index | Oracle | Test |
 |---|---|---|
-| Scalar bitmap, inverted/BM25, composite | indexed result **identical** to full scan | [`tests/test_differential_index_oracle.rs`](https://github.com/benolabsai/benostreamdb/blob/main/tests/test_differential_index_oracle.rs) |
+| Scalar bitmap, inverted/BM25, composite | indexed result **identical** to full scan | [`tests/test_differential_index_oracle.rs`](https://github.com/benolabsai/benodb/blob/main/tests/test_differential_index_oracle.rs) |
 | HNSW / IVF / TurboQuant / PQ | exact nearest neighbour appears in indexed top-k (recall) | same file |
-| JSON-path | indexed result identical to full scan; unindexed path falls back to scan | [`tests/test_json_path_index.rs`](https://github.com/benolabsai/benostreamdb/blob/main/tests/test_json_path_index.rs) |
+| JSON-path | indexed result identical to full scan; unindexed path falls back to scan | [`tests/test_json_path_index.rs`](https://github.com/benolabsai/benodb/blob/main/tests/test_json_path_index.rs) |
 | cuGraph | PageRank matches NetworkX (max abs diff < 1e-5, identical top-5) | `results/cugraph_correct.txt` |
 
 Run them with:
@@ -491,7 +491,7 @@ cargo test --test test_json_path_index
 previous dataset or device are never double-counted. The rollup uses
 `pure_index_qps` for BenoDB (see §4.1).
 
-The narrative report is [`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md);
+The narrative report is [`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benodb/blob/main/benchmarks/results/BENCHMARK_REPORT.md);
 `benchmarks/generate_summary.py` renders the summary tables.
 
 ```bash
@@ -508,7 +508,7 @@ artifacts, never a single wrong number: a refined row below its unrefined
 sibling, a row-path QPS above the index-only QPS it contains, a refined row with
 no baseline, engines measured at different `n`/`dim`/`queries`/`k` on one
 dataset, a `qps` field carrying the index-only rate. Those are checkable without
-re-measuring, so [`benchmarks/verify_results.py`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/verify_results.py)
+re-measuring, so [`benchmarks/verify_results.py`](https://github.com/benolabsai/benodb/blob/main/benchmarks/verify_results.py)
 checks them and exits non-zero on a violation:
 
 | Check | Invariant |
@@ -551,7 +551,7 @@ mtime table as the only provenance.
   overheads dominate, the harness measures single-query latency (batch = 1, so
   there is no GPU parallelism to exploit), and HNSW search is a sequential
   pointer-chasing walk rather than dense math. BenoDB's GPU path
-  (`benostream-gpu-ann`) accelerates index *construction*, not query. GPU wins at
+  (`benodb-gpu-ann`) accelerates index *construction*, not query. GPU wins at
   scale: millions of vectors, large batch queries, dense/flat or IVF-PQ search.
 - **Overlay indexes trade build cost and storage for query speed and
   reconstructibility.** The report must state where we lose.

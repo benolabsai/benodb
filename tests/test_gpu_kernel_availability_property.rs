@@ -6,10 +6,10 @@
 // Property: For any distance metric (Cosine, Inner Product, L1, Hamming, Jaccard) and any
 // available GPU backend, the system should successfully compute distances using GPU acceleration.
 
-use benostreamdb::core::index::gpu::{
+use benodb::core::index::gpu::{
     compute_distance, set_thread_gpu_context, ComputeBackend, ComputeContext,
 };
-use benostreamdb::core::index::VectorMetric;
+use benodb::core::index::VectorMetric;
 use proptest::prelude::*;
 
 // Strategy for generating valid vector dimensions

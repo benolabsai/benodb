@@ -1,6 +1,6 @@
 # Tutorial 3 — Graph traversal via `graph_neighbors(...)`
 
-> The runnable Python version is [`examples/tutorials/03_graph_traversal.ipynb`](https://github.com/benolabsai/benostreamdb/blob/main/examples/tutorials/03_graph_traversal.ipynb).
+> The runnable Python version is [`examples/tutorials/03_graph_traversal.ipynb`](https://github.com/benolabsai/benodb/blob/main/examples/tutorials/03_graph_traversal.ipynb).
 > This page is the SQL / connector form.
 
 Model a graph as an ordinary edge table, then traverse it directly in a `FROM`
@@ -55,7 +55,7 @@ SQL surface:
 - **Python**: `session.sql("SELECT * FROM graph_neighbors('edges', '101', 2, 'auto')")`
 - **Spark**: pass-through reader — `.option("query", "SELECT * FROM graph_neighbors('t', '101', 2, 'auto')")`
 - **Trino**: `SELECT * FROM graph_neighbors('edges', '101', 2, 'auto');`
-- **dbt**: `{{ benostreamdb__graph_neighbors_table('edges', '101', 2) }}`
+- **dbt**: `{{ benodb__graph_neighbors_table('edges', '101', 2) }}`
 - **Flight SQL / MCP**: send the same SQL.
 
 ## 4. Discovery

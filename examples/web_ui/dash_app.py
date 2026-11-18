@@ -23,7 +23,7 @@ import time
 import pandas as pd
 from dash import Dash, Input, Output, State, callback, dash_table, dcc, html
 
-import benostreamdb
+import benodb
 
 # ── Config (mirrors the Streamlit demo) ─────────────────────────────────────
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -36,12 +36,12 @@ EMBED_MODEL = os.environ.get("BSDB_DEMO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 # Activate GPU for BenoStreamDB's vector search (HNSW distance computation,
 # TurboQuant decode). The embedder above uses SentenceTransformer on GPU;
 # this makes the engine itself use CUDA kernels too.
-_gpu = benostreamdb.Device.auto_detect()
+_gpu = benodb.Device.auto_detect()
 _gpu.activate()
 print(f"[dash] GPU context: {_gpu}", flush=True)
 
-edges_t = benostreamdb.Table(EDGES_URI)
-nodes_t = benostreamdb.Table(NODES_URI)
+edges_t = benodb.Table(EDGES_URI)
+nodes_t = benodb.Table(NODES_URI)
 
 _embedder = None
 _embedder_failed = False

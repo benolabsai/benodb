@@ -2,7 +2,7 @@ import tempfile
 """
 Test HNSW-IVF implementation with a simple dataset
 """
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import numpy as np
 import time

@@ -16,7 +16,7 @@ BenoDB supports enterprise-grade data catalogs to provide table discovery, atomi
 | **Unity Catalog (`unity`)** | Databricks Unity REST & Iceberg REST | Supports both standard Unity Tables REST (`PATCH` with `previous_metadata_location` + `TableRequirement` verification) and **Databricks Unity Iceberg REST** (`/api/2.1/unity-catalog/iceberg-rest` full `/v1` `409` CAS). | Databricks Lakehouse integration. |
 
 > [!NOTE]
-> Multi-writer optimistic concurrency convergence relies on `commit_table_with_requirements` returning `BenoStreamError::CatalogRequest { status: Some(409), .. }` when a concurrent commit advances `metadata_location` or `current-snapshot-id`. All catalog adapters enforce this CAS contract (`MAX_CATALOG_RETRIES = 8` in [`maintenance.rs`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/table/maintenance.rs)). All remote HTTP/object-store URIs entered via `create_catalog_async` are checked by the built-in SSRF guard against loopback, private, and link-local hosts.
+> Multi-writer optimistic concurrency convergence relies on `commit_table_with_requirements` returning `BenoStreamError::CatalogRequest { status: Some(409), .. }` when a concurrent commit advances `metadata_location` or `current-snapshot-id`. All catalog adapters enforce this CAS contract (`MAX_CATALOG_RETRIES = 8` in [`maintenance.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/table/maintenance.rs)). All remote HTTP/object-store URIs entered via `create_catalog_async` are checked by the built-in SSRF guard against loopback, private, and link-local hosts.
 
 ---
 
@@ -27,7 +27,7 @@ Use `memory` for deterministic tests and multi-writer conflict simulations witho
 
 ```python
 import pyarrow as pa
-import benostreamdb as bsdb
+import benodb as bsdb
 
 catalog = bsdb.create_catalog(
     "memory",
@@ -47,7 +47,7 @@ table.commit()
 BenoDB's JDBC catalog routes PostgreSQL (`postgres://`, `$1..$N` parameters) and SQLite (`sqlite://`, `sqlite::memory:`, `?` parameters) through `sqlx::AnyPool`, using `VARCHAR(1024)` for `metadata_location` and conditional `WHERE metadata_location = <expected>` updates:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Embedded single-connection SQLite in-memory catalog
 mem_jdbc = bsdb.create_catalog(
@@ -74,7 +74,7 @@ The Hive Metastore (HMS) is the industry standard for metadata management in Had
 
 ### Connection
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Connect to HMS via Thrift (no auth example)
 catalog = bsdb.create_catalog("hive", {"url": "thrift://metastore-host:9083"})
@@ -103,7 +103,7 @@ docker run -p 19120:19120 projectnessie/nessie
 
 ### Python API
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Connect to Nessie
 catalog = bsdb.create_catalog("nessie", {"url": "http://localhost:19120"})
@@ -123,7 +123,7 @@ For AWS deployments, BenoDB supports both **Amazon S3 Tables** (`s3tables`, Iceb
 
 ### Amazon S3 Tables (`s3tables`)
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Derives region (`us-east-1`) from the bucket ARN, signs requests via AWS SigV4
 # using the default AWS credential chain, and auto-discovers prefix via `/v1/config`.
@@ -138,7 +138,7 @@ table = catalog.load_table("events", "clickstream_data")
 
 ### AWS Glue (`glue` SDK & Iceberg REST)
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Native AWS Glue SDK (version_id CAS)
 sdk_catalog = bsdb.create_catalog("glue", {"region": "us-east-1"})
@@ -154,7 +154,7 @@ table = sdk_catalog.load_table("production_db", "clickstream_data")
 
 ### Databricks Unity Catalog (`unity`)
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Recommended: Databricks Unity Iceberg REST endpoint (full Iceberg CAS & 409 retries)
 unity_iceberg = bsdb.create_catalog(
@@ -185,7 +185,7 @@ The vendor-neutral REST catalog is the most interoperable way to manage Iceberg 
 
 ### Snowflake / Apache Polaris with OAuth2 Client Credentials
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Connect to an Apache Polaris REST catalog and load a table
 catalog = bsdb.create_catalog("rest", {
@@ -197,7 +197,7 @@ catalog = bsdb.create_catalog("rest", {
 table = catalog.load_table("production", "campaign_results")
 ```
 
-All `benostreamdb` engines and servers (`benostreamdb-search`, `benostreamdb-flight`, and Python bindings) also accept catalog parameters from `benostream.toml` or `BSDB_SEARCH_CATALOG_*` / `BSDB_CATALOG_*` environment variables (`TYPE`, `URL`/`URI`, `TOKEN`, `CREDENTIAL`, `PREFIX`, `ID`, `REGION`, `WAREHOUSE`, `MODE`, `AUTH`, `SERVICE`, `SCOPE`). For OAuth2 credentials, the engine executes `/v1/oauth/tokens` exchanges and caches bearer tokens, refreshing automatically within 60 seconds of expiration.
+All `benodb` engines and servers (`benodb-search`, `benodb-flight`, and Python bindings) also accept catalog parameters from `benostream.toml` or `BSDB_SEARCH_CATALOG_*` / `BSDB_CATALOG_*` environment variables (`TYPE`, `URL`/`URI`, `TOKEN`, `CREDENTIAL`, `PREFIX`, `ID`, `REGION`, `WAREHOUSE`, `MODE`, `AUTH`, `SERVICE`, `SCOPE`). For OAuth2 credentials, the engine executes `/v1/oauth/tokens` exchanges and caches bearer tokens, refreshing automatically within 60 seconds of expiration.
 
 ### Static Token (Tabular / Nessie REST)
 ```python
@@ -265,7 +265,7 @@ flowchart LR
 
 ## Step 1: Configure BenoDB to Sync with Polaris
 
-Configure `benostreamdb-search` using environment variables or a `benostream.toml` configuration file.
+Configure `benodb-search` using environment variables or a `benostream.toml` configuration file.
 
 ### Option A: Environment Variables
 

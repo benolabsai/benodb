@@ -44,7 +44,7 @@ cd "$ROOT_DIR"
 #
 # Deliberately not `PYTHON`: a conda or pyenv install commonly exports that, and
 # `${PYTHON:-default}` then runs the whole sweep under an interpreter that has no
-# benostreamdb wheel — silently, since the first section would still pass.
+# benodb wheel — silently, since the first section would still pass.
 PYTHON="${SWEEP_PYTHON:-$ROOT_DIR/.venv/bin/python}"
 CPUS="${CPUS:-8}"
 MEM="${MEM:-16g}"
@@ -229,8 +229,8 @@ is_pow2() {
 # True when `$1` (an engine name) should be skipped for dataset `$2`.
 skip_quantized_engine() {
     case "$1" in
-        benostreamdb_tq8) is_pow2 "$(dataset_dim "$2")" && return 1 || return 0 ;;
-        benostreamdb_sq) is_pow2 "$(dataset_dim "$2")" && return 0 || return 1 ;;
+        benodb_tq8) is_pow2 "$(dataset_dim "$2")" && return 1 || return 0 ;;
+        benodb_sq) is_pow2 "$(dataset_dim "$2")" && return 0 || return 1 ;;
         *) return 1 ;;
     esac
 }
@@ -241,7 +241,7 @@ skip_quantized_engine() {
 # --profile run run --rm bench` starts the `bench` client (image
 # `bsdb-bench-runner:latest`) on the `competitors_bench` network, where the
 # long-running services are addressable by service name. Inside that container
-# `run_bench.sh` dispatches: a BenoStreamDB index variant goes to
+# `run_bench.sh` dispatches: a BenoDB index variant goes to
 # `ann_benchmarks.py` (so pure-index latency is reported too), everything else
 # goes to `run_competitor.py`, which is what implements pgvector / qdrant /
 # weaviate / milvus / opensearch / faiss / hnswlib / lancedb. Results land in the
@@ -254,9 +254,9 @@ skip_quantized_engine() {
 # vanished once already. `lancedb_sq` is also the one competitor whose refinement
 # does something, and it has to be present to be refined.
 ROW_ENGINES=(
-    benostreamdb
-    benostreamdb_tq8
-    benostreamdb_sq
+    benodb
+    benodb_tq8
+    benodb_sq
     faiss
     faiss_sq
     hnswlib
@@ -304,7 +304,7 @@ ROW_ENGINES=(
 # 0.8874). Both measurements are kept and the report shows the better one per
 # engine and precision, so a refine that helps is visible and a refine that hurts
 # is not published as the engine's result.
-REFINE_ENGINES=" benostreamdb_tq8 benostreamdb_sq lancedb_sq "
+REFINE_ENGINES=" benodb_tq8 benodb_sq lancedb_sq "
 REFINE_FACTORS="${REFINE_FACTORS:-2}"
 
 # --- start the services every containerised section talks to ----------------
@@ -350,7 +350,7 @@ if section vector_ann "ann_benchmarks/results/*"; then
 fi
 
 # --- [3/9] competitor matrix: enveloped CPU+GPU pass, one run per dataset ----
-# Every engine, BenoStreamDB included, is constrained to the same --cpus/--memory
+# Every engine, BenoDB included, is constrained to the same --cpus/--memory
 # envelope here; this is the only pass in the sweep that is enveloped.
 if section vector_matrix "competitors/results/*.json"; then
     # Build the manylinux wheel ONCE, before any measurement. Passing
@@ -373,7 +373,7 @@ fi
 # section that produces the per-engine, per-dataset row in the report.
 if section vector_row "competitors/results/*.json"; then
     # Iterates VECTOR_DATASETS directly: a second hand-maintained list is how
-    # fashion-mnist ended up with no BenoStreamDB row while every competitor had one.
+    # fashion-mnist ended up with no BenoDB row while every competitor had one.
     for ds in "${VECTOR_DATASETS[@]}"; do
         for eng in "${ROW_ENGINES[@]}"; do
             if skip_quantized_engine "$eng" "$ds"; then
@@ -399,15 +399,15 @@ fi
 # --- [5/9] graph: synthetic plus the SNAP datasets the report quotes ---------
 if section graph "graph/results/*"; then
     step "$PYTHON" benchmarks/graph/run.py --nodes 10000 --edges 50000 \
-        --engines benostreamdb,networkx,neo4j \
+        --engines benodb,networkx,neo4j \
         --algorithms pagerank,connected_components,shortest_path \
         --out benchmarks/graph/results/graph_synth_10k.md
     step "$PYTHON" benchmarks/graph/run.py --dataset snap-web-google \
-        --engines benostreamdb,networkx,neo4j \
+        --engines benodb,networkx,neo4j \
         --algorithms pagerank,connected_components,shortest_path \
         --out benchmarks/graph/results/graph_snap_web_google.md
     step "$PYTHON" benchmarks/graph/run.py --dataset snap-roadnet-ca \
-        --engines benostreamdb,networkx,neo4j \
+        --engines benodb,networkx,neo4j \
         --algorithms pagerank,connected_components,shortest_path \
         --out benchmarks/graph/results/graph_snap_roadnet_ca.md
     section_done
@@ -416,7 +416,7 @@ fi
 # --- [6/9] SQL: ClickBench 500k against DuckDB and DataFusion ----------------
 if section sql "sql/results/*"; then
     step "$PYTHON" benchmarks/sql/run.py --rows 500000 \
-        --engines benostreamdb,duckdb,datafusion \
+        --engines benodb,duckdb,datafusion \
         --out benchmarks/sql/results/clickbench_500k.md
     section_done
 fi
@@ -429,7 +429,7 @@ fi
 # competitor the stack exists to compare against. The container path
 # (`WORKLOAD=beir` in run_bench.sh) reaches `$ES_URL` and writes the same
 # competitor-schema JSON into the mounted `beir/results/`.
-BEIR_ENGINES="${BEIR_ENGINES:-benostreamdb,tantivy,opensearch}"
+BEIR_ENGINES="${BEIR_ENGINES:-benodb,tantivy,opensearch}"
 if section beir "beir/results/*"; then
     # OpenSearch has to be up before the runner starts; the long-running stack
     # already provides it, so this only fails when the stack is not running.
@@ -437,7 +437,7 @@ if section beir "beir/results/*"; then
         _ "$HERE/docker-compose.bench.yml" "$HERE"
     for ds in scifact nfcorpus arguana; do
         step env WORKLOAD=beir BEIR_DATASET="$ds" BEIR_ENGINES="$BEIR_ENGINES" \
-            ENGINE=benostreamdb DEVICE=cpu \
+            ENGINE=benodb DEVICE=cpu \
             docker compose -f "$HERE/docker-compose.bench.yml" \
             --project-directory "$HERE" --profile run run --rm bench || break
     done

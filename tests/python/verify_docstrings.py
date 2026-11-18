@@ -35,9 +35,9 @@ def check_docstring(func_name, func):
 
 def main():
     try:
-        import benostreamdb as bsdb
+        import benodb as bsdb
     except ImportError:
-        print("❌ Cannot import benostreamdb. Make sure it's built and installed.")
+        print("❌ Cannot import benodb. Make sure it's built and installed.")
         sys.exit(1)
     
     print("Checking docstrings for all Python functions...\n")

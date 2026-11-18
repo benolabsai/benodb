@@ -9,7 +9,7 @@
   `mergeRows` sketch). `iceberg-spark-runtime` is gone from Spark 4.x builds and
   remains `provided` in the 3.5 profile only (native DSv2 `CALL` landed in 4.0).
 - **B1. Scalar catalog functions — DONE.** `FunctionCatalog` on
-  `BenoStreamCatalog` exposes `benostream.system.{cosine_distance, l2_distance,
+  `BenoDBCatalog` exposes `benostream.system.{cosine_distance, l2_distance,
   dot_product, vector_distance, sparse_dot_product, hybrid_score,
   reciprocal_rank_fusion}` — verified on 3.5.9 and 4.2.0, no registration, works
   from PySpark. `ScalarFunction` implementations must override
@@ -17,7 +17,7 @@
 - **B2 — all four items closed (2026-11-10, v0.15.1).**
   (1) pass-through `option("query", sql)` reads through the engine DataFusion
   session (`BenoStreamQueryTable`).
-  (2) `BenoStreamScanBuilder` now implements `SupportsPushDownTopN`, so
+  (2) `BenoDBScanBuilder` now implements `SupportsPushDownTopN`, so
   `ORDER BY <distance> LIMIT k` written in Spark SQL is rendered back into the
   scan SQL and reaches the engine's KNN rule; a pushed TopN forces the single
   SQL scan because a per-file fan-out cannot produce a global top-k.
@@ -94,17 +94,17 @@ Three interlocking requirements emerged while testing the Spark connector:
 
 Rewrite the Spark connector to mirror the Trino connector's native model:
 
-- `BenoStreamTable`: holds `tableUri` + `StructType` (from `getTableSchema`);
+- `BenoDBTable`: holds `tableUri` + `StructType` (from `getTableSchema`);
   implements `SupportsRead`, `SupportsWrite`, `SupportsRowLevelOperations`.
-- **Read**: `BenoStreamScanBuilder` translates required columns + Spark filters →
-  a DataFusion SQL string; `BenoStreamScan` → one `InputPartition`;
-  `BenoStreamPartitionReader` calls `openQuery`/`readQueryBatch` and decodes
-  Arrow→catalyst (new `BenoStreamArrowUtils`, already scaffolded).
-- **Write**: `BenoStreamWriteBuilder` → `BatchWrite` → `DataWriter` buffers rows,
+- **Read**: `BenoDBScanBuilder` translates required columns + Spark filters →
+  a DataFusion SQL string; `BenoDBScan` → one `InputPartition`;
+  `BenoDBPartitionReader` calls `openQuery`/`readQueryBatch` and decodes
+  Arrow→catalyst (new `BenoDBArrowUtils`, already scaffolded).
+- **Write**: `BenoDBWriteBuilder` → `BatchWrite` → `DataWriter` buffers rows,
   converts to Arrow, calls `appendBatch` (commit already done engine-side per batch).
 - **Row-level ops**: DELETE → `deleteRows(filter)`; UPDATE/MERGE → `mergeRows`
   (engine upsert-by-PK). Replaces the stubbed DeltaWrite.
-- `BenoStreamCatalog` implements `TableCatalog`/`SupportsNamespaces` via
+- `BenoDBCatalog` implements `TableCatalog`/`SupportsNamespaces` via
   `listSchemas`/`listTables`/`getTableSchema`/`createTable`/`dropTable` (no
   `SparkCatalog`). `DefaultSource` returns the native table.
 - Drop `iceberg-spark-runtime` from the pom; remove all `org.apache.iceberg.*`
@@ -126,7 +126,7 @@ Two complementary mechanisms:
    - `drift_search` / `regional_drift`, `keyword_search` (BM25), `hybrid_search`
    - Trino: `ConnectorTableFunction` registered on the connector.
      Spark 4: DSv2 `TableFunction`; Spark 3.5: DataFrame API + registered scalar
-     UDFs (`BenoStreamFunctions`) as the fallback.
+     UDFs (`BenoDBFunctions`) as the fallback.
 
 Trino cannot do generic pass-through, so its UDF story is the typed table
 functions (+ scalar distance operators where feasible). Spark gets both.
@@ -150,7 +150,7 @@ Net: 2 Spark artifacts (2.12, 2.13) + 1 Trino, not per-minor.
 2. [Native write] DataWriter → Arrow → appendBatch; verify INSERT/CTAS/overwrite.
 3. [Native row-level] DELETE→deleteRows; UPDATE/MERGE→mergeRows; verify with
    value assertions (the thing the Iceberg wrapper silently broke).
-4. [Native catalog/DDL] BenoStreamCatalog + DefaultSource; drop Iceberg dep.
+4. [Native catalog/DDL] BenoDBCatalog + DefaultSource; drop Iceberg dep.
 5. [Spark UDFs] Pass-through `query` option + Spark 4 `bsdb_query` table function
    + typed table functions (vector_search, graph_neighbors, drift, keyword, hybrid).
 6. [Trino UDFs] `ConnectorTableFunction` set (vector_search, graph_neighbors, …).
@@ -164,6 +164,6 @@ Net: 2 Spark artifacts (2.12, 2.13) + 1 Trino, not per-minor.
   bucketing semantics need parity work.
 - Trino table functions have fixed return schemas; vector/graph outputs must be
   modeled accordingly (row_id + score / node columns).
-- `libbenostreamdb.so` must be on `java.library.path` on every Spark executor /
+- `libbenodb.so` must be on `java.library.path` on every Spark executor /
   Trino worker (already true for Trino).
 - Scope is large; ordering below is a recommendation, not a commitment.

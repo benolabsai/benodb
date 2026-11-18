@@ -1,1 +1,1 @@
-../contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md
+../contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md

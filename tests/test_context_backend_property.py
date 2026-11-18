@@ -11,7 +11,7 @@ the backend name that was used to create it.
 """
 import pytest
 from hypothesis import given, settings, strategies as st
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 # Strategy for valid backend names

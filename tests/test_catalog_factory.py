@@ -1,7 +1,7 @@
-import benostreamdb as bsdb
+import benodb as bsdb
 import os
 import pytest
-from benostreamdb import PyNessieCatalog, PyHiveCatalog
+from benodb import PyNessieCatalog, PyHiveCatalog
 
 def test_create_catalog_direct():
     print("Testing create_catalog (direct)...")

@@ -6,8 +6,8 @@
 use arrow::array::{FixedSizeListArray, Float32Array, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::table::Table;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::table::Table;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -563,7 +563,7 @@ async fn test_error_invalid_vector_literal() {
 
 #[test]
 fn test_vector_operators_registered() {
-    use benostreamdb::core::sql::vector_operators::VECTOR_OPERATORS;
+    use benodb::core::sql::vector_operators::VECTOR_OPERATORS;
 
     assert_eq!(VECTOR_OPERATORS.len(), 6, "Should have 6 vector operators");
 
@@ -581,7 +581,7 @@ fn test_vector_operators_registered() {
 
 #[test]
 fn test_all_distance_udfs_available() {
-    use benostreamdb::core::sql::vector_udf;
+    use benodb::core::sql::vector_udf;
 
     let udfs = vector_udf::all_vector_udfs();
     assert!(udfs.len() >= 6, "Should have at least 6 distance UDFs");
@@ -615,7 +615,7 @@ fn test_all_distance_udfs_available() {
 
 #[test]
 fn test_vector_literal_parser_available() {
-    use benostreamdb::core::sql::vector_literal::VectorLiteralParser;
+    use benodb::core::sql::vector_literal::VectorLiteralParser;
 
     let result = VectorLiteralParser::parse("[1.0, 2.0, 3.0]");
     assert!(

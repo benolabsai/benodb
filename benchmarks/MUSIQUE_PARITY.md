@@ -3,10 +3,10 @@
 This document records the two results worth reporting from the MuSiQue
 multi-hop GraphRAG benchmark:
 
-1. **Engine-native passage-level retrieval** (headline) — BenoStreamDB's
+1. **Engine-native passage-level retrieval** (headline) — BenoDB's
    in-engine retrieval, with no hosted LLM in the loop, clears Zilliz's
    published Naive RAG baseline.
-2. **Entity-level Vector Graph RAG** (architecture demo) — BenoStreamDB can
+2. **Entity-level Vector Graph RAG** (architecture demo) — BenoDB can
    serve the three-collection Passages/Entities/Relations layout natively; the
    naive traversal does not reach HippoRAG/Zilliz's upper band, and it does not
    need to for the storage-engine claim.
@@ -28,7 +28,7 @@ index, BGE cross-encoder reranker. **No hosted LLM, no outbound calls.**
 | **Two-stage + BGE cross-encoder** | **0.5943** |
 
 Zilliz's published **Naive RAG (BGE-large-en-v1.5) is 0.5803**. The two-stage
-row clears it with the entire retrieval loop running inside BenoStreamDB —
+row clears it with the entire retrieval loop running inside BenoDB —
 vector search + DataFusion graph traversal + a local cross-encoder — with no
 relationship-selection LLM and no per-token cost.
 
@@ -146,7 +146,7 @@ GPU=1 BENCH_SCRIPT=run_musique_entity_rag.py ./benchmarks/run_musique_docker.sh 
 | Naive RAG · BGE-large-en-v1.5 | 58.03% |
 | Vector Graph RAG pre-Jev (GPT-6 Luna / DeepSeek V4.1 Flash) | 72.18–73.20% |
 | Vector Graph RAG + Jev 1.14 two-stage | 77.73% |
-| **BenoStreamDB two-stage BGE (engine-native, no LLM)** | **59.43%** |
+| **BenoDB two-stage BGE (engine-native, no LLM)** | **59.43%** |
 
 ## Methodology
 
@@ -164,7 +164,7 @@ GPU=1 BENCH_SCRIPT=run_musique_entity_rag.py ./benchmarks/run_musique_docker.sh 
 
 - The Zilliz corpus (11,656 passages) is a subset of the full per-question pool
   (20,360 unique). The full-pool run is the same command without `--corpus-json`.
-- Zilliz's 73% uses an LLM to select relations before retrieval; the two BenoStreamDB
+- Zilliz's 73% uses an LLM to select relations before retrieval; the two BenoDB
   numbers above do not. The gap is the application-layer relationship-selection
   step, not corpus or triplet quality.
 - Query encoding is pre-computed and excluded from the timed loop

@@ -1,6 +1,6 @@
 use arrow::array::{Int32Array, RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema};
-use benostreamdb::core::table::Table;
+use benodb::core::table::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 

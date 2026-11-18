@@ -6,7 +6,7 @@ Both use the same upstream inputs Zilliz/HippoRAG publish, on the identical
 
 ## 1. Engine-native passage-level retrieval (headline)
 
-BenoStreamDB's in-engine retrieval, with **no hosted LLM and no outbound calls**,
+BenoDB's in-engine retrieval, with **no hosted LLM and no outbound calls**,
 clears Zilliz's published Naive RAG baseline.
 
 | Strategy | Micro Recall@5 |
@@ -67,6 +67,6 @@ provenance are documented in [`MUSIQUE_PARITY.md`](MUSIQUE_PARITY.md).
 
 - **Headline:** engine-native two-stage BGE **0.5943 > Zilliz Naive RAG 0.5803**,
   zero hosted LLM, no per-token cost.
-- **Secondary:** BenoStreamDB natively serves the three-collection Vector Graph
+- **Secondary:** BenoDB natively serves the three-collection Vector Graph
   RAG layout; the ~73% band is application-layer LLM relationship selection, not
   the storage engine.

@@ -29,7 +29,7 @@ BenoStreamDB's DRIFT Search algorithm (`mode='drift'` in `graph_rag_search()`) i
 - **Project URL**: [https://github.com/microsoft/graphrag](https://github.com/microsoft/graphrag)
 - **Copyright**: Copyright (c) Microsoft Corporation.
 
-The DRIFT search algorithm — including the multi-phase primer/follow-up/reduction architecture, the `DriftAction` search tree, and the `DriftQueryState` traversal state management — has been adapted for use in BenoStreamDB's Python Graph RAG API. The implementation in `python/benostreamdb/__init__.py` contains the adapted algorithm with BenoStreamDB-native graph primitives (Louvain communities, Personalized PageRank, HNSW vector search) replacing the original's LLM-centric context builders.
+The DRIFT search algorithm — including the multi-phase primer/follow-up/reduction architecture, the `DriftAction` search tree, and the `DriftQueryState` traversal state management — has been adapted for use in BenoStreamDB's Python Graph RAG API. The implementation in `python/benodb/__init__.py` contains the adapted algorithm with BenoStreamDB-native graph primitives (Louvain communities, Personalized PageRank, HNSW vector search) replacing the original's LLM-centric context builders.
 
 In accordance with the MIT License, the full license text is reproduced below:
 
@@ -96,7 +96,7 @@ SOFTWARE.
 
 ## Candle / Hugging Face Hub / tokenizers
 
-The optional local-embedding provider in the MCP server (`contrib/benostreamdb-mcp`) uses these
+The optional local-embedding provider in the MCP server (`contrib/benodb-mcp`) uses these
 projects. They are not linked into the core engine.
 
 - **Candle** (`candle-core`, `candle-nn`, `candle-transformers`) — MIT OR Apache License 2.0. [https://github.com/huggingface/candle](https://github.com/huggingface/candle). Copyright Hugging Face, Inc.

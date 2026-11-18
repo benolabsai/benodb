@@ -1,15 +1,15 @@
 #!/bin/sh
 # Entrypoint for the MuSiQue Multi-Hop GraphRAG benchmark container.
 #
-# Installs the BenoStreamDB abi3 wheel mounted at /wheels, then execs the
+# Installs the BenoDB abi3 wheel mounted at /wheels, then execs the
 # MuSiQue benchmark harness with whatever arguments were passed.
 set -eu
 
 if ls /wheels/*.whl >/dev/null 2>&1; then
-    echo "[musique-docker] Installing BenoStreamDB wheel from /wheels..."
-    python3 -m pip install --break-system-packages --force-reinstall --no-deps --no-index --find-links /wheels benostreamdb
+    echo "[musique-docker] Installing BenoDB wheel from /wheels..."
+    python3 -m pip install --break-system-packages --force-reinstall --no-deps --no-index --find-links /wheels benodb
 else
-    echo "[musique-docker: warn] No wheel found in /wheels; using pre-installed benostreamdb if available" >&2
+    echo "[musique-docker: warn] No wheel found in /wheels; using pre-installed benodb if available" >&2
 fi
 
 # The benchmark script is selectable so the same image can run the passage-level

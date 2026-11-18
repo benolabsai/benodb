@@ -9,7 +9,7 @@ SQL ``bfs_visited`` path for hops=1 and hops=2, both directed and undirected.
 import pyarrow as pa
 import pytest
 
-from benostreamdb import Table
+from benodb import Table
 
 NUM_NODES = 100
 
@@ -262,11 +262,11 @@ def test_subgraph_nodes_matches_subgraph(csr_graph_table):
 
 def test_build_profile_binding():
     """The extension exposes a reliable build-profile indicator."""
-    import benostreamdb
+    import benodb
 
-    assert benostreamdb.build_profile() in ("debug", "release")
-    assert isinstance(benostreamdb.is_debug_build(), bool)
-    assert benostreamdb.is_debug_build() == (benostreamdb.build_profile() == "debug")
+    assert benodb.build_profile() in ("debug", "release")
+    assert isinstance(benodb.is_debug_build(), bool)
+    assert benodb.is_debug_build() == (benodb.build_profile() == "debug")
 
 
 # ── Graph-index direction / column mapping ──────────────────────────────

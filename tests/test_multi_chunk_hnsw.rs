@@ -14,8 +14,8 @@ use std::sync::Arc;
 use arrow::array::{FixedSizeListArray, Int32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::table::Table;
+use benodb::core::index::VectorValue;
+use benodb::core::table::Table;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -29,7 +29,7 @@ async fn test_multi_cluster_hnsw_search() -> anyhow::Result<()> {
     table
         .add_index(
             "embedding".to_string(),
-            benostreamdb::core::manifest::IndexAlgorithm::Hnsw {
+            benodb::core::manifest::IndexAlgorithm::Hnsw {
                 metric: "l2".to_string(),
                 complexity: 16,
                 quality: 200,
@@ -78,7 +78,7 @@ async fn test_multi_cluster_hnsw_search() -> anyhow::Result<()> {
     table.commit_async().await?;
 
     // Clear caches so the search loads the (clustered) index from disk.
-    benostreamdb::core::cache::HNSW_IVF_CACHE.invalidate_all();
+    benodb::core::cache::HNSW_IVF_CACHE.invalidate_all();
 
     // Query closest to the LAST vector (id=24).
     let hits = table

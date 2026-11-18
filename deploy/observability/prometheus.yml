@@ -10,8 +10,8 @@ scrape_configs:
 
   # Direct pull from the Flight SQL server / embedded exporter on the host.
   # Set BSDB_METRICS_BIND=0.0.0.0 so the container can reach it.
-  - job_name: benostreamdb
+  - job_name: benodb
     static_configs:
       - targets: ["host.docker.internal:9090"]
         labels:
-          service: benostreamdb
+          service: benodb

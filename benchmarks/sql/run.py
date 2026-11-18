@@ -2,7 +2,7 @@
 """SQL Benchmark Runner: ClickBench & OLAP query evaluation across engines.
 
 Supported Engines:
-- benostreamdb (Native Arrow/DataFusion-powered analytical SQL engine)
+- benodb (Native Arrow/DataFusion-powered analytical SQL engine)
 - duckdb (In-process analytical SQL database)
 - datafusion (Apache DataFusion reference)
 - clickhouse (ClickHouse analytical DBMS)
@@ -12,7 +12,7 @@ Standard ClickBench query subset (Q0 - Q9) covering aggregations, filters,
 group-by, distinct counts, and order-by/limit operations.
 
 Usage:
-    python benchmarks/sql/run.py --rows 500000 --engines benostreamdb,duckdb,datafusion
+    python benchmarks/sql/run.py --rows 500000 --engines benodb,duckdb,datafusion
     python benchmarks/sql/run.py --parquet data/hits.parquet --out results/clickbench.md
 """
 
@@ -67,7 +67,7 @@ def ensure_clickbench_dataset(parquet_path: Optional[str], rows: int = 500_000, 
     res_widths = rng.choice([1024, 1280, 1366, 1440, 1920, 2560, 3840], size=rows)
     user_ids = rng.integers(1, max(100, rows // 5), size=rows, dtype=np.int64)
     
-    phrases = ["", "search query", "online store", "benostreamdb speed", "high performance vector db", "graph analytics", "clickbench olap"]
+    phrases = ["", "search query", "online store", "benodb speed", "high performance vector db", "graph analytics", "clickbench olap"]
     search_phrases = rng.choice(phrases, size=rows)
     
     base_date = np.datetime64("2024-01-01")
@@ -173,8 +173,8 @@ def run_datafusion(parquet_path: str, queries: List[tuple[str, str]], warm_runs:
     return {"engine": "datafusion", "available": True, "queries": results}
 
 
-def run_benostreamdb(parquet_path: str, queries: List[tuple[str, str]], warm_runs: int = 2) -> Dict[str, Any]:
-    import benostreamdb as bsdb
+def run_benodb(parquet_path: str, queries: List[tuple[str, str]], warm_runs: int = 2) -> Dict[str, Any]:
+    import benodb as bsdb
 
     tmpdir = tempfile.mkdtemp(prefix="bsdb_sql_")
     try:
@@ -210,7 +210,7 @@ def run_benostreamdb(parquet_path: str, queries: List[tuple[str, str]], warm_run
                 results.append({"name": q_name, "error": str(e)})
 
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "available": True,
             "ingest_s": round(ingest_s, 2),
             "queries": results,
@@ -223,7 +223,7 @@ def main():
     parser = argparse.ArgumentParser(description="ClickBench & SQL Benchmark Runner")
     parser.add_argument("--parquet", default=None, help="Path to parquet table")
     parser.add_argument("--rows", type=int, default=500_000, help="Row count for synthetic ClickBench dataset")
-    parser.add_argument("--engines", default="benostreamdb,duckdb,datafusion", help="Comma-separated engines")
+    parser.add_argument("--engines", default="benodb,duckdb,datafusion", help="Comma-separated engines")
     parser.add_argument("--warm-runs", type=int, default=2, help="Number of warm iterations")
     parser.add_argument("--out", default=None, help="Output markdown path")
     args = parser.parse_args()
@@ -235,7 +235,7 @@ def main():
 
     engines = [e.strip() for e in args.engines.split(",") if e.strip()]
     runners = {
-        "benostreamdb": run_benostreamdb,
+        "benodb": run_benodb,
         "duckdb": run_duckdb,
         "datafusion": run_datafusion,
     }

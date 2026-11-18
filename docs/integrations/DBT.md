@@ -1,16 +1,16 @@
-# dbt Adapter (`dbt-benostreamdb`)
+# dbt Adapter (`dbt-benodb`)
 
-The `dbt-benostreamdb` adapter enables analytics engineering, automated data transformations, and data lineage directly over BenoDB and Apache Iceberg tables.
+The `dbt-benodb` adapter enables analytics engineering, automated data transformations, and data lineage directly over BenoDB and Apache Iceberg tables.
 
 ---
 
 ## Overview
 
-With `dbt-benostreamdb`, you can define models using familiar dbt SQL workflows while taking full advantage of BenoDB's native capabilities:
+With `dbt-benodb`, you can define models using familiar dbt SQL workflows while taking full advantage of BenoDB's native capabilities:
 * **Iceberg Table & View Materializations**: Build standard Parquet tables and metadata views without moving data out of your lakehouse.
 * **Incremental Materializations**: Efficient append and merge models leveraging primary keys and deletion vectors.
-* **Vector & Hybrid Search Macros**: Embedded macros for vector distance scoring and hybrid retrieval (`benostreamdb.vector_search(...)`).
-* **Graph Traversal Macros**: Native relationship walks (`benostreamdb.graph_neighbors(...)`, `benostreamdb.graph_shortest_path(...)`) over edge tables.
+* **Vector & Hybrid Search Macros**: Embedded macros for vector distance scoring and hybrid retrieval (`benodb.vector_search(...)`).
+* **Graph Traversal Macros**: Native relationship walks (`benodb.graph_neighbors(...)`, `benodb.graph_shortest_path(...)`) over edge tables.
 
 ---
 
@@ -19,13 +19,13 @@ With `dbt-benostreamdb`, you can define models using familiar dbt SQL workflows 
 Install the adapter via pip:
 
 ```bash
-pip install dbt-benostreamdb
+pip install dbt-benodb
 ```
 
 Or install from source within the repository:
 
 ```bash
-cd dbt-benostreamdb
+cd dbt-benodb
 pip install -e .
 ```
 
@@ -36,25 +36,25 @@ pip install -e .
 Configure your target connection in `~/.dbt/profiles.yml`:
 
 ```yaml
-benostreamdb_profile:
+benodb_profile:
   target: dev
   outputs:
     dev:
-      type: benostreamdb
+      type: benodb
       database: default
       schema: public
       threads: 4
-      uri: "file:///path/to/benostreamdb/warehouse"
+      uri: "file:///path/to/benodb/warehouse"
 ```
 
 For cloud object storage targets (S3 / GCS / Azure), specify the storage URI:
 
 ```yaml
-benostreamdb_profile:
+benodb_profile:
   target: prod
   outputs:
     prod:
-      type: benostreamdb
+      type: benodb
       database: default
       schema: analytics
       threads: 8
@@ -63,13 +63,13 @@ benostreamdb_profile:
 
 ### Remote runs: `dbt-trino` (no warehouse mount)
 
-`dbt-benostreamdb` is an **embedded** adapter — it opens the warehouse in-process,
+`dbt-benodb` is an **embedded** adapter — it opens the warehouse in-process,
 so the path/URI must be reachable from wherever `dbt` runs. For Airflow, Cloud
 Run, or CI, point `dbt-trino` at a Trino coordinator that has the
-`trino-benostreamdb` plugin installed:
+`trino-benodb` plugin installed:
 
 ```yaml
-benostreamdb_remote:
+benodb_remote:
   target: prod
   outputs:
     prod:
@@ -77,7 +77,7 @@ benostreamdb_remote:
       method: none          # or ldap / jwt, per your coordinator
       host: trino.internal
       port: 8080
-      catalog: benostream   # must match connector.name=benostream in etc/catalog
+      catalog: benodb   # must match connector.name=benodb in etc/catalog
       schema: default
       threads: 8
 ```
@@ -91,7 +91,7 @@ as index building.
 
 ### Which one to use
 
-| | `dbt-benostreamdb` (embedded) | `dbt-trino` + `trino-benostreamdb` |
+| | `dbt-benodb` (embedded) | `dbt-trino` + `trino-benodb` |
 |---|---|---|
 | Infrastructure | none — `pip install` + a warehouse path | Trino coordinator + JVM + plugin + catalog file |
 | Where the warehouse must live | reachable from the dbt process (mounted path / object store creds) | coordinator only |

@@ -12,8 +12,8 @@ use ax_lib::{
     routing::{get, post},
     Json, Router,
 };
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::metadata::TableMetadata;
+use benodb::core::manifest::ManifestManager;
+use benodb::core::metadata::TableMetadata;
 use futures::StreamExt;
 use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ async fn main() {
     }));
 
     // Task 3: Use proper telemetry init
-    let _telemetry_guard = match benostreamdb::telemetry::tracing::init_tracing("iceberg_rest") {
+    let _telemetry_guard = match benodb::telemetry::tracing::init_tracing("iceberg_rest") {
         Ok(guard) => guard,
         Err(e) => {
             eprintln!("Failed to initialize tracing: {e}");
@@ -185,7 +185,7 @@ async fn list_namespaces(
 ) -> impl IntoResponse {
     println!("Catalog prefix: {}", prefix);
     let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
-    let store = match benostreamdb::core::storage::create_object_store(&uri) {
+    let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, %uri, "failed to create object store");
@@ -229,7 +229,7 @@ async fn list_tables(
 ) -> impl IntoResponse {
     println!("Catalog prefix: {}, namespace: {}", prefix, namespace);
     let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
-    let store = match benostreamdb::core::storage::create_object_store(&uri) {
+    let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, %uri, "failed to create object store");
@@ -274,7 +274,7 @@ async fn list_tables(
     Json(response).into_response()
 }
 
-// Replaced by benostreamdb::core::metadata::TableMetadata
+// Replaced by benodb::core::metadata::TableMetadata
 
 async fn get_table(
     ax_lib::extract::Path((prefix, namespace, table)): ax_lib::extract::Path<(
@@ -292,7 +292,7 @@ async fn get_table(
     let table_path = format!("{}/{}", namespace, table);
     let table_full_uri = format!("{}/{}", uri.trim_end_matches('/'), table_path);
 
-    let store = match benostreamdb::core::storage::create_object_store(&table_full_uri) {
+    let store = match benodb::core::storage::create_object_store(&table_full_uri) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, %table_full_uri, "failed to create object store");
@@ -404,7 +404,7 @@ async fn create_table(
 
     // Convert schema
     let arrow_schema =
-        match benostreamdb::core::iceberg::iceberg_json_to_arrow_schema(&payload.schema) {
+        match benodb::core::iceberg::iceberg_json_to_arrow_schema(&payload.schema) {
             Ok(s) => s,
             Err(e) => {
                 return (
@@ -422,10 +422,10 @@ async fn create_table(
         };
 
     // Create table
-    match benostreamdb::Table::create_async(location.clone(), arrow_schema.clone()).await {
+    match benodb::Table::create_async(location.clone(), arrow_schema.clone()).await {
         Ok(_) => {
             // Load the newly created metadata
-            let store = match benostreamdb::core::storage::create_object_store(&location) {
+            let store = match benodb::core::storage::create_object_store(&location) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(error = %e, %location, "failed to create object store");
@@ -447,9 +447,9 @@ async fn create_table(
                         2,
                         uuid::Uuid::new_v4().to_string(),
                         location.clone(),
-                        benostreamdb::core::manifest::Schema::from_arrow(&arrow_schema, 0),
-                        benostreamdb::core::manifest::PartitionSpec::default(),
-                        benostreamdb::core::manifest::SortOrder::default(),
+                        benodb::core::manifest::Schema::from_arrow(&arrow_schema, 0),
+                        benodb::core::manifest::PartitionSpec::default(),
+                        benodb::core::manifest::SortOrder::default(),
                     )
                 });
 
@@ -512,10 +512,10 @@ pub enum TableUpdateAction {
         #[serde(rename = "index-file")]
         // Boxed: `IndexFile` is large, so inlining it here would bloat every
         // variant of this enum (clippy::large_enum_variant).
-        index_file: Box<benostreamdb::core::manifest::IndexFile>,
+        index_file: Box<benodb::core::manifest::IndexFile>,
     },
     AddPartitionSpec {
-        spec: benostreamdb::core::manifest::PartitionSpec,
+        spec: benodb::core::manifest::PartitionSpec,
     },
     SetDefaultSpec {
         #[serde(rename = "spec-id")]
@@ -523,7 +523,7 @@ pub enum TableUpdateAction {
     },
     AddSortOrder {
         #[serde(rename = "sort-order")]
-        sort_order: benostreamdb::core::manifest::SortOrder,
+        sort_order: benodb::core::manifest::SortOrder,
     },
     SetDefaultSortOrder {
         #[serde(rename = "sort-order-id")]
@@ -575,7 +575,7 @@ pub enum TableRequirement {
 fn validate_requirements(
     requirements: &[TableRequirement],
     existing_meta: Option<&TableMetadata>,
-    current_manifest: &benostreamdb::core::manifest::Manifest,
+    current_manifest: &benodb::core::manifest::Manifest,
     current_manifest_ver: u64,
 ) -> Result<(), String> {
     for req in requirements {
@@ -672,7 +672,7 @@ async fn update_table(
     );
 
     let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
-    let store = match benostreamdb::core::storage::create_object_store(&uri) {
+    let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, %uri, "failed to create object store");
@@ -693,7 +693,7 @@ async fn update_table(
     let table_full_uri = format!("{}/{}", uri.trim_end_matches('/'), table_path);
     let manager = ManifestManager::new(store.clone(), &table_path, &uri);
 
-    let table_store = benostreamdb::core::storage::create_object_store(&table_full_uri).ok();
+    let table_store = benodb::core::storage::create_object_store(&table_full_uri).ok();
     let existing_meta = if let Some(ref ts) = table_store {
         TableMetadata::load_latest(ts.as_ref()).await.ok()
     } else {
@@ -704,7 +704,7 @@ async fn update_table(
     let (current_manifest, current_manifest_ver) = manager
         .load_latest_direct()
         .await
-        .unwrap_or((benostreamdb::core::manifest::Manifest::default(), 0));
+        .unwrap_or((benodb::core::manifest::Manifest::default(), 0));
 
     if let Some(ref reqs) = payload.requirements {
         if let Err(msg) = validate_requirements(
@@ -823,7 +823,7 @@ async fn update_table(
                     if let Ok(get_res) = res {
                         let bytes = get_res.bytes().await.unwrap_or_default();
                         if let Ok(list) =
-                            benostreamdb::core::iceberg::read_manifest_list(&bytes[..])
+                            benodb::core::iceberg::read_manifest_list(&bytes[..])
                         {
                             let mut snapshot_data_entries = Vec::new();
                             let mut snapshot_delete_entries = Vec::new();
@@ -860,7 +860,7 @@ async fn update_table(
                                         println!("Read manifest file: {}", clean_path);
                                         let m_bytes = m_res.bytes().await.unwrap_or_default();
                                         if let Ok(m_entries) =
-                                            benostreamdb::core::iceberg::read_manifest(&m_bytes[..])
+                                            benodb::core::iceberg::read_manifest(&m_bytes[..])
                                         {
                                             println!(
                                                 "Manifest contains {} entries",
@@ -877,11 +877,11 @@ async fn update_table(
                                                     // Only add active files
                                                     if ie.status == 1 || ie.status == 0 {
                                                         // ADDED or EXISTING
-                                                        match benostreamdb::core::iceberg::convert_iceberg_to_object(&ie, s, &current_manifest.partition_spec) {
-                                                             Ok(benostreamdb::core::iceberg::IcebergManifestObject::Data(me)) => {
+                                                        match benodb::core::iceberg::convert_iceberg_to_object(&ie, s, &current_manifest.partition_spec) {
+                                                             Ok(benodb::core::iceberg::IcebergManifestObject::Data(me)) => {
                                                                  snapshot_data_entries.push(*me);
                                                              },
-                                                             Ok(benostreamdb::core::iceberg::IcebergManifestObject::Delete(df)) => {
+                                                             Ok(benodb::core::iceberg::IcebergManifestObject::Delete(df)) => {
                                                                  snapshot_delete_entries.push(df);
                                                              },
                                                              Err(e) => {
@@ -939,7 +939,7 @@ async fn update_table(
             } => {
                 println!("Processing AddSchema...");
                 if let Ok(arrow_schema) =
-                    benostreamdb::core::iceberg::iceberg_json_to_arrow_schema(&schema)
+                    benodb::core::iceberg::iceberg_json_to_arrow_schema(&schema)
                 {
                     let id = schema
                         .get("schema-id")
@@ -947,7 +947,7 @@ async fn update_table(
                         .map(|v| v as i32)
                         .unwrap_or(current_manifest.schemas.len() as i32 + 1);
                     let new_schema =
-                        benostreamdb::core::manifest::Schema::from_arrow(&arrow_schema, id);
+                        benodb::core::manifest::Schema::from_arrow(&arrow_schema, id);
 
                     let mut schemas = current_manifest.schemas.clone();
                     schemas.push(new_schema);
@@ -1010,7 +1010,7 @@ async fn update_table(
         || updated_properties.is_some()
         || removed_properties.is_some();
 
-    let commit_metadata = benostreamdb::core::manifest::CommitMetadata {
+    let commit_metadata = benodb::core::manifest::CommitMetadata {
         updated_schemas,
         updated_schema_id,
         updated_partition_specs,
@@ -1040,13 +1040,13 @@ async fn update_table(
                                 meta.last_updated_ms =
                                     meta.last_updated_ms.max(committed_manifest.timestamp_ms);
                                 Ok(
-                                    benostreamdb::core::metadata::MetadataUpdateOutcome::Updated(
+                                    benodb::core::metadata::MetadataUpdateOutcome::Updated(
                                         meta,
                                     ),
                                 )
                             }
                             None => Ok(
-                                benostreamdb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(
+                                benodb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(
                                     TableMetadata::default(),
                                 ),
                             ),
@@ -1062,8 +1062,8 @@ async fn update_table(
         }
         Err(e) => {
             let is_conflict = matches!(
-                e.downcast_ref::<benostreamdb::core::error::BenoStreamError>(),
-                Some(benostreamdb::core::error::BenoStreamError::ManifestVersionMismatch { .. })
+                e.downcast_ref::<benodb::core::error::BenoStreamError>(),
+                Some(benodb::core::error::BenoStreamError::ManifestVersionMismatch { .. })
             );
             let (status, code) = if is_conflict {
                 (StatusCode::CONFLICT, 409)
@@ -1119,7 +1119,7 @@ mod tests {
         meta.table_uuid = "uuid-123".to_string();
         meta.current_snapshot_id = Some(42);
         meta.current_schema_id = 1;
-        let manifest = benostreamdb::core::manifest::Manifest::default();
+        let manifest = benodb::core::manifest::Manifest::default();
 
         let ok_reqs = vec![
             TableRequirement::AssertTableUuid {

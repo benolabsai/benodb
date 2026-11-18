@@ -1,5 +1,5 @@
 [package]
-name = "benostreamdb"
+name = "benodb"
 version.workspace = true
 edition = "2021"
 # Declared MSRV, kept in step with `rust-toolchain.toml` and the
@@ -8,9 +8,9 @@ edition = "2021"
 # dependency resolver has no floor to honour.
 rust-version = "1.100"
 license = "MIT AND Apache-2.0"
-authors = ["Richard Albright and BenoStreamDB Contributors"]
-description = "BenoStreamDB - Serverless Index-Streaming Database with Overlay Indexing and Vector Search"
-repository = "https://github.com/benolabsai/benostreamdb"
+authors = ["Richard Albright and BenoDB Contributors"]
+description = "BenoDB - Embedded Apache Iceberg Database with Out-of-Core Vector, BM25, and Graph Indexing"
+repository = "https://github.com/benolabsai/benodb"
 readme = "README.md"
 keywords = ["database", "vector-search", "iceberg", "parquet", "indexing"]
 categories = ["database-implementations", "data-structures", "concurrency"]
@@ -32,20 +32,20 @@ exclude = [
 ]
 
 [lib]
-name = "benostreamdb"
+name = "benodb"
 crate-type = ["cdylib", "rlib"]
 
 [workspace]
 members = [
     ".",
-    "benostream-gpu-ann",
+    "benodb-gpu-ann",
     "server/flight_sql",
-    "contrib/benostreamdb-search",
-    "contrib/benostreamdb-mcp",
+    "contrib/benodb-search",
+    "contrib/benodb-mcp",
 ]
 
 # Single source of truth for the version of the core engine and the connectors
-# that ship with it (Flight SQL, search gateway). `benostream-gpu-ann` is an
+# that ship with it (Flight SQL, search gateway). `benodb-gpu-ann` is an
 # independent crate and keeps its own version. The release workflow bumps this
 # one line from the git tag; Maven and dbt derive from it.
 [workspace.package]
@@ -72,14 +72,14 @@ trace-search = []
 validate-embeddings = []
 
 # GPU Acceleration Features
-wgpu = ["dep:wgpu", "benostream-gpu-ann/wgpu"]
+wgpu = ["dep:wgpu", "benodb-gpu-ann/wgpu"]
 pollster = ["dep:pollster"]
-cuda = ["dep:cudarc", "dep:libloading", "benostream-gpu-ann/cuda"]
+cuda = ["dep:cudarc", "dep:libloading", "benodb-gpu-ann/cuda"]
 metrics-exporter-prometheus = ["dep:metrics-exporter-prometheus"]
 
 
 [dependencies]
-benostream-gpu-ann = { version = "0.2.0", path = "benostream-gpu-ann", default-features = false }
+benodb-gpu-ann = { version = "0.2.0", path = "benodb-gpu-ann", default-features = false }
 libc = "0.2"
 # core columnar memory format
 # `pyarrow` (which pulls pyo3 → libpython) is only needed for the Python

@@ -13,7 +13,7 @@ use datafusion::error::{DataFusionError, Result};
 ///
 /// # Examples
 /// ```
-/// use benostreamdb::core::sql::literal::sparse::parse_sparse_vector;
+/// use benodb::core::sql::literal::sparse::parse_sparse_vector;
 ///
 /// let result = parse_sparse_vector("{1:0.5, 10:0.3}", 1000).unwrap();
 /// ```

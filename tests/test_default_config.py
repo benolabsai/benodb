@@ -1,7 +1,7 @@
-import benostreamdb as bsdb
+import benodb as bsdb
 import os
 import pytest
-from benostreamdb import PyNessieCatalog
+from benodb import PyNessieCatalog
 
 def test_load_default_catalog():
     print("Testing load_default_catalog...")

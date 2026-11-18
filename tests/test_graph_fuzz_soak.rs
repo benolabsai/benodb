@@ -19,7 +19,7 @@ async fn test_graph_udafs_fuzz_soak() {
     let duration = Duration::from_secs(soak_seconds);
 
     let ctx = SessionContext::new();
-    for udaf in benostreamdb::core::sql::graph_udf::all_graph_aggregates() {
+    for udaf in benodb::core::sql::graph_udf::all_graph_aggregates() {
         ctx.register_udaf(udaf);
     }
 

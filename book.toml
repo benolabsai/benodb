@@ -6,5 +6,5 @@ src = "docs"
 title = "BenoStreamDB Documentation"
 
 [output.html]
-git-repository-url = "https://github.com/benolabsai/benostreamdb"
-edit-url-template = "https://github.com/benolabsai/benostreamdb/edit/main/{path}"
+git-repository-url = "https://github.com/benolabsai/benodb"
+edit-url-template = "https://github.com/benolabsai/benodb/edit/main/{path}"

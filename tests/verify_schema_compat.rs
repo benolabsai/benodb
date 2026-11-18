@@ -8,13 +8,13 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::{PartitionField, PartitionSpec};
-use benostreamdb::Table;
+use benodb::core::manifest::{PartitionField, PartitionSpec};
+use benodb::Table;
 use std::sync::Arc;
 
 async fn clear_caches() {
-    benostreamdb::core::cache::MANIFEST_CACHE.invalidate_all();
-    benostreamdb::core::cache::LATEST_VERSION_CACHE.invalidate_all();
+    benodb::core::cache::MANIFEST_CACHE.invalidate_all();
+    benodb::core::cache::LATEST_VERSION_CACHE.invalidate_all();
 }
 
 #[tokio::test]

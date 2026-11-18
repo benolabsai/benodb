@@ -5,7 +5,7 @@ Verifies that a table written by BenoStreamDB is readable by the upstream
 reference Rust implementation, which shares no code with this engine.
 
 A reader built from the writer's own assumptions proves nothing. This crate
-therefore links `iceberg` only; it never depends on `benostreamdb`. It opens the
+therefore links `iceberg` only; it never depends on `benodb`. It opens the
 table tree as a *static table* from its `metadata/v<N>.metadata.json` and asserts
 what any external engine must be able to see.
 

@@ -147,7 +147,7 @@ async fn v3_manifest_declares_format_version_3_and_dv_fields() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let uri = table_uri(&tmp.path().join("v3_table"));
 
-    let table = benostreamdb::core::table::Table::create_async(uri.clone(), events_schema())
+    let table = benodb::core::table::Table::create_async(uri.clone(), events_schema())
         .await
         .context("create v3 table")?;
     table.set_format_version(3);
@@ -221,7 +221,7 @@ async fn v2_manifest_still_declares_format_version_2() -> Result<()> {
     let uri = table_uri(&tmp.path().join("v2_table"));
 
     // Default table creation is V2; do not touch the format version.
-    let table = benostreamdb::core::table::Table::create_async(uri.clone(), events_schema())
+    let table = benodb::core::table::Table::create_async(uri.clone(), events_schema())
         .await
         .context("create v2 table")?;
     table.write_async(vec![events_batch()?]).await?;
@@ -266,7 +266,7 @@ fn find_file(root: &Path, prefix: &str, suffix: &str) -> Option<PathBuf> {
     None
 }
 
-async fn read_ids(table: &benostreamdb::core::table::Table) -> Result<Vec<i32>> {
+async fn read_ids(table: &benodb::core::table::Table) -> Result<Vec<i32>> {
     let batches = table.sql("SELECT id FROM t ORDER BY id").await?;
     let mut ids = Vec::new();
     for b in &batches {
@@ -286,7 +286,7 @@ async fn v3_delete_writes_a_deletion_vector_instead_of_parquet_position_deletes(
     let tmp = tempfile::tempdir()?;
     let uri = table_uri(&tmp.path().join("v3_del"));
 
-    let table = benostreamdb::core::table::Table::create_async(uri.clone(), events_schema())
+    let table = benodb::core::table::Table::create_async(uri.clone(), events_schema())
         .await
         .context("create v3 table")?;
     table.set_format_version(3);

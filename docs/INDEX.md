@@ -2,7 +2,7 @@
 
 BenoDB is an index-overlay engine for the lakehouse built in Rust. It layers reconstructible, persistent secondary indexes—HNSW vector search, BM25 Okapi full-text, Roaring Bitmaps, JSON path filters, and CSR graphs—directly onto Apache Iceberg tables in object storage.
 
-> **⚠️ Deployment Security Notice:** BenoDB network servers (`benostreamdb-flight`, `bsdb-search`, and `benostreamdb-mcp`) do not terminate TLS natively. They support stateless authentication (`BSDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md).
+> **⚠️ Deployment Security Notice:** BenoDB network servers (`benodb-flight`, `bsdb-search`, and `benodb-mcp`) do not terminate TLS natively. They support stateless authentication (`BSDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benodb/blob/main/SECURITY.md).
 
 ---
 
@@ -10,14 +10,14 @@ BenoDB is an index-overlay engine for the lakehouse built in Rust. It layers rec
 
 BenoDB provides native connectors and API bridges for data engineering and AI ecosystems:
 
-* **[Python Client & Vector API](https://www.benostreamdb.org/integrations/python.html)**: Embedded PyO3 bindings with zero-copy PyArrow integration, `Table` operations, vector search, and SQL sessions.
-* **[Apache Spark Connector](https://www.benostreamdb.org/integrations/spark.html)**: Native DataSource V2 connector for Spark 3.5 & 4.x with vector UDFs, secondary index pushdown, catalog stored procedures, and row-level operations.
-* **[Trino Connector](https://www.benostreamdb.org/integrations/trino.html)**: Distributed SQL queries over Iceberg tables with index-accelerated predicate pushdown and graph traversal functions.
-* **[dbt Adapter](https://www.benostreamdb.org/integrations/dbt.html)**: `dbt-benostreamdb` adapter for analytics engineering, incremental materializations, and vector/graph macros.
-* **[Arrow Flight SQL Gateway](https://www.benostreamdb.org/integrations/flight_sql.html)**: High-performance single-process gRPC database endpoint for polyglot clients (Go, C++, JDBC/ODBC) and BI tools.
-* **[REST Search Gateway](https://www.benostreamdb.org/integrations/search_gateway.html)**: Drop-in REST compatibility subset for OpenSearch / Elasticsearch 7.10 (port 9200) and Qdrant v1.x (port 6333).
-* **[Model Context Protocol (MCP)](https://www.benostreamdb.org/integrations/mcp.html)**: AI agent tool server for LLMs and autonomous agents (Claude Desktop, Cursor, Antigravity).
-* **[Java JNI Bridge](https://www.benostreamdb.org/integrations/java_jni.html)**: Low-level Arrow C Data Interface bridge powering JVM query engines.
+* **[Python Client & Vector API](https://benolabsai.com/docs/integrations/python.html)**: Embedded PyO3 bindings with zero-copy PyArrow integration, `Table` operations, vector search, and SQL sessions.
+* **[Apache Spark Connector](https://benolabsai.com/docs/integrations/spark.html)**: Native DataSource V2 connector for Spark 3.5 & 4.x with vector UDFs, secondary index pushdown, catalog stored procedures, and row-level operations.
+* **[Trino Connector](https://benolabsai.com/docs/integrations/trino.html)**: Distributed SQL queries over Iceberg tables with index-accelerated predicate pushdown and graph traversal functions.
+* **[dbt Adapter](https://benolabsai.com/docs/integrations/dbt.html)**: `dbt-benodb` adapter for analytics engineering, incremental materializations, and vector/graph macros.
+* **[Arrow Flight SQL Gateway](https://benolabsai.com/docs/integrations/flight_sql.html)**: High-performance single-process gRPC database endpoint for polyglot clients (Go, C++, JDBC/ODBC) and BI tools.
+* **[REST Search Gateway](https://benolabsai.com/docs/integrations/search_gateway.html)**: Drop-in REST compatibility subset for OpenSearch / Elasticsearch 7.10 (port 9200) and Qdrant v1.x (port 6333).
+* **[Model Context Protocol (MCP)](https://benolabsai.com/docs/integrations/mcp.html)**: AI agent tool server for LLMs and autonomous agents (Claude Desktop, Cursor, Antigravity).
+* **[Java JNI Bridge](https://benolabsai.com/docs/integrations/java_jni.html)**: Low-level Arrow C Data Interface bridge powering JVM query engines.
 
 ---
 
@@ -27,16 +27,16 @@ BenoDB provides native connectors and API bridges for data engineering and AI ec
 * **[2-Minute Quickstart](QUICKSTART.md)**: Lightning-fast guide to install, write records, and run vector search and pgvector SQL.
 * **[Installation Guide](INSTALLATION.md)**: Hardware acceleration (CUDA/Metal), connectors build, Docker, and security guidelines.
 * **[Core Architecture](ARCHITECTURE.md)**: The indexed lakehouse philosophy, storage layout, write path, and overlay invariants.
-* **[ADR-001: Tightened Index Overlay Contract](https://www.benostreamdb.org/guides/adr_001.html)**: Compound Puffin bundles, artifact lifecycle, and metadata synchronization.
-* **[ADR-002: Global Vector Clustering](https://www.benostreamdb.org/guides/adr_002.html)**: Cluster-keyed index artifacts, sequential Puffin sharding, and index-only compaction.
-* **[ADR-003: Graph RAG Hybrid Memory](https://www.benostreamdb.org/guides/adr_003.html)**: O(V) resident state over a mmap'd CSR, with the O(E) edge set kept out-of-core.
-* **[ADR-004: Observability Pipeline](https://www.benostreamdb.org/guides/adr_004.html)**: Metrics registry, exporters, OTLP push, and health endpoints.
-* **[ADR-005: SQL DDL & Maintenance Surface](https://www.benostreamdb.org/guides/adr_005.html)**: AST interception for CREATE/ALTER/DROP/OPTIMIZE/TRUNCATE/VACUUM, `ALTER TABLE … EXECUTE` actions, and `SET`/`SHOW benostream.*`.
-* **[ADR-006: Trino Table-Function Pushdown](https://www.benostreamdb.org/guides/adr_006.html)**: Why vector and graph access goes through table functions rather than `applyTopN`, and the procedures that mirror the Spark maintenance surface.
-* **[ADR-007: Native Connector Architecture](https://www.benostreamdb.org/guides/adr_007.html)**: Iceberg-free Spark DSv2, UDF exposure through pass-through SQL and table functions, and the Scala/Trino version matrix.
-* **[ADR-008: PendingCommit Transaction State Machine](https://www.benostreamdb.org/guides/adr_008.html)**: Explicit `Staging -> ManifestCommitted -> IcebergPublished` commit phases, linearizable `buffer_epoch` read double-check, segmented WAL rotation/watermark pruning, and V3/REST CAS convergence.
-* **[ADR-009: Catalog Parity & CAS Hardening](https://www.benostreamdb.org/guides/adr_009.html)**: Every catalog adapter compare-and-swaps on `metadata_location` and surfaces a lost race as a retryable conflict.
-* **[ADR-010: Iceberg V3 & Cross-Engine Conformance](https://www.benostreamdb.org/guides/adr_010.html)**: Spec-exact `deletion-vector-v1` writes, published row lineage, and a foreign reader that shares no engine code as the acceptance test.
+* **[ADR-001: Tightened Index Overlay Contract](https://benolabsai.com/docs/guides/adr_001.html)**: Compound Puffin bundles, artifact lifecycle, and metadata synchronization.
+* **[ADR-002: Global Vector Clustering](https://benolabsai.com/docs/guides/adr_002.html)**: Cluster-keyed index artifacts, sequential Puffin sharding, and index-only compaction.
+* **[ADR-003: Graph RAG Hybrid Memory](https://benolabsai.com/docs/guides/adr_003.html)**: O(V) resident state over a mmap'd CSR, with the O(E) edge set kept out-of-core.
+* **[ADR-004: Observability Pipeline](https://benolabsai.com/docs/guides/adr_004.html)**: Metrics registry, exporters, OTLP push, and health endpoints.
+* **[ADR-005: SQL DDL & Maintenance Surface](https://benolabsai.com/docs/guides/adr_005.html)**: AST interception for CREATE/ALTER/DROP/OPTIMIZE/TRUNCATE/VACUUM, `ALTER TABLE … EXECUTE` actions, and `SET`/`SHOW benostream.*`.
+* **[ADR-006: Trino Table-Function Pushdown](https://benolabsai.com/docs/guides/adr_006.html)**: Why vector and graph access goes through table functions rather than `applyTopN`, and the procedures that mirror the Spark maintenance surface.
+* **[ADR-007: Native Connector Architecture](https://benolabsai.com/docs/guides/adr_007.html)**: Iceberg-free Spark DSv2, UDF exposure through pass-through SQL and table functions, and the Scala/Trino version matrix.
+* **[ADR-008: PendingCommit Transaction State Machine](https://benolabsai.com/docs/guides/adr_008.html)**: Explicit `Staging -> ManifestCommitted -> IcebergPublished` commit phases, linearizable `buffer_epoch` read double-check, segmented WAL rotation/watermark pruning, and V3/REST CAS convergence.
+* **[ADR-009: Catalog Parity & CAS Hardening](https://benolabsai.com/docs/guides/adr_009.html)**: Every catalog adapter compare-and-swaps on `metadata_location` and surfaces a lost race as a retryable conflict.
+* **[ADR-010: Iceberg V3 & Cross-Engine Conformance](https://benolabsai.com/docs/guides/adr_010.html)**: Spec-exact `deletion-vector-v1` writes, published row lineage, and a foreign reader that shares no engine code as the acceptance test.
 
 ### 2. Table Storage & Catalogs
 * **[Apache Iceberg Storage & Zero-Copy Interop](ICEBERG_STORAGE.md)**: Unified architecture guide to native Iceberg V2/V3 storage, PyIceberg validation, metadata specifications, partition/sort evolution, and multi-engine zero-copy reads (DuckDB, Spark, Trino).
@@ -60,12 +60,12 @@ BenoDB provides native connectors and API bridges for data engineering and AI ec
 * **[Monitoring & Observability](MONITORING.md)**: Prometheus metrics endpoints, OpenTelemetry traces, and health check probes.
 * **[Recovery Runbook](RECOVERY_RUNBOOK.md)**: Operational runbook for crash recovery, WAL truncation, and index reconciliation.
 * **[Zero-Panic Policy](NO_PANIC_POLICY.md)**: Engineering invariants ensuring production paths fail gracefully with descriptive errors instead of crashing.
-* **[Dependency Risk Analysis](https://github.com/benolabsai/benostreamdb/blob/main/docs/governance/DEPENDENCY_RISK.md)**: Supply chain posture, reviewed dependency advisories, and dated resolution tracking.
+* **[Dependency Risk Analysis](https://github.com/benolabsai/benodb/blob/main/docs/governance/DEPENDENCY_RISK.md)**: Supply chain posture, reviewed dependency advisories, and dated resolution tracking.
 
 ### 6. Tutorials & Walkthroughs
-* **[Tutorial 1: AI Retrieval via MCP](https://www.benostreamdb.org/tutorials/01_ai_retrieval_mcp.html)**: Building an agentic retrieval pipeline with MCP tools.
-* **[Tutorial 2: JSON Document Retrieval](https://www.benostreamdb.org/tutorials/02_json_document_retrieval.html)**: Inverted JSON path indexing and extraction.
-* **[Tutorial 3: Graph Traversal](https://www.benostreamdb.org/tutorials/03_graph_traversal.html)**: Traversing multi-hop entity relationships with SQL table functions.
+* **[Tutorial 1: AI Retrieval via MCP](https://benolabsai.com/docs/tutorials/01_ai_retrieval_mcp.html)**: Building an agentic retrieval pipeline with MCP tools.
+* **[Tutorial 2: JSON Document Retrieval](https://benolabsai.com/docs/tutorials/02_json_document_retrieval.html)**: Inverted JSON path indexing and extraction.
+* **[Tutorial 3: Graph Traversal](https://benolabsai.com/docs/tutorials/03_graph_traversal.html)**: Traversing multi-hop entity relationships with SQL table functions.
 
 ### 7. Evaluation & Project Roadmap
 * **[Benchmarking Methodology](BENCHMARKING.md)**: Reproducibility contract, test harnesses, and competitive analysis guidelines.

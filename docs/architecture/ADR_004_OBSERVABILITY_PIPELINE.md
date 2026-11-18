@@ -1,8 +1,8 @@
 # ADR-004: Observability Pipeline (Registry, Exporters, OTLP)
 
 > **Status: implemented.** Promoted from `plans/observability_implementation_plan.md`. The core owns the registry
-> ([`gather_text`](https://github.com/benolabsai/benostreamdb/blob/main/src/telemetry/metrics.rs#L313) +
-> [`render_metrics`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/telemetry.rs#L50)); the `observability` exporter
+> ([`gather_text`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/metrics.rs#L313) +
+> [`render_metrics`](https://github.com/benolabsai/benodb/blob/main/src/core/telemetry.rs#L50)); the `observability` exporter
 > is configurable (`BSDB_METRICS_BIND`/`BSDB_METRICS_PORT`, localhost default);
 > Flight SQL serves `/metrics`, `/health`, `/readyz`; `bsdb-search` merges the
 > core registry; and the JNI `gatherMetrics()` bridge is in place for the Spark
@@ -10,10 +10,10 @@
 > `BSDB_SEARCH_` / `BSDB_QDRANT_` (hard rename, no aliases).
 >
 > **OTLP push + Grafana are now implemented** (the follow-ups previously listed
-> as out of scope): [`src/telemetry/otlp.rs`](https://github.com/benolabsai/benostreamdb/blob/main/src/telemetry/otlp.rs) converts
+> as out of scope): [`src/telemetry/otlp.rs`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/otlp.rs) converts
 > the Prometheus registry to OTLP/HTTP JSON and pushes it
 > (`BSDB_OTLP_ENDPOINT`, `BSDB_OTLP_INTERVAL_SECS`, `BSDB_OTLP_HEADERS`,
-> `BSDB_SERVICE_NAME`); [`deploy/observability/`](https://github.com/benolabsai/benostreamdb/blob/main/deploy/observability/README.md)
+> `BSDB_SERVICE_NAME`); [`deploy/observability/`](https://github.com/benolabsai/benodb/blob/main/deploy/observability/README.md)
 > brings up a collector + Prometheus + a provisioned Grafana dashboard.
 
 Implements the recommendations from the observability review. Goal: one metrics
@@ -25,7 +25,7 @@ connectors.
 
 1. **The core owns the registry.** All engine metrics are recorded with the
    `prometheus` crate into the default registry in
-   [`src/telemetry/metrics.rs`](https://github.com/benolabsai/benostreamdb/blob/main/src/telemetry/metrics.rs#L32). Do not move
+   [`src/telemetry/metrics.rs`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/metrics.rs#L32). Do not move
    ownership into any server.
 2. **One renderer.** Add `gather_text()` to the core and have every host call it.
 3. **Fix the `observability` exporter.** It currently installs a
@@ -73,21 +73,21 @@ Spawn the server on a background task so `init_metrics_exporter()` returns.
 - `Cargo.toml`: add `axum`, `tracing`, `tracing-subscriber` (or reuse the core's
   `init_tracing`).
 - `src/main.rs`:
-  - call `benostreamdb::telemetry::tracing::init_tracing("flight_sql")` and hold
+  - call `benodb::telemetry::tracing::init_tracing("flight_sql")` and hold
     the guard;
   - spawn an axum server on `BSDB_METRICS_BIND:BSDB_METRICS_PORT`
     (default `127.0.0.1:9090`) with:
-    - `GET /metrics` → `benostreamdb::telemetry::metrics::gather_text()`
+    - `GET /metrics` → `benodb::telemetry::metrics::gather_text()`
       (`text/plain; version=0.0.4`);
     - `GET /health` → `200 ok` (liveness);
     - `GET /readyz` → readiness: storage reachable / warehouse configured;
       `503` otherwise.
 - Keep the gRPC listener on `50051`; the HTTP listener is separate.
 
-### 4. Merge core registry into `bsdb-search` — `contrib/benostreamdb-search`
+### 4. Merge core registry into `bsdb-search` — `contrib/benodb-search`
 
 - `src/handlers/metrics.rs`: append
-  `benostreamdb::telemetry::metrics::gather_text()` to
+  `benodb::telemetry::metrics::gather_text()` to
   `state.metrics.gather_text()`. Namespaces do not collide
   (`bsdb_search_*` vs `benostreamdb_*`).
 - Add a test asserting a core metric name appears in the `/metrics` body.
@@ -98,7 +98,7 @@ Add two entry points returning the Prometheus text:
 
 ```rust
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_gatherMetrics(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_gatherMetrics(
     mut env: JNIEnv, _class: JClass,
 ) -> jstring {
     match env.new_string(crate::telemetry::metrics::gather_text()) {
@@ -109,13 +109,13 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_gathe
 ```
 
 and the Trino equivalent
-(`Java_com_benostreamdb_trino_BenoDBJNIBridge_gatherMetrics`).
+(`Java_com_benodb_trino_BenoDBJNIBridge_gatherMetrics`).
 
 Declare the native methods in the connectors:
 
-- `spark-benostreamdb/.../jni/BenoStreamJNIBridge.scala`:
+- `spark-benodb/.../jni/BenoDBJNIBridge.scala`:
   `@native def gatherMetrics(): String`
-- `trino-benostreamdb/.../BenoDBJNIBridge.java`:
+- `trino-benodb/.../BenoDBJNIBridge.java`:
   `public static native String gatherMetrics();`
 
 Follow-up (optional, larger): register the parsed metrics into Spark's
@@ -123,11 +123,11 @@ Follow-up (optional, larger): register the parsed metrics into Spark's
 
 ### 6. Verification
 
-- `cargo build -p benostreamdb --features observability`
-- `cargo build -p benostreamdb-flight`
-- `cargo build -p benostreamdb-search`
+- `cargo build -p benodb --features observability`
+- `cargo build -p benodb-flight`
+- `cargo build -p benodb-search`
 - `cargo build --features java`
-- `cargo test -p benostreamdb-flight` and the search metrics test.
+- `cargo test -p benodb-flight` and the search metrics test.
 - Manual: `curl localhost:9090/metrics` on Flight SQL; confirm
   `benostreamdb_*` and `bsdb_search_*` both appear on `bsdb-search`.
 

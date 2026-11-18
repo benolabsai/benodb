@@ -3,7 +3,7 @@ import shutil
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
-import benostreamdb as bsdb
+import benodb as bsdb
 
 def verify_explain():
     print("=== Verifying BenoStreamDB EXPLAIN (SciFact Scientific Benchmark) ===")

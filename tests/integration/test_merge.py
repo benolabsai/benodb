@@ -1,6 +1,6 @@
 import tempfile
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import shutil
 import os

@@ -297,8 +297,8 @@ pub fn simple_kmeans_with_seed(
     // Default to the shared deterministic build seed if none is provided, so the
     // centroids — and therefore the index and its recall — are reproducible
     // across platforms, cores, and CI runs. One constant, defined in
-    // `benostream-gpu-ann`, is used by every randomised step of index building.
-    let seed_val = seed.unwrap_or(benostream_gpu_ann::INDEX_BUILD_SEED);
+    // `benodb-gpu-ann`, is used by every randomised step of index building.
+    let seed_val = seed.unwrap_or(benodb_gpu_ann::INDEX_BUILD_SEED);
 
     // Gated dispatch: route eligible configurations to high-throughput e-means.
     // `BSDB_EMEANS=0` forces the Lloyd path, which is the control arm for

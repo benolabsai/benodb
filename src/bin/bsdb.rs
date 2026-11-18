@@ -7,8 +7,8 @@
 )]
 
 use arrow::util::pretty::print_batches;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::table::Table;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::table::Table;
 use clap::{Parser, Subcommand};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -116,7 +116,7 @@ enum TableCommands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = benostreamdb::telemetry::tracing::init_tracing("bsdb")?;
+    let _guard = benodb::telemetry::tracing::init_tracing("bsdb")?;
 
     let cli = Cli::parse();
     let session = BenoStreamSession::new(None);
@@ -227,7 +227,7 @@ async fn ingest_table(
     coordinate: bool,
     lease_ttl_secs: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use benostreamdb::core::table::IngestOptions;
+    use benodb::core::table::IngestOptions;
 
     let table = Table::new_async(uri.to_string()).await?;
 

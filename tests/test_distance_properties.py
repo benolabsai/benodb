@@ -8,7 +8,7 @@ Tests Properties 1, 2, 3, 5, and 6 from the design document
 import pytest
 import numpy as np
 from hypothesis import given, strategies as st, settings
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 # Feature: python-vector-api-gpu-acceleration, Property 1: Distance Computation Correctness

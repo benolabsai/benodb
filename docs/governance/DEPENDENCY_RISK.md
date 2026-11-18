@@ -4,7 +4,7 @@
 - **Owner:** BenoDB core
 - **Initial tracking plan:** 2026-10-02 (`6213bcdc`)
 - **Last verified:** 2026-11-10 (v0.15.1)
-- **Companion config:** [`deny.toml`](https://github.com/benolabsai/benostreamdb/blob/main/deny.toml) (`cargo-deny`), [`audit.toml`](https://github.com/benolabsai/benostreamdb/blob/main/audit.toml) (`cargo-audit`)
+- **Companion config:** [`deny.toml`](https://github.com/benolabsai/benodb/blob/main/deny.toml) (`cargo-deny`), [`audit.toml`](https://github.com/benolabsai/benodb/blob/main/audit.toml) (`cargo-audit`)
 
 This document is the **tracking plan** for dependency advisories we have
 reviewed and accepted (or resolved). It keeps the allow-lists in
@@ -45,7 +45,7 @@ migration path, and resolution record once cleared.
 | Kind | Unmaintained (not a vulnerability) |
 | Initial review | **2026-09-29** (`1e3df0fa`; formally tracked **2026-10-02**, `6213bcdc`) |
 | Last verified | **2026-11-10** |
-| Chain | **Direct** dependency of `benostreamdb` (`Cargo.toml`), used in [`hnswio.rs`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/index/hnsw_rs/hnswio.rs) |
+| Chain | **Direct** dependency of `benodb` (`Cargo.toml`), used in [`hnswio.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/index/hnsw_rs/hnswio.rs) |
 | Reachability | Runtime, but only for internal HNSW point-vector dump/load. The bytes are reconstructible Puffin index sidecars authored by the engine itself, not untrusted input. `config::legacy()` preserves byte-compatibility with bincode 1.3 for older dumps. |
 | Migration path | Replace with a maintained serializer (`postcard`, `rmp-serde`, or `ciborium`). This changes the wire format, requiring a **format-version bump + index rebuild** — acceptable because HNSW sidecars are rebuildable. |
 | Status | Accepted, tracked. |
@@ -105,7 +105,7 @@ migration path, and resolution record once cleared.
 | Partial resolution | **2026-10-27** (`498cbc1f`) — `zstd-sys` bumped to `2.1.2+zstd.1.5.7`, clearing `RUSTSEC-2026-0410`. |
 | Last verified | **2026-11-10** |
 | Chain | **Transitive**: `arrow-ipc 57.3.1`, `parquet 57.3.1`, `datafusion 52.5.0`, `datafusion-datasource 52.5.0`, and `compression-codecs 0.4.38` all require `zstd ^0.13` / `zstd-safe ^7.2`. Only `arrow-ipc 60.0.0+` accepts `zstd ^0.14`. |
-| Reachability | **Not reachable in this configuration.**<br>• **0391** requires reusing `with_context` stream encoders/decoders across logically separate streams; we call only [`puffin.rs`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/puffin.rs) in Puffin readers and bulk APIs in Parquet/DataFusion.<br>• **0398** sits behind `zstd-safe`'s `seekable` feature, which is **disabled** (`cargo tree -e features -i zstd-safe` shows `arrays,legacy,std,zdict_builder` only).<br>• **0403** requires `zstd::stream::write::Decoder` with a corrupt legacy (v0.4–v0.7) frame; bulk APIs and `decode_all` are unaffected. |
+| Reachability | **Not reachable in this configuration.**<br>• **0391** requires reusing `with_context` stream encoders/decoders across logically separate streams; we call only [`puffin.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/puffin.rs) in Puffin readers and bulk APIs in Parquet/DataFusion.<br>• **0398** sits behind `zstd-safe`'s `seekable` feature, which is **disabled** (`cargo tree -e features -i zstd-safe` shows `arrays,legacy,std,zdict_builder` only).<br>• **0403** requires `zstd::stream::write::Decoder` with a corrupt legacy (v0.4–v0.7) frame; bulk APIs and `decode_all` are unaffected. |
 | Fix status | Blocked upstream on the Apache Arrow 57 / DataFusion 52 stack (no `0.13.x` / `7.x` backports). |
 | Migration path | Upgrade the data stack to `arrow`/`parquet` 60 + `datafusion` 54 (`zstd` 0.14 + `zstd-safe` 8.x). Do **not** pull a duplicate `zstd 0.14` C library alongside `0.13`. |
 | Status | Accepted (unreachable, upstream-blocked). |
@@ -119,7 +119,7 @@ migration path, and resolution record once cleared.
 | Kind | Vulnerability (unbounded allocation in binary protocol `read_bytes`) |
 | Initial review | **2026-11-08** (`133c2621`) |
 | Last verified | **2026-11-10** |
-| Chain | **Transitive**: `thrift 0.17.0` ← `parquet 57.3.1` ← (`benostreamdb`, `datafusion 52.5.0`, `datafusion-common 52.5.0`, `datafusion-datasource-parquet 52.5.0`) |
+| Chain | **Transitive**: `thrift 0.17.0` ← `parquet 57.3.1` ← (`benodb`, `datafusion 52.5.0`, `datafusion-common 52.5.0`, `datafusion-datasource-parquet 52.5.0`) |
 | Reachability | Reachable only when decoding Parquet Thrift file footers/metadata. Segment Parquet files live inside trusted Iceberg table storage authored by authenticated writers/engines, not arbitrary untrusted Thrift network streams. |
 | Fix status | Blocked upstream by `parquet 57.3.1` / `datafusion 52.5.0`. |
 | Migration path | Track Arrow (`parquet`) and DataFusion releases for a fix or removal of `thrift 0.17.0`; drop ignore from `deny.toml` / `audit.toml` once cleared. |
@@ -134,7 +134,7 @@ migration path, and resolution record once cleared.
 | Kind | Vulnerability (uninitialized page-cache memory in SQLite `-wal` recovery) |
 | Initial review | **2026-11-09** (`5ac9838a`) |
 | Last verified | **2026-11-10** |
-| Chain | **Transitive**: `libsqlite3-sys 0.30.1` ← `sqlx-sqlite 0.8.6` ← `sqlx 0.8.6` ← `benostreamdb` |
+| Chain | **Transitive**: `libsqlite3-sys 0.30.1` ← `sqlx-sqlite 0.8.6` ← `sqlx 0.8.6` ← `benodb` |
 | Reachability | **Not reachable on adversarial inputs.** Exploitation requires opening an untrusted external SQLite database + `-wal` sidecar file. BenoDB uses `sqlx-sqlite` strictly for local trusted state and never opens user-supplied SQLite files. |
 | Fix status | Blocked upstream: `sqlx-sqlite 0.8.6` pins `libsqlite3-sys < 0.31`; the fix ships in `libsqlite3-sys >= 0.39.0`. |
 | Migration path | Upgrade `sqlx` (`0.9+`) or drop the `sqlite` feature from `sqlx` if no catalog path needs it. |
@@ -145,7 +145,7 @@ migration path, and resolution record once cleared.
 
 ## Other Allow-Listed Advisories (Active)
 
-These transitive advisories remain in [`deny.toml`](https://github.com/benolabsai/benostreamdb/blob/main/deny.toml) and [`audit.toml`](https://github.com/benolabsai/benostreamdb/blob/main/audit.toml) with no reachable attack surface in supported server/library paths:
+These transitive advisories remain in [`deny.toml`](https://github.com/benolabsai/benodb/blob/main/deny.toml) and [`audit.toml`](https://github.com/benolabsai/benodb/blob/main/audit.toml) with no reachable attack surface in supported server/library paths:
 
 | ID | Crate / Version | Chain & Reachability | Initial Review | Last Verified |
 |---|---|---|---|---|
@@ -178,6 +178,6 @@ Historical advisories that were remediated or cleared from the active dependency
 ## How to Add or Resolve an Entry
 
 1. Run `cargo deny check advisories` and `cargo tree --all-features -i <crate>` to get the exact advisory ID, crate version, and dependency chain.
-2. Add the ID to [`deny.toml`](https://github.com/benolabsai/benostreamdb/blob/main/deny.toml) and [`audit.toml`](https://github.com/benolabsai/benostreamdb/blob/main/audit.toml) with a concise inline rationale.
+2. Add the ID to [`deny.toml`](https://github.com/benolabsai/benodb/blob/main/deny.toml) and [`audit.toml`](https://github.com/benolabsai/benodb/blob/main/audit.toml) with a concise inline rationale.
 3. Add a dated entry to this document recording **Initial review**, **Last verified**, reachability, and migration path.
 4. When a fix lands, remove the ID from `deny.toml` / `audit.toml` and move it to [Resolved Advisories](#resolved-advisories) with the resolution date and commit SHA.

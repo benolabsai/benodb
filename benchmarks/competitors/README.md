@@ -1,7 +1,7 @@
 # Competitor benchmarks
 
 Run reference engines under the **same resource envelope and parameters** as the
-BenoStreamDB harness ([`../ann_benchmarks/run.py`](../ann_benchmarks/run.py)), and
+BenoDB harness ([`../ann_benchmarks/run.py`](../ann_benchmarks/run.py)), and
 emit the same metrics. See [`docs/BENCHMARKING_PLAN.md`](../../docs/BENCHMARKING_PLAN.md)
 for the full plan.
 
@@ -26,7 +26,7 @@ python benchmarks/competitors/run_competitor.py \
 ```
 
 `--m`, `--ef-construction`, `--ef-search`, `--metric`, `--k`, `--limit`, and
-`--queries` map 1:1 onto the BenoStreamDB harness flags, so the same configuration
+`--queries` map 1:1 onto the BenoDB harness flags, so the same configuration
 can be run on both sides without translation.
 
 The FAISS adapter picks `METRIC_L2` / `METRIC_INNER_PRODUCT` from `--metric` and
@@ -43,7 +43,7 @@ python benchmarks/competitors/run_competitor.py \
 ## Resource envelope
 
 `--cores` sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS`; `--ram-gb` sets
-`RLIMIT_AS` so an over-budget run fails loudly. The BenoStreamDB side is
+`RLIMIT_AS` so an over-budget run fails loudly. The BenoDB side is
 constrained by `RAYON_NUM_THREADS`, `BSDB_MAX_CONCURRENCY`, etc. (see the plan,
 §5). **Match `--cores`/`--ram-gb` on both sides or the comparison is invalid.**
 
@@ -51,11 +51,11 @@ constrained by `RAYON_NUM_THREADS`, `BSDB_MAX_CONCURRENCY`, etc. (see the plan,
 
 [`docker_bench.sh`](docker_bench.sh) runs the whole matrix in Docker with a
 single shared envelope applied to **every** participant — the server engines
-*and* the runner that executes each client (including BenoStreamDB):
+*and* the runner that executes each client (including BenoDB):
 
 ```bash
 # CPU baseline (default engines: faiss hnswlib lancedb pgvector
-#                              opensearch benostreamdb)
+#                              opensearch benodb)
 benchmarks/competitors/docker_bench.sh --cpus 8 --mem 16g \
     --dataset sift-128-euclidean --limit 20000 --queries 500
 
@@ -74,23 +74,23 @@ benchmarks/competitors/docker_bench.sh --both --cpus 8 --mem 16g
   [`Dockerfile.bench.gpu`](Dockerfile.bench.gpu), which installs `faiss-gpu-cu12`).
 * [`Dockerfile.bench`](Dockerfile.bench) — runner image with the harness and all
   competitor clients (FAISS, hnswlib, LanceDB, DuckDB, psycopg, opensearch-py,
-  neo4j, tantivy). Installs the BenoStreamDB abi3 wheel mounted at `/wheels`.
+  neo4j, tantivy). Installs the BenoDB abi3 wheel mounted at `/wheels`.
 
 ### BEIR lexical / hybrid under the same envelope
 
 `--workload beir` runs the BEIR harness ([`../beir/run.py`](../beir/run.py),
 [`../beir/run_hybrid.py`](../beir/run_hybrid.py)) in the runner container, with
-OpenSearch brought up under the same envelope — so BenoStreamDB, Tantivy, and
+OpenSearch brought up under the same envelope — so BenoDB, Tantivy, and
 OpenSearch are all resource-matched (previously the embedded engines ran
 in-process on the host):
 
 ```bash
-# Lexical BM25: BenoStreamDB vs Tantivy vs OpenSearch
+# Lexical BM25: BenoDB vs Tantivy vs OpenSearch
 benchmarks/competitors/docker_bench.sh --workload beir --cpus 8 --mem 16g
 
-# Hybrid (dense + sparse RRF): BenoStreamDB vs LanceDB
+# Hybrid (dense + sparse RRF): BenoDB vs LanceDB
 benchmarks/competitors/docker_bench.sh --workload beir --beir-mode hybrid \
-    --beir-engines benostreamdb,lancedb --cpus 8 --mem 16g
+    --beir-engines benodb,lancedb --cpus 8 --mem 16g
 ```
 
 Each engine writes a competitor-schema JSON record
@@ -116,7 +116,7 @@ The host profile (CPU model, cores, RAM, Docker/Compose versions, GPU list,
 envelope) is written to `results/hardware_profile.txt`. GPUs appear only in the
 GPU pass; CPU runs report `"gpus": []`.
 
-**GPU-capable engines here:** FAISS (faiss-gpu), BenoStreamDB (wgpu/cuda), and
+**GPU-capable engines here:** FAISS (faiss-gpu), BenoDB (wgpu/cuda), and
 cuGraph (`cugraph-cu13`). pgvector, LanceDB, OpenSearch, Neo4j (CPU GDS), and
 DuckDB are CPU-only. The GPU pass still runs them (on CPU, in the GPU container,
 under the same envelope) so the results make the GPU/no-GPU distinction explicit
@@ -124,11 +124,11 @@ rather than hiding it; restrict the pass with `--gpu-engines` if desired.
 
 > **GPU is slower on small datasets — by design.** On the 20k-vector SIFT run
 > the GPU pass is *slower* than CPU for both engines (faiss 6.7k vs 8.8k QPS;
-> BenoStreamDB 1.9k vs 1.9k QPS, with a slower build). Fixed PCIe transfer and
+> BenoDB 1.9k vs 1.9k QPS, with a slower build). Fixed PCIe transfer and
 > kernel-launch overheads dominate when the data is small, the harness measures
 > single-query latency (batch = 1, so there is no GPU parallelism to exploit),
 > and HNSW search is a sequential pointer-chasing walk rather than dense math.
-> BenoStreamDB's GPU path (`benostream-gpu-ann`) accelerates index
+> BenoDB's GPU path (`benodb-gpu-ann`) accelerates index
 > *construction*, not query. GPU wins at scale: millions of vectors, large
 > batch queries, and dense/flat or IVF-PQ search.
 
@@ -178,8 +178,8 @@ Every Tier-1 engine in the plan is implemented:
 - **Vector:** FAISS, hnswlib, pgvector, LanceDB, OpenSearch.
 - **Lexical/hybrid:** Tantivy, OpenSearch (BEIR suite in `benchmarks/beir/`).
 - **Graph:** NetworkX, Neo4j GDS, cuGraph (`cugraph-cu13`, `renumber=True` +
-  managed memory, verified against NetworkX), BenoStreamDB.
-- **SQL:** DuckDB, DataFusion, ClickHouse, **Trino**, BenoStreamDB.
+  managed memory, verified against NetworkX), BenoDB.
+- **SQL:** DuckDB, DataFusion, ClickHouse, **Trino**, BenoDB.
 - **Storage / table format:** Iceberg round-trip (Spark/Trino) + Delta Lake —
   see [`../iceberg_roundtrip/run.py`](../iceberg_roundtrip/run.py).
 
@@ -190,24 +190,24 @@ bulk-loads the shared Parquet into table `t`, so the shared SQL runs unchanged.
 The memory connector needs no metastore, which keeps the benchmark
 self-contained. Config: [`trino/etc/`](trino/etc/).
 
-The same `trino` service also exposes the **BenoStreamDB connector** as the
-`benostreamdb` catalog, so Trino can query BenoStreamDB Iceberg tables directly
+The same `trino` service also exposes the **BenoDB connector** as the
+`benodb` catalog, so Trino can query BenoDB Iceberg tables directly
 (the strongest interop comparison):
 
 ```sql
-SELECT count(*) FROM benostreamdb.default.events;
+SELECT count(*) FROM benodb.default.events;
 ```
 
 The connector is built by [`build_trino_connector.sh`](build_trino_connector.sh)
 and installed by [`Dockerfile.trino`](Dockerfile.trino). It requires a JDK ≥ 23
-to compile against the Trino 468 SPI, a manylinux-built `libbenostreamdb.so` on
+to compile against the Trino 468 SPI, a manylinux-built `libbenodb.so` on
 `java.library.path`, and `libstdc++` in the image (for Arrow's JNI lib). See
-[`../../trino-benostreamdb/README.md`](../../trino-benostreamdb/README.md).
+[`../../trino-benodb/README.md`](../../trino-benodb/README.md).
 
 ### Iceberg / Delta round-trip
 
 [`../iceberg_roundtrip/run.py`](../iceberg_roundtrip/run.py) writes a table with
-BenoStreamDB (Iceberg) and reads it back through Spark or Trino (Iceberg), or
+BenoDB (Iceberg) and reads it back through Spark or Trino (Iceberg), or
 compares against Delta Lake. The Trino path needs the table in a location
 mounted into both the runner and Trino (e.g. `/data/iceberg_warehouse`); the
 Spark path reads the table URI directly.

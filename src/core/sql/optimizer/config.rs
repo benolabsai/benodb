@@ -163,7 +163,7 @@ impl ExtensionOptions for VectorSearchConfig {
 }
 
 impl ConfigExtension for VectorSearchConfig {
-    const PREFIX: &'static str = "benostreamdb";
+    const PREFIX: &'static str = "benodb";
 }
 
 impl VectorSearchConfig {

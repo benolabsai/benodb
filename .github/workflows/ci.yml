@@ -110,26 +110,26 @@ jobs:
                         (root / "Cargo.toml").read_text()).group(1)
           print("workspace version:", v)
           errs = []
-          for p in ["pyproject.toml", "contrib/benostreamdb-search/pyproject.toml",
-                    "server/flight_sql/pyproject.toml", "contrib/benostreamdb-mcp/pyproject.toml"]:
+          for p in ["pyproject.toml", "contrib/benodb-search/pyproject.toml",
+                    "server/flight_sql/pyproject.toml", "contrib/benodb-mcp/pyproject.toml"]:
               if 'dynamic = ["version"]' not in (root / p).read_text():
                   errs.append(p + ': [project] must use dynamic = ["version"]')
-          for p in ["contrib/benostreamdb-search/Cargo.toml", "server/flight_sql/Cargo.toml"]:
-              m = re.search(r'benostreamdb = \{ version = "([^"]+)"', (root / p).read_text())
+          for p in ["contrib/benodb-search/Cargo.toml", "server/flight_sql/Cargo.toml"]:
+              m = re.search(r'benodb = \{ version = "([^"]+)"', (root / p).read_text())
               if not m or m.group(1) != v:
-                  errs.append(p + ": benostreamdb dep pin is not " + v)
-          m = re.search(r'benostreamdb>=([^",\s]+)', (root / "dbt-benostreamdb/pyproject.toml").read_text())
+                  errs.append(p + ": benodb dep pin is not " + v)
+          m = re.search(r'benodb>=([^",\s]+)', (root / "dbt-benodb/pyproject.toml").read_text())
           if not m or m.group(1) != v:
-              errs.append("dbt-benostreamdb/pyproject.toml: benostreamdb>= floor is not " + v)
+              errs.append("dbt-benodb/pyproject.toml: benodb>= floor is not " + v)
           # Every tool that walks the tree parses these files itself: pytest for
           # rootdir discovery, maturin for the build backend, pip for resolution.
           # A stray byte on line 1 therefore fails somewhere far from the edit, so
           # validate the manifests directly while the signal is still local.
           import tomllib
-          for p in ["pyproject.toml", "dbt-benostreamdb/pyproject.toml",
-                    "contrib/benostreamdb-search/pyproject.toml",
+          for p in ["pyproject.toml", "dbt-benodb/pyproject.toml",
+                    "contrib/benodb-search/pyproject.toml",
                     "server/flight_sql/pyproject.toml",
-                    "contrib/benostreamdb-mcp/pyproject.toml"]:
+                    "contrib/benodb-mcp/pyproject.toml"]:
               try:
                   tomllib.loads((root / p).read_text())
               except Exception as e:
@@ -278,7 +278,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: python-wheel
-          path: target/wheels/benostreamdb-*.whl
+          path: target/wheels/benodb-*.whl
           if-no-files-found: error
           overwrite: true
 
@@ -344,7 +344,7 @@ jobs:
           path: dist
 
       - name: Install wheel and test dependencies
-        run: pip install "$(ls dist/benostreamdb-*.whl)[dev]"
+        run: pip install "$(ls dist/benodb-*.whl)[dev]"
 
       - name: Warm the AWS Emulator cache
         if: matrix.shard == 'catalog'
@@ -476,15 +476,15 @@ jobs:
       - name: Install Ecosystem Dependencies
         run: |
           # Install everything together so pip can resolve version constraints
-          pip install pytest pyspark trino dbt-core adbc-driver-flightsql pyarrow -e . -e dbt-benostreamdb/
+          pip install pytest pyspark trino dbt-core adbc-driver-flightsql pyarrow -e . -e dbt-benodb/
 
       - name: Build Flight SQL server
-        run: cargo build -p benostreamdb-flight
+        run: cargo build -p benodb-flight
 
       - name: Start Flight SQL server
         run: |
           mkdir -p /tmp/bsdb-warehouse
-          BSDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benostreamdb-flight &
+          BSDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
           for _ in $(seq 1 30); do
             if (exec 3<>/dev/tcp/127.0.0.1/50051) 2>/dev/null; then exec 3>&-; break; fi
             sleep 1
@@ -568,7 +568,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-${{ runner.os }}-${{ matrix.connector }}-${{ hashFiles('trino-benostreamdb/pom.xml', 'spark-benostreamdb/pom.xml') }}
+          key: m2-${{ runner.os }}-${{ matrix.connector }}-${{ hashFiles('trino-benodb/pom.xml', 'spark-benodb/pom.xml') }}
           restore-keys: |
             m2-${{ runner.os }}-${{ matrix.connector }}-
 
@@ -591,7 +591,7 @@ jobs:
 
       - name: Run Trino connector tests
         if: matrix.connector == 'trino'
-        working-directory: trino-benostreamdb
+        working-directory: trino-benodb
         shell: bash
         run: |
           # Maven Central periodically answers a metadata request with a 5xx, which
@@ -626,7 +626,7 @@ jobs:
 
       - name: Run Spark connector tests
         if: matrix.connector == 'spark'
-        working-directory: spark-benostreamdb
+        working-directory: spark-benodb
         shell: bash
         run: |
           # Same repository-flake handling as the Trino step: retry a Central
@@ -653,7 +653,7 @@ jobs:
   #########################
   # Cross-engine Iceberg conformance — the upstream `apache/iceberg-rust` reader
   # opens tables written by the engine and asserts the row set. The oracle is a
-  # separate workspace (its own Cargo.lock) and links no BenoStreamDB code, so it
+  # separate workspace (its own Cargo.lock) and links no BenoDB code, so it
   # catches metadata bugs our own reader cannot see. It has already caught three:
   # numeric manifest `content` metadata, missing V3 snapshot row ranges, and
   # relative deletion-vector `referenced_data_file` paths.

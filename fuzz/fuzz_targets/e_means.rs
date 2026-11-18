@@ -32,15 +32,15 @@ fuzz_target!(|data: &[u8]| {
         vectors.push(val);
     }
 
-    let config = benostreamdb::core::index::e_means::EMeansConfig {
+    let config = benodb::core::index::e_means::EMeansConfig {
         k,
         nepochs: 2,
-        batch_law: benostreamdb::core::index::e_means::BatchLaw::Fixed(32),
+        batch_law: benodb::core::index::e_means::BatchLaw::Fixed(32),
         fixed_alpha0: Some(0.5),
         unused_threshold: Some(0.1),
         seed: 42,
     };
 
     // Must never panic, even if vectors contain NaNs, infinities, or extreme floats
-    let _ = benostreamdb::core::index::e_means::train_emeans(&vectors, dim, &config);
+    let _ = benodb::core::index::e_means::train_emeans(&vectors, dim, &config);
 });

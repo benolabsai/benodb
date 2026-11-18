@@ -6,7 +6,7 @@
 
 ### Warm Query Latency (ms) — Median
 
-| Query | benostreamdb | duckdb | datafusion |
+| Query | benodb | duckdb | datafusion |
 |---| --- | --- | --- |
 | **Q0 (count)** | 2.5 ms | 0.4 ms | 0.4 ms |
 | **Q1 (filter count)** | 7.0 ms | 3.1 ms | 2.5 ms |
@@ -23,6 +23,6 @@
 
 | Engine | Ingestion (s) | Total Warm SQL Time (ms) | Status |
 |---|---|---|---|
-| benostreamdb | 0.19s | 105.2 ms | ✅ Pass |
+| benodb | 0.19s | 105.2 ms | ✅ Pass |
 | duckdb | Direct Parquet Scan | 119.1 ms | ✅ Pass |
 | datafusion | Direct Parquet Scan | 53.5 ms | ✅ Pass |

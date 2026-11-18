@@ -6,10 +6,10 @@
 /// use GPU acceleration when a GPU context is configured.
 ///
 /// Requirements: 7.6, 7.7
-use benostreamdb::core::index::gpu::{
+use benodb::core::index::gpu::{
     get_thread_gpu_context, set_thread_gpu_context, ComputeContext,
 };
-use benostreamdb::core::sql::vector_udf::all_vector_udfs;
+use benodb::core::sql::vector_udf::all_vector_udfs;
 use datafusion::arrow::array::{FixedSizeListArray, Float32Array};
 use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::execution::FunctionRegistry;

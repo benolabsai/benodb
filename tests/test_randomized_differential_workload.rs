@@ -30,11 +30,11 @@ use std::sync::Arc;
 use arrow::array::{FixedSizeListArray, Float64Array, Int32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::VectorSearchParams;
-use benostreamdb::Table;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::VectorSearchParams;
+use benodb::Table;
 use once_cell::sync::Lazy;
 use tempfile::tempdir;
 use tokio::sync::Mutex as AsyncMutex;
@@ -334,12 +334,12 @@ async fn randomized_differential_workload_matches_model() -> anyhow::Result<()> 
 
     eprintln!(
         "[rdw] === merged-deletes phase breakdown ===\n{}",
-        benostreamdb::telemetry::metrics::dump_merged_deletes_metrics()
+        benodb::telemetry::metrics::dump_merged_deletes_metrics()
     );
 
     eprintln!(
         "[rdw] === read-path phase breakdown ===\n{}",
-        benostreamdb::telemetry::metrics::dump_read_metrics()
+        benodb::telemetry::metrics::dump_read_metrics()
     );
 
     Ok(())

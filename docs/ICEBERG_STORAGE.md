@@ -44,7 +44,7 @@ In BenoDB, table state is decoupled into three structural layers:
 
 ```python
 import pyarrow as pa
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Open or create an Iceberg table on local filesystem or object storage (S3/GCS/Azure)
 table = bsdb.Table("s3://lakehouse/warehouse/telemetry_events")
@@ -101,7 +101,7 @@ table.set_sort_order(["timestamp", "device_id"], [False, True])
 Evolve table partitioning over time without rewriting historical data:
 
 ```python
-from benostreamdb import PartitionField
+from benodb import PartitionField
 
 # Initial temporal partitioning
 table.update_spec([
@@ -197,7 +197,7 @@ The table below reflects machine-checked verification via `tests/test_iceberg_co
 | **Nanosecond Timestamps** | V2 | ✅ Conformant | `Timestamp(Nanosecond)` round-trips without precision loss. |
 | **Row Lineage** (`next-row-id`) | V3 | ✅ Conformant | `next-row-id` in metadata; `first-row-id` on snapshots. |
 | **Position Deletes** | V2 | ✅ Conformant | Registered in delete manifests; applied during scan planning (used across V2 and V3 tables today). |
-| **Deletion Vectors** | V3 | ✅ Written & read (format-version 3) | `Table::delete_async` on a `format_version = 3` table emits a spec-exact `deletion-vector-v1` Puffin blob and a manifest delete entry with `content = 1`, `file_format = "PUFFIN"`, `referenced_data_file`, `content_offset`, and `content_size_in_bytes`; V2 tables keep Parquet position deletes. Certified by [`tests/test_iceberg_v3_conformance.rs`](https://github.com/benolabsai/benostreamdb/blob/main/tests/test_iceberg_v3_conformance.rs) (independent Avro reader) and by `apache/iceberg-rust` 0.11 in [`tests/iceberg_rust_oracle`](https://github.com/benolabsai/benostreamdb/blob/main/tests/iceberg_rust_oracle/README.md). Merge-on-read deletes share the same codec. |
+| **Deletion Vectors** | V3 | ✅ Written & read (format-version 3) | `Table::delete_async` on a `format_version = 3` table emits a spec-exact `deletion-vector-v1` Puffin blob and a manifest delete entry with `content = 1`, `file_format = "PUFFIN"`, `referenced_data_file`, `content_offset`, and `content_size_in_bytes`; V2 tables keep Parquet position deletes. Certified by [`tests/test_iceberg_v3_conformance.rs`](https://github.com/benolabsai/benodb/blob/main/tests/test_iceberg_v3_conformance.rs) (independent Avro reader) and by `apache/iceberg-rust` 0.11 in [`tests/iceberg_rust_oracle`](https://github.com/benolabsai/benodb/blob/main/tests/iceberg_rust_oracle/README.md). Merge-on-read deletes share the same codec. |
 | **Compound Puffin Index Blobs** | Spec | ⚠️ Extension | Secondary index overlays (HNSW, BM25, Bitmaps) stored in `.puffin`. Standard readers ignore and fall back to Parquet scans. |
 | **Staging & WAL Directories** (`_staging`, `_wal`) | Spec | ⚠️ Extension | Durability artifacts stored alongside table root; ignored by external readers. |
 
@@ -208,4 +208,4 @@ The table below reflects machine-checked verification via `tests/test_iceberg_co
 - **[Catalog Integration Guide](CATALOG_USAGE.md)**: Configuring production catalogs (Apache Polaris, Project Nessie, AWS Glue, Unity).
 - **[Concurrency & Durability](CONCURRENCY.md)**: Multi-writer OCC, `_manifest/` commits, and distributed locking.
 - **[pgvector SQL Guide](PGVECTOR_SQL_GUIDE.md)**: Querying vector embeddings in Iceberg tables using ANSI SQL and DataFusion.
-- **[ADR-001: Tightened Index Overlay Contract](https://www.benostreamdb.org/guides/adr_001.html)**: Compound Puffin sidecar architecture.
+- **[ADR-001: Tightened Index Overlay Contract](https://benolabsai.com/docs/guides/adr_001.html)**: Compound Puffin sidecar architecture.

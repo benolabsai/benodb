@@ -5,7 +5,7 @@ mod tests {
     use arrow::array::{Int32Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
-    use benostreamdb::Table;
+    use benodb::Table;
     use std::fs;
     use std::sync::Arc;
 
@@ -63,8 +63,8 @@ mod tests {
         assert!(found_del_file, "Position Delete File should be created");
 
         // 5. Verify Manifest contains Delete Entry
-        let manifest_manager = benostreamdb::core::manifest::ManifestManager::new(
-            benostreamdb::core::storage::create_object_store(&uri)?,
+        let manifest_manager = benodb::core::manifest::ManifestManager::new(
+            benodb::core::storage::create_object_store(&uri)?,
             "",
             &uri,
         );

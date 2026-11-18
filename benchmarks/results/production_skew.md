@@ -1,6 +1,6 @@
 # Skewed Data & Power-Law Distribution Benchmark (§7.6)
 
-- **Engine**: BenoStreamDB (Unified CSR Graph Engine + Apache Iceberg SQL)
+- **Engine**: BenoDB (Unified CSR Graph Engine + Apache Iceberg SQL)
 - **Host**: x86_64 (Linux)
 - **Workloads**: Scale-Free Power-Law Graph Traversal & Zipfian Hot-Key Querying
 

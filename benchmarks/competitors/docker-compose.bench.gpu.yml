@@ -6,7 +6,7 @@
 #     --profile run run --rm bench-gpu
 #
 # docker_bench.sh --gpu (or --both) does this automatically and tags results
-# with device=gpu. Only GPU-capable engines run here (faiss, benostreamdb,
+# with device=gpu. Only GPU-capable engines run here (faiss, benodb,
 # cugraph).
 services:
   bench:

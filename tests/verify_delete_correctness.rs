@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-use benostreamdb::core::table::Table;
-// use benostreamdb::core::manifest::Schema; // Unused
+use benodb::core::table::Table;
+// use benodb::core::manifest::Schema; // Unused
 use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema};
 use arrow::record_batch::RecordBatch;

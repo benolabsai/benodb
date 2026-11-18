@@ -4,7 +4,7 @@ Concurrency and thread-safety tests for BenoStreamDB.
 Tests concurrent readers, writers, and read-write scenarios.
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pytest
 import os

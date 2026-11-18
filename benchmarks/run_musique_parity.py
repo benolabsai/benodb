@@ -93,7 +93,7 @@ def main():
     backend = m.configure_embedding("bge-large", device="auto", dtype="auto", max_seq_length=0)
     print(f"[parity] Retrieval embedder: {backend.describe()}", flush=True)
 
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     dataset_path = m.ensure_dataset(args.data_dir)
     records = m.load_musique_records(dataset_path, args.max_questions)

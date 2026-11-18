@@ -13,8 +13,8 @@ use std::sync::Arc;
 use arrow::array::UInt64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::Table;
 use tempfile::tempdir;
 
 /// Build a directed chain 0 -> 1 -> 2 -> ... -> n with BOTH a forward

@@ -6,7 +6,7 @@ Why this exists
 Every number in `benchmarks/results/BENCHMARK_REPORT.md` is measured on one host,
 so the *machine state* is part of the measurement: DIMM timings, CPU voltage /
 frequency limits, and the kernel all move every participant in the comparison
-(BenoStreamDB and faiss, pgvector, OpenSearch, ...) at once. A later run on a
+(BenoDB and faiss, pgvector, OpenSearch, ...) at once. A later run on a
 different state is not a regression or a win — it is a different experiment.
 
 Two consequences this module enforces:

@@ -3,9 +3,9 @@
 use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 

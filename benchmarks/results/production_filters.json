@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "competitor": "duckdb",
   "workload": "pathological_filters_differential_oracle",
   "host": "x86_64 (Linux)",

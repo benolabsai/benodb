@@ -12,7 +12,7 @@ endpoints from metadata, and what an MCP agent uses to discover the graph
 import pyarrow as pa
 import pytest
 
-import benostreamdb as b
+import benodb as b
 
 
 def test_create_edge_table_stamps_metadata(tmp_path):

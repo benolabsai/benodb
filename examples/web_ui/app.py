@@ -41,7 +41,7 @@ import time
 import pandas as pd
 import streamlit as st
 
-import benostreamdb
+import benodb
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DB = os.environ.get("BSDB_DEMO_DB", os.path.join(REPO, "data", "wiki_graph_db"))
@@ -142,8 +142,8 @@ def open_tables():
             "(idempotent — rerun to resume; see README.md)"
         )
         st.stop()
-    edges = benostreamdb.Table(EDGES_URI)
-    nodes = benostreamdb.Table(NODES_URI)
+    edges = benodb.Table(EDGES_URI)
+    nodes = benodb.Table(NODES_URI)
     return edges, nodes
 
 

@@ -228,28 +228,28 @@ impl std::fmt::Display for VectorMetric {
     }
 }
 
-impl From<VectorMetric> for benostream_gpu_ann::Metric {
+impl From<VectorMetric> for benodb_gpu_ann::Metric {
     fn from(m: VectorMetric) -> Self {
         match m {
-            VectorMetric::L2 => benostream_gpu_ann::Metric::L2,
-            VectorMetric::Cosine => benostream_gpu_ann::Metric::Cosine,
-            VectorMetric::InnerProduct => benostream_gpu_ann::Metric::InnerProduct,
-            VectorMetric::L1 => benostream_gpu_ann::Metric::L1,
-            VectorMetric::Hamming => benostream_gpu_ann::Metric::Hamming,
-            VectorMetric::Jaccard => benostream_gpu_ann::Metric::Jaccard,
+            VectorMetric::L2 => benodb_gpu_ann::Metric::L2,
+            VectorMetric::Cosine => benodb_gpu_ann::Metric::Cosine,
+            VectorMetric::InnerProduct => benodb_gpu_ann::Metric::InnerProduct,
+            VectorMetric::L1 => benodb_gpu_ann::Metric::L1,
+            VectorMetric::Hamming => benodb_gpu_ann::Metric::Hamming,
+            VectorMetric::Jaccard => benodb_gpu_ann::Metric::Jaccard,
         }
     }
 }
 
-impl From<benostream_gpu_ann::Metric> for VectorMetric {
-    fn from(m: benostream_gpu_ann::Metric) -> Self {
+impl From<benodb_gpu_ann::Metric> for VectorMetric {
+    fn from(m: benodb_gpu_ann::Metric) -> Self {
         match m {
-            benostream_gpu_ann::Metric::L2 => VectorMetric::L2,
-            benostream_gpu_ann::Metric::Cosine => VectorMetric::Cosine,
-            benostream_gpu_ann::Metric::InnerProduct => VectorMetric::InnerProduct,
-            benostream_gpu_ann::Metric::L1 => VectorMetric::L1,
-            benostream_gpu_ann::Metric::Hamming => VectorMetric::Hamming,
-            benostream_gpu_ann::Metric::Jaccard => VectorMetric::Jaccard,
+            benodb_gpu_ann::Metric::L2 => VectorMetric::L2,
+            benodb_gpu_ann::Metric::Cosine => VectorMetric::Cosine,
+            benodb_gpu_ann::Metric::InnerProduct => VectorMetric::InnerProduct,
+            benodb_gpu_ann::Metric::L1 => VectorMetric::L1,
+            benodb_gpu_ann::Metric::Hamming => VectorMetric::Hamming,
+            benodb_gpu_ann::Metric::Jaccard => VectorMetric::Jaccard,
         }
     }
 }

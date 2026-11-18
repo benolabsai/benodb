@@ -6,7 +6,7 @@
 - **Current Version:** 0.15.1
 
 > **Release Scope Notice:**
-> Through `v0.15.1`, releases retained the same **Developer Preview** standard as `v0.14.0` (connector parity across Spark/Trino/dbt, staged data-file writes in Spark, MCP HTTP + SSE transport, Arrow C FFI vector/string offset conformance, and CI/dependency hygiene). Unreleased changes staged on `main` ahead of **`v0.15.2`** resolve extended audit **`M2`** — introducing the explicit `PendingCommit` transaction state machine (`CommitPhase::Staging` -> `ManifestCommitted` -> `IcebergPublished`, documented in [ADR-008](https://www.benostreamdb.org/guides/adr_008.html)), linearizable `buffer_epoch` read double-checking, WAL segment rotation and watermark pruning with torn-EOF tail recovery, V3 row-lineage OCC retry cleanup, monotonic `TableMetadata` / `version-hint.text` CAS and Iceberg REST catalog CAS conflict retry, plus nanosecond `ManifestValue` decode — with zero public API changes. Post-M2 differential testing (`test_multi_writer_differential.rs`, `wal_segment` fuzz target, 400-step randomized differential workload, and a 180s/stage `pre_release_soak.sh` sweep) also uncovered and fixed un-clamped ADC scoring, out-of-core tail vector sampling, and flat-vs-HNSW L2 metric unit alignment in the quantized vector search path. The staged write path (`stage_data_files` + `commit_staged_entries_async`) shares `maintenance_lock` and `commit_lock` serialization, `load_latest_direct()` conflict verification, and idempotent snapshot convergence, and `release.yml`'s `soak-gate` exercises the full write path on every tag. Connector-specific evidence lives in `docs/integrations/*.md`.
+> Through `v0.15.1`, releases retained the same **Developer Preview** standard as `v0.14.0` (connector parity across Spark/Trino/dbt, staged data-file writes in Spark, MCP HTTP + SSE transport, Arrow C FFI vector/string offset conformance, and CI/dependency hygiene). Unreleased changes staged on `main` ahead of **`v0.15.2`** resolve extended audit **`M2`** — introducing the explicit `PendingCommit` transaction state machine (`CommitPhase::Staging` -> `ManifestCommitted` -> `IcebergPublished`, documented in [ADR-008](https://benolabsai.com/docs/guides/adr_008.html)), linearizable `buffer_epoch` read double-checking, WAL segment rotation and watermark pruning with torn-EOF tail recovery, V3 row-lineage OCC retry cleanup, monotonic `TableMetadata` / `version-hint.text` CAS and Iceberg REST catalog CAS conflict retry, plus nanosecond `ManifestValue` decode — with zero public API changes. Post-M2 differential testing (`test_multi_writer_differential.rs`, `wal_segment` fuzz target, 400-step randomized differential workload, and a 180s/stage `pre_release_soak.sh` sweep) also uncovered and fixed un-clamped ADC scoring, out-of-core tail vector sampling, and flat-vs-HNSW L2 metric unit alignment in the quantized vector search path. The staged write path (`stage_data_files` + `commit_staged_entries_async`) shares `maintenance_lock` and `commit_lock` serialization, `load_latest_direct()` conflict verification, and idempotent snapshot convergence, and `release.yml`'s `soak-gate` exercises the full write path on every tag. Connector-specific evidence lives in `docs/integrations/*.md`.
 
 This assessment summarizes the verification of core invariants (WS1-WS5) and the end-to-end benchmark suite.
 
@@ -18,7 +18,7 @@ This assessment summarizes the verification of core invariants (WS1-WS5) and the
 |---|---|
 | Core storage architecture | **Proven** |
 | Index architecture (overlay) | **Proven** (differential oracles pass perfectly) |
-| Iceberg integration | **V2 and V3 proven** (V2 core compliant via PyIceberg; V3 row lineage, `deletion-vector-v1` Puffin vectors, and manifest `format-version`/fields `143–145` verified by `apache/iceberg-rust` in CI and by Spark/Trino weekly — see [`ADR-010`](https://github.com/benolabsai/benostreamdb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md)) |
+| Iceberg integration | **V2 and V3 proven** (V2 core compliant via PyIceberg; V3 row lineage, `deletion-vector-v1` Puffin vectors, and manifest `format-version`/fields `143–145` verified by `apache/iceberg-rust` in CI and by Spark/Trino weekly — see [`ADR-010`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md)) |
 | Query engine | **Proven** (matches DuckDB/DataFusion row counts; competitive performance) |
 | Rust implementation | **Proven** |
 | Testing infrastructure | **Hardened** (WS1-WS5 differential harnesses and soak tests active) |
@@ -74,7 +74,7 @@ All five workstreams testing the storage/transaction/recovery boundaries have be
 - **Findings & Fixes:**
   - PyIceberg validation uncovered issues with relative paths in `manifest-list`, `manifest_path`, and `file_path`. Fixed to use absolute URIs on write and relativize on read.
   - Avro schemas were missing spec-required metadata (`field-id`, map `logicalType`, list `element-id`). Added to schemas.
-  - **Closed in `v0.16.0`:** V3 `deletion-vector-v1` framing and write/read wiring, Avro `format-version = 3` metadata with fields `143–145`, V3 snapshot row ranges, and the `apache/iceberg-rust` reader oracle (see [`ADR-010`](https://github.com/benolabsai/benostreamdb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md)); non-REST catalog CAS/parity hardening landed as [`ADR-009`](https://github.com/benolabsai/benostreamdb/blob/main/docs/architecture/ADR_009_CATALOG_PARITY_AND_CAS_HARDENING.md).
+  - **Closed in `v0.16.0`:** V3 `deletion-vector-v1` framing and write/read wiring, Avro `format-version = 3` metadata with fields `143–145`, V3 snapshot row ranges, and the `apache/iceberg-rust` reader oracle (see [`ADR-010`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md)); non-REST catalog CAS/parity hardening landed as [`ADR-009`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_009_CATALOG_PARITY_AND_CAS_HARDENING.md).
 
 ### WS5: Long-duration GC / compaction / delete / recovery (Complete)
 **Goal:** Prove the Maintenance Invariant under sustained churn.
@@ -97,7 +97,7 @@ used by both the search gateway and the Flight SQL server:
   extraction for subject, roles, audience, issuer, and expiry.
 - **RBAC** — roles extracted from JWT claims (`roles` array); available to
   authorization logic.
-- **Search gateway** (`contrib/benostreamdb-search/src/auth.rs`) — Axum
+- **Search gateway** (`contrib/benodb-search/src/auth.rs`) — Axum
   middleware accepting `Authorization: Bearer <jwt>`, `Authorization: ApiKey
   <key>`, and `api-key: <key>` (Qdrant convention). Public-path exemption for
   health checks; fail-closed when `required()` is set.

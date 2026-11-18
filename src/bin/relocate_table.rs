@@ -31,9 +31,9 @@
 //! catalog implementations, exactly as the engine does.
 
 use anyhow::{Context, Result};
-use benostreamdb::core::catalog::{create_catalog_async, CatalogType};
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::storage::create_object_store;
+use benodb::core::catalog::{create_catalog_async, CatalogType};
+use benodb::core::manifest::ManifestManager;
+use benodb::core::storage::create_object_store;
 use object_store::path::Path;
 use object_store::ObjectStore;
 use std::collections::HashMap;

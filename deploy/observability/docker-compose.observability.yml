@@ -5,7 +5,7 @@
 #
 #   # Point the engine at the collector (OTLP/HTTP push) and/or scrape it:
 #   export BSDB_OTLP_ENDPOINT=http://localhost:4318
-#   export BSDB_SERVICE_NAME=benostreamdb
+#   export BSDB_SERVICE_NAME=benodb
 #   export BSDB_METRICS_BIND=0.0.0.0 BSDB_METRICS_PORT=9090   # for pull scraping
 #
 # Grafana:    http://localhost:3000  (admin / admin)

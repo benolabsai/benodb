@@ -2,8 +2,8 @@
 
 mod gpu_test_helpers;
 use anyhow::Result;
-use benostreamdb::core::index::gpu::{compute_distance, set_thread_gpu_context, ComputeContext};
-use benostreamdb::core::index::VectorMetric;
+use benodb::core::index::gpu::{compute_distance, set_thread_gpu_context, ComputeContext};
+use benodb::core::index::VectorMetric;
 
 #[test]
 fn test_inner_product_cpu() -> Result<()> {

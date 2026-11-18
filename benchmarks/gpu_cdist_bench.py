@@ -25,7 +25,7 @@ import time
 
 import numpy as np
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def bench(fn, warmup: int = 2, reps: int = 5) -> float:

@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # -------------------------------------------------------------
 # 1. Download Real Scientific Dataset from Hugging Face

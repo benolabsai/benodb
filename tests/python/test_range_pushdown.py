@@ -12,7 +12,7 @@ drops a matching row and never leaks a non-matching one.
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 @pytest.fixture()

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the BenoStreamDB Trino connector image for the latest Trino container.
+# Build the BenoDB Trino connector image for the latest Trino container.
 #
 # The connector needs two artifacts:
 #   1. the plugin ZIP (`connector-artifacts/trino-benostream-java-17.zip`), and
-#   2. `libbenostreamdb.so` on `java.library.path`.
+#   2. `libbenodb.so` on `java.library.path`.
 #
 # The native lib must be built for the *Trino image's* glibc (Debian, ~2.34),
 # not the host's. A host `cargo build` links against the host glibc and fails to
@@ -32,16 +32,16 @@ fi
 # The connector targets the Trino 468 SPI, which is Java 23 bytecode, so it must
 # be compiled with a JDK >= 23 (the emitted bytecode still targets 17/21):
 #   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 \
-#     mvn -f trino-benostreamdb/pom.xml clean package -DskipTests
+#     mvn -f trino-benodb/pom.xml clean package -DskipTests
 # `build-connectors.sh` does this and flattens the ZIP for you.
 if [[ ! -f "$ART/trino-benostream-java-17.zip" ]]; then
   echo "error: $ART/trino-benostream-java-17.zip not found." >&2
-  echo "Build it with: (cd trino-benostreamdb && JAVA_HOME=<jdk23+> mvn clean package -DskipTests)" >&2
+  echo "Build it with: (cd trino-benodb && JAVA_HOME=<jdk23+> mvn clean package -DskipTests)" >&2
   exit 1
 fi
 
 # 2. Native lib, extracted from the manylinux wheel.
-wheel="$(ls -1 "$REPO"/dist/benostreamdb-*-manylinux_2_28_x86_64.whl 2>/dev/null | head -1 || true)"
+wheel="$(ls -1 "$REPO"/dist/benodb-*-manylinux_2_28_x86_64.whl 2>/dev/null | head -1 || true)"
 if [[ -z "$wheel" ]]; then
   echo "error: no manylinux_2_28 wheel in dist/. Run with --build-wheel." >&2
   exit 1
@@ -50,8 +50,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 ( cd "$tmp" && unzip -q "$wheel" )
 so="$(find "$tmp" -name '*.so' | head -1)"
-cp "$so" "$ART/libbenostreamdb.so"
-echo "staged native lib: $ART/libbenostreamdb.so"
+cp "$so" "$ART/libbenodb.so"
+echo "staged native lib: $ART/libbenodb.so"
 
 # 3. Build the Trino image.
 docker compose -f "$HERE/docker-compose.bench.yml" build trino

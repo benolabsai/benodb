@@ -1,4 +1,4 @@
-# NeurIPS BigANN 10M — Complete Quantizer Ablation (BenoStreamDB)
+# NeurIPS BigANN 10M — Complete Quantizer Ablation (BenoDB)
 
 Hardware Envelope: **Azure Standard_D8lds_v5 (8 vCPUs / 16 GiB RAM)**
 Protocol: **Standardized Pre-Warmed Cache (500 probe warmup, posix_fadvise cache purge)**

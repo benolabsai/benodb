@@ -4,7 +4,7 @@ import pytest
 import pyarrow as pa
 import networkx as nx
 import numpy as np
-from benostreamdb import Table
+from benodb import Table
 
 @pytest.fixture
 def temp_dir(tmpdir):

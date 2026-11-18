@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 import shutil
 import pytest
 

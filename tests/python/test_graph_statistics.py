@@ -1,6 +1,6 @@
 import pytest
 import pyarrow as pa
-from benostreamdb import Table
+from benodb import Table
 
 @pytest.fixture
 def graph_table(tmpdir):

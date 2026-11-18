@@ -23,8 +23,8 @@
 
 use anyhow::Result;
 
-// Re-export core algorithmic mechanisms and scaling laws from benostream-gpu-ann
-pub use benostream_gpu_ann::e_means::{
+// Re-export core algorithmic mechanisms and scaling laws from benodb-gpu-ann
+pub use benodb_gpu_ann::e_means::{
     is_emeans_eligible, resolve_alpha0, resolve_batch_size, round_power_of_two, scheduled_alpha,
     BatchLaw, BatchLawCoefficients, EMeansConfig, StepLawCoefficients, ALPHA_LAW, ALPHA_MIN_FACTOR,
     AUTO_QUALITY_MAX_D, BATCH_LAW_QUALITY, BATCH_LAW_THROUGHPUT, CHECK_UNUSED_EVERY, INIT_USAGE,
@@ -66,7 +66,7 @@ pub fn train_emeans(
     let gpu_ctx = crate::core::index::gpu::get_thread_gpu_context()
         .unwrap_or_else(crate::core::index::gpu::ComputeContext::auto_detect);
     let ann_ctx = gpu_ctx.to_gpu_ann_context();
-    benostream_gpu_ann::e_means::train_emeans(vectors, dim, config, &ann_ctx)
+    benodb_gpu_ann::e_means::train_emeans(vectors, dim, config, &ann_ctx)
 }
 
 /// Train centroids using e-means on a slice of vector references (`Vec<Vec<f32>>` interface).

@@ -10,7 +10,7 @@ docker run -p 8181:8181 apache/polaris:latest
 ```
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pytest
 import json
 

@@ -6,7 +6,7 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 

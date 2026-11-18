@@ -1,6 +1,6 @@
 # BenoStreamDB Arrow Flight & Flight SQL Gateway
 
-`benostreamdb-flight` provides a high-performance native Apache Arrow Flight and Flight SQL interface over BenoStreamDB.
+`benodb-flight` provides a high-performance native Apache Arrow Flight and Flight SQL interface over BenoStreamDB.
 
 > **Architecture Note:** BenoStreamDB is **serverless-first**. Arrow Flight SQL is an optional server interface for network-accessible database access. Flight SQL currently provides **single-process server access**; distributed or clustered execution across multiple nodes is not currently supported or implied.
 >
@@ -28,8 +28,8 @@ Client Application (JDBC / ODBC / ADBC / Go / C++ / BI tools)
        DataFusion Query Engine + BenoStreamDB Core
 ```
 
-> Applications with a native path — Rust (the `benostreamdb` crate), Python (the
-> `benostreamdb` package), and JVM (the Spark/Trino connectors) — normally use
+> Applications with a native path — Rust (the `benodb` crate), Python (the
+> `benodb` package), and JVM (the Spark/Trino connectors) — normally use
 > those directly rather than going through the gateway. Flight SQL is for
 > polyglot clients and BI tools that speak the protocol (JDBC/ODBC/ADBC, Go,
 > C++, DBeaver, …).
@@ -45,7 +45,7 @@ Client Application (JDBC / ODBC / ADBC / Go / C++ / BI tools)
 ## Running the Server
 
 ```bash
-cargo run -p benostreamdb-flight
+cargo run -p benodb-flight
 ```
 
 ### Configuration
@@ -88,7 +88,7 @@ with flight_sql.connect(
 
 **Where to keep the secret:** never in the repo or a world-readable env file.
 Use a secret manager (Vault, AWS/GCP/Azure Secrets Manager) or a `0600` file
-mounted at `/run/secrets/` (Docker/K8s) or `/etc/benostreamdb/secrets/`, loaded
+mounted at `/run/secrets/` (Docker/K8s) or `/etc/benodb/secrets/`, loaded
 via systemd `LoadCredential=`/`EnvironmentFile=` (mode `0600`).
 
 ### Observability

@@ -2,7 +2,7 @@
 
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 

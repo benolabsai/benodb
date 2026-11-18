@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -64,7 +64,7 @@ async fn test_datafusion_integration() -> Result<(), Box<dyn std::error::Error>>
     assert_eq!(ids.value(1), 3);
 
     // Test Joins via Session
-    use benostreamdb::core::sql::session::BenoStreamSession;
+    use benodb::core::sql::session::BenoStreamSession;
     let session = BenoStreamSession::new(None);
     session.register_table("t1", Arc::new(table.clone()))?;
 

@@ -8,11 +8,11 @@ writers in the same process (which is exactly what these tests exercise).
 
 import pyarrow as pa
 
-import benostreamdb
+import benodb
 
 
 def _table(tmp_path, name="t"):
-    return benostreamdb.Table.from_arrow(
+    return benodb.Table.from_arrow(
         f"file://{tmp_path}/{name}", pa.table({"v": [1, 2, 3]})
     )
 
@@ -82,7 +82,7 @@ def test_subscribe_events_sql_table_function(tmp_path):
     """`subscribe_events(...)` is a DataFusion table function, so it is
     reachable from every SQL surface (this is the universal path)."""
     table = _table(tmp_path, "sql")
-    session = benostreamdb.Session()
+    session = benodb.Session()
     session.register("s", table)
     # Resolves and drains (no commits in this process -> zero rows, no error).
     session.sql("SELECT * FROM subscribe_events('s', '', 5, 50)")

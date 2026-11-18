@@ -9,8 +9,8 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(s) = std::str::from_utf8(data) {
-        let _ = benostreamdb::core::sql::literal::parse_binary_vector(s, None);
-        let _ = benostreamdb::core::sql::literal::parse_binary_vector(s, Some(data.len()));
-        let _ = benostreamdb::core::sql::literal::parse_binary_vector(s, Some(8));
+        let _ = benodb::core::sql::literal::parse_binary_vector(s, None);
+        let _ = benodb::core::sql::literal::parse_binary_vector(s, Some(data.len()));
+        let _ = benodb::core::sql::literal::parse_binary_vector(s, Some(8));
     }
 });

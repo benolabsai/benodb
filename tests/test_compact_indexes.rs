@@ -15,13 +15,13 @@ use std::sync::Arc;
 use arrow::array::{FixedSizeListArray, Int32Array, StringArray, UInt32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::{IndexAlgorithm, ManifestManager};
-use benostreamdb::core::puffin::{
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::{IndexAlgorithm, ManifestManager};
+use benodb::core::puffin::{
     PuffinReader, PUFFIN_BLOB_VECTOR_CLUSTER_NODE_META, PUFFIN_BLOB_VECTOR_HNSW_GRAPH,
 };
-use benostreamdb::core::storage::create_object_store;
-use benostreamdb::core::table::{PreloadOptions, Table, VectorSearchParams};
+use benodb::core::storage::create_object_store;
+use benodb::core::table::{PreloadOptions, Table, VectorSearchParams};
 use bytes::Bytes;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use tempfile::tempdir;
@@ -238,7 +238,7 @@ async fn test_manual_index_compaction_sidecars_only() -> anyhow::Result<()> {
     // Verify vector search continues to operate correctly after compaction
     let q = vec![10.01; dim];
     let vp = VectorSearchParams::new("embedding", VectorValue::Float32(q), 5)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let results = table
@@ -583,7 +583,7 @@ async fn test_contiguous_clusters_in_index_after_compaction() -> anyhow::Result<
     // Querying near cluster 10.0 should retrieve nearest neighbors spanning multiple segments
     let q = vec![10.15; dim];
     let vp = VectorSearchParams::new("embedding", VectorValue::Float32(q), 15)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let results = table
@@ -743,7 +743,7 @@ async fn test_sequential_sharded_cluster_index_traversal() -> anyhow::Result<()>
     // Query 1: probe cluster 10.0 (in early shard)
     let q1 = vec![10.15; dim];
     let vp1 = VectorSearchParams::new("embedding", VectorValue::Float32(q1), 10)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let res1 = table
@@ -777,7 +777,7 @@ async fn test_sequential_sharded_cluster_index_traversal() -> anyhow::Result<()>
     // Query 2: probe cluster 70.0 (in later shard)
     let q2 = vec![70.15; dim];
     let vp2 = VectorSearchParams::new("embedding", VectorValue::Float32(q2), 10)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let res2 = table
@@ -828,7 +828,7 @@ async fn test_sql_execute_cluster_index_and_warmup() -> anyhow::Result<()> {
     table.commit_async().await?;
     table.wait_for_background_tasks_async().await?;
 
-    let session = benostreamdb::core::sql::session::BenoStreamSession::new(None);
+    let session = benodb::core::sql::session::BenoStreamSession::new(None);
     session.register_table("events", Arc::new(table.clone()))?;
 
     // 1. Run rebuild_cluster_index via standard SQL DDL
@@ -920,7 +920,7 @@ async fn test_true_lsm_cluster_index_preservation_and_two_tier_query() -> anyhow
     // 5. Query: Two-tier retrieval must search base Voronoi index AND delta segment, returning combined top-k
     let q = vec![10.0; dim];
     let vp = VectorSearchParams::new("embedding", VectorValue::Float32(q), 20)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let res = table

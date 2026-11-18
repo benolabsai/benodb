@@ -25,19 +25,19 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
-use benostreamdb::core::catalog::rest::RestCatalogClient;
-use benostreamdb::core::catalog::Catalog;
-use benostreamdb::core::error::BenoStreamError;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::core::index::{VectorMetric, VectorValue};
-use benostreamdb::core::manifest::{
+use benodb::core::catalog::rest::RestCatalogClient;
+use benodb::core::catalog::Catalog;
+use benodb::core::error::BenoStreamError;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::core::index::{VectorMetric, VectorValue};
+use benodb::core::manifest::{
     IndexAlgorithm, ManifestEntry, ManifestManager, PartitionSpec, SortOrder,
 };
-use benostreamdb::core::metadata::{Snapshot, TableMetadata};
-use benostreamdb::core::storage::create_object_store;
-use benostreamdb::core::table::builder::TableBuilder;
-use benostreamdb::core::table::{TableEvent, VectorSearchParams, WalDurability};
-use benostreamdb::Table;
+use benodb::core::metadata::{Snapshot, TableMetadata};
+use benodb::core::storage::create_object_store;
+use benodb::core::table::builder::TableBuilder;
+use benodb::core::table::{TableEvent, VectorSearchParams, WalDurability};
+use benodb::Table;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use object_store::local::LocalFileSystem;
@@ -1160,7 +1160,7 @@ async fn pillar1_axum_rest_catalog_409_conflict_requirements_and_diverged_locati
     // Seed ONLY `_manifest/v1.json` in `table_dir` (`table_dir/metadata/` never exists).
     let table_store = create_object_store(&table_uri)?;
     let mm = ManifestManager::new(table_store, "", &table_uri);
-    let ms = benostreamdb::core::manifest::Schema::from_arrow(&scalar_schema(), 1);
+    let ms = benodb::core::manifest::Schema::from_arrow(&scalar_schema(), 1);
     let max_col_id = ms.fields.iter().map(|f| f.id).max().unwrap_or(0);
     mm.update_schema(vec![ms.clone()], 1, Some(max_col_id))
         .await?;
@@ -2190,7 +2190,7 @@ async fn pillar8_version_hint_non_regression_and_metadata_cas_stress() -> Result
                 let mut meta = existing.context("expected existing metadata")?;
                 if meta.snapshots.iter().any(|sn| sn.snapshot_id == snap_id) {
                     return Ok(
-                        benostreamdb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(meta),
+                        benodb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(meta),
                     );
                 }
                 let seq = meta.last_sequence_number + 1;
@@ -2205,7 +2205,7 @@ async fn pillar8_version_hint_non_regression_and_metadata_cas_stress() -> Result
                     first_row_id: None,
                     added_rows: None,
                 });
-                Ok(benostreamdb::core::metadata::MetadataUpdateOutcome::Updated(meta))
+                Ok(benodb::core::metadata::MetadataUpdateOutcome::Updated(meta))
             })
             .await
         }));

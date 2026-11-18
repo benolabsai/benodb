@@ -15,7 +15,7 @@
 //! - `BSDB_OTLP_INTERVAL_SECS` — push period, default 15.
 //! - `BSDB_OTLP_HEADERS` — comma-separated `key=value` headers (e.g. auth).
 //! - `BSDB_SERVICE_NAME` — `service.name` resource attribute, default
-//!   `benostreamdb`.
+//!   `benodb`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -46,7 +46,7 @@ fn push_interval() -> Duration {
 }
 
 fn service_name() -> String {
-    std::env::var("BSDB_SERVICE_NAME").unwrap_or_else(|_| "benostreamdb".to_string())
+    std::env::var("BSDB_SERVICE_NAME").unwrap_or_else(|_| "benodb".to_string())
 }
 
 fn extra_headers() -> Vec<(String, String)> {
@@ -201,7 +201,7 @@ pub fn build_export_request() -> Value {
                 ]
             },
             "scopeMetrics": [{
-                "scope": { "name": "benostreamdb", "version": env!("CARGO_PKG_VERSION") },
+                "scope": { "name": "benodb", "version": env!("CARGO_PKG_VERSION") },
                 "metrics": metrics
             }]
         }]

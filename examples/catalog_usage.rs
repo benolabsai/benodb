@@ -2,7 +2,7 @@
 // This demonstrates that all catalog implementations work natively in Rust
 
 use arrow::datatypes::{DataType, Field, Schema};
-use benostreamdb::{create_catalog, Catalog, CatalogType};
+use benodb::{create_catalog, Catalog, CatalogType};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Example 3: Direct usage (without factory)
     // Note: RestCatalogClient is likely in core::catalog::rest
-    use benostreamdb::core::catalog::rest::RestCatalogClient;
+    use benodb::core::catalog::rest::RestCatalogClient;
 
     let rest_client = RestCatalogClient::new(
         "http://localhost:8181".to_string(),

@@ -2,10 +2,10 @@
 
 - **Status**: Implemented — promoted from `plans/trino_vector_pushdown.md`  
 - **Target**: Trino 482-483 (band `d`) and 484+ (band `e`); see
-[`TRINO_VERSION_BANDS.md`](https://www.benostreamdb.org/integrations/trino_version_bands.html) for the
+[`TRINO_VERSION_BANDS.md`](https://benolabsai.com/docs/integrations/trino_version_bands.html) for the
 supported version policy. The 468-era discussion below predates the two-band
 split and is retained as rationale.
-- **Owner surface**: `trino-benostreamdb/`, `src/core/ffi.rs`, `docs/integrations/TRINO.md`
+- **Owner surface**: `trino-benodb/`, `src/core/ffi.rs`, `docs/integrations/TRINO.md`
 
 ## 1. Decision
 
@@ -25,15 +25,15 @@ correct one.
 
 ## 2. What the code does today
 
-- [`BenoDBSplitManager.java:35`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBSplitManager.java#L35)
+- [`BenoDBSplitManager.java:35`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/BenoDBSplitManager.java#L35)
   builds only `SELECT * FROM t` plus an optional `WHERE` from `applyFilter`.
-- [`AbstractBenoDBMetadata.java:268`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/AbstractBenoDBMetadata.java#L268)
+- [`AbstractBenoDBMetadata.java:268`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/AbstractBenoDBMetadata.java#L268)
   is the only pushdown hook implemented.
-- [`BenoDBJNIBridge.java:30`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBJNIBridge.java#L30)
+- [`BenoDBJNIBridge.java:30`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/BenoDBJNIBridge.java#L30)
   declares `vectorSearch`, but no Java code calls it.
 - There is no `getProcedures`, `getTableFunctions`, or `getFunctionProvider`.
-- [`TRINO.md:87`](https://www.benostreamdb.org/integrations/trino.html) marks vector pushdown as
-  planned, while [`TRINO.md:39`](https://www.benostreamdb.org/integrations/trino.html) claims graph
+- [`TRINO.md:87`](https://benolabsai.com/docs/integrations/trino.html) marks vector pushdown as
+  planned, while [`TRINO.md:39`](https://benolabsai.com/docs/integrations/trino.html) claims graph
   table functions that the connector does not expose. The docs are ahead of the
   code in both directions.
 
@@ -41,13 +41,13 @@ correct one.
 
 ```sql
 -- One-time index build (blocking for the duration of the build)
-CALL benostreamdb.system.add_index('default.docs', 'embedding', 'hnsw');
-CALL benostreamdb.system.add_index('default.docs', 'text', 'bm25');
-CALL benostreamdb.system.build_index('default.docs', 'embedding');
+CALL benodb.system.add_index('default.docs', 'embedding', 'hnsw');
+CALL benodb.system.add_index('default.docs', 'text', 'bm25');
+CALL benodb.system.build_index('default.docs', 'embedding');
 
 -- Vector search
 SELECT *
-FROM TABLE(benostreamdb.system.vector_search(
+FROM TABLE(benodb.system.vector_search(
     table   => 'default.docs',
     column  => 'embedding',
     query   => '[0.10, 0.50, 0.85]',
@@ -56,7 +56,7 @@ FROM TABLE(benostreamdb.system.vector_search(
 ));
 
 -- Graph traversal (single edge table; Phase 3)
-SELECT * FROM TABLE(benostreamdb.system.graph_neighbors(
+SELECT * FROM TABLE(benodb.system.graph_neighbors(
     table => 'default.doc_links',
     node  => '101',
     hops  => 2
@@ -93,9 +93,9 @@ connector only has to produce that SQL and carry it to the split.
 - Document the actual current surface: scans, scalar predicate pushdown, writes,
   MERGE, schema/table listing.
 - Correct the stale comments in
-  [`BenoDBSplitManager.java:13`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBSplitManager.java#L13)
+  [`BenoDBSplitManager.java:13`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/BenoDBSplitManager.java#L13)
   and
-  [`BenoDBPageSource.java:21`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBPageSource.java#L21)
+  [`BenoDBPageSource.java:21`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/BenoDBPageSource.java#L21)
   that claim vector pushdown.
 
 This is a standalone fix and should land before any article or connector claim.
@@ -114,12 +114,12 @@ public static native boolean buildIndex(String tableUri, String segmentId);
 ### 6.2 Rust exports
 
 Add to `src/core/ffi.rs`, copying the Spark implementation at
-[`ffi.rs:468`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/ffi.rs#L468) and changing the symbol to the Trino
+[`ffi.rs:468`](https://github.com/benolabsai/benodb/blob/main/src/core/ffi.rs#L468) and changing the symbol to the Trino
 class:
 
 ```rust
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoDBJNIBridge_addIndex(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_addIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -129,14 +129,14 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoDBJNIBridge_addIndex(
 ```
 
 `build_index` mirrors
-[`Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_buildIndex`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/ffi.rs#L518).
+[`Java_com_benodb_spark_jni_BenoDBJNIBridge_buildIndex`](https://github.com/benolabsai/benodb/blob/main/src/core/ffi.rs#L518).
 
 ### 6.3 Procedure class
 
-New `BenoStreamProcedures.java`:
+New `BenoDBProcedures.java`:
 
 ```java
-public final class BenoStreamProcedures {
+public final class BenoDBProcedures {
     private final String warehouse;
 
     public void addIndex(ConnectorSession session, String table, String column, String algorithm) {
@@ -155,14 +155,14 @@ values that already contain `://`.
 ### 6.4 Connector registration
 
 In the inner `BenoDBConnector` in
-[`BenoDBConnectorFactory.java:29`](https://github.com/benolabsai/benostreamdb/blob/main/trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoDBConnectorFactory.java#L29),
+[`BenoDBConnectorFactory.java:29`](https://github.com/benolabsai/benodb/blob/main/trino-benodb/src/main/java/com/benodb/trino/BenoDBConnectorFactory.java#L29),
 implement:
 
 ```java
 @Override
 public Set<Procedure> getProcedures() {
     MethodHandle add = MethodHandles.lookup().findVirtual(
-        BenoStreamProcedures.class, "addIndex",
+        BenoDBProcedures.class, "addIndex",
         MethodType.methodType(void.class, ConnectorSession.class,
                               String.class, String.class, String.class))
         .bindTo(procedures);
@@ -317,7 +317,7 @@ correct layering is:
 
 1. Add a core SQL table function `hybrid_search(...)` in `src/core/sql/`,
    registered next to the graph UDFs in
-   [`session.rs:149`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/sql/session.rs#L149), backed by
+   [`session.rs:149`](https://github.com/benolabsai/benodb/blob/main/src/core/sql/session.rs#L149), backed by
    `Table::hybrid_search`.
 2. Expose it as a Trino table function that opens
    `SELECT * FROM hybrid_search('t', ...)`.
@@ -330,11 +330,11 @@ snapshot consistency; reject that option.
 
 **New**
 
-- `trino-benostreamdb/src/main/java/com/benostreamdb/trino/BenoStreamProcedures.java`
-- `trino-benostreamdb/src/main/java/com/benostreamdb/trino/VectorSearchFunction.java`
-- `trino-benostreamdb/src/main/java/com/benostreamdb/trino/VectorSearchHandle.java`
-- `trino-benostreamdb/src/main/java/com/benostreamdb/trino/VectorSearchSql.java`
-- `trino-benostreamdb/src/test/java/...` (SQL builder, handle JSON, arguments)
+- `trino-benodb/src/main/java/com/benodb/trino/BenoDBProcedures.java`
+- `trino-benodb/src/main/java/com/benodb/trino/VectorSearchFunction.java`
+- `trino-benodb/src/main/java/com/benodb/trino/VectorSearchHandle.java`
+- `trino-benodb/src/main/java/com/benodb/trino/VectorSearchSql.java`
+- `trino-benodb/src/test/java/...` (SQL builder, handle JSON, arguments)
 
 **Modified**
 
@@ -377,8 +377,8 @@ create a small table via the Python SDK, then run the SQL above. Capture
 4. **Serialization.** The table-function handle travels to workers; it must be
    Jackson-serializable with a stable shape.
 5. **Native packaging.** New JNI exports require rebuilding
-   `libbenostreamdb` and shipping it with the plugin; symbol names must match
-   `com.benostreamdb.trino.BenoDBJNIBridge`.
+   `libbenodb` and shipping it with the plugin; symbol names must match
+   `com.benodb.trino.BenoDBJNIBridge`.
 6. **Procedure blocking.** Index builds on large tables can exceed Trino call
    timeouts; document the out-of-band path.
 7. **SQL injection.** Table, column, filter, and vector inputs need validation;

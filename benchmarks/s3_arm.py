@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
+# Copyright (c) 2026 Richard Albright and BenoDB Contributors.
 """Exercise the S3 (object store) read path and report what it transfers.
 
 The 100M local sweep measures the mmap path. This measures the other one: the
@@ -483,7 +483,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     probes = [int(p) for p in args.probes.split(",") if p.strip()]
     if args.phase == "build":

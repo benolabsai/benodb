@@ -4,7 +4,7 @@
 //! `vector_max`, `vector_stddev`, `vector_median`) and the text-scoring UDFs
 //! (`bm25_score`, `tf_idf`).
 
-use benostreamdb::core::sql::session::BenoStreamSession;
+use benodb::core::sql::session::BenoStreamSession;
 
 fn session() -> BenoStreamSession {
     BenoStreamSession::new(None)
@@ -46,7 +46,7 @@ async fn tf_idf_udf() -> anyhow::Result<()> {
 
 #[test]
 fn aggregates_are_registered() {
-    use benostreamdb::core::sql::vector_udf;
+    use benodb::core::sql::vector_udf;
     let names: Vec<String> = vector_udf::all_vector_aggregates()
         .iter()
         .map(|a| a.name().to_string())
@@ -69,7 +69,7 @@ fn aggregates_are_registered() {
 
 #[test]
 fn text_udfs_are_registered() {
-    use benostreamdb::core::sql::vector_udf;
+    use benodb::core::sql::vector_udf;
     let names: Vec<String> = vector_udf::all_vector_udfs()
         .iter()
         .map(|u| u.name().to_string())

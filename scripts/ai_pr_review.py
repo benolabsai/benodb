@@ -118,7 +118,7 @@ def _review(diff: str, api_base: str, model: str, api_key: str) -> dict:
     if "openrouter.ai" in api_base:
         # OpenRouter uses these for attribution/rankings; both are optional.
         headers["HTTP-Referer"] = os.environ.get(
-            "OPENAI_SITE_URL", "https://github.com/benostreamdb"
+            "OPENAI_SITE_URL", "https://github.com/benodb"
         )
         headers["X-Title"] = os.environ.get("OPENAI_APP_NAME", "BenoStreamDB PR Review")
     raw = _request(

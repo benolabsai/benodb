@@ -9,10 +9,10 @@ Tests that BenoStreamDB-written tables can be read by:
 
 Prerequisites:
 - Docker (for Spark/Trino containers)
-- benostreamdb installed
+- benodb installed
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import pytest
 from pathlib import Path

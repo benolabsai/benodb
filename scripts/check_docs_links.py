@@ -19,7 +19,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SOURCES = [ROOT / "docs", ROOT / "plans", ROOT / "contrib" / "benostreamdb-search" / "docs"]
+SOURCES = [ROOT / "docs", ROOT / "plans", ROOT / "contrib" / "benodb-search" / "docs"]
 EXTRA = [ROOT / "README.md"]
 SKIP = ("http://", "https://", "mailto:", "#", "file://")
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")

@@ -16,7 +16,7 @@ use anyhow::Result;
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 
 fn create_batch(start_id: i32, num_rows: usize) -> RecordBatch {
     let id_array = Int32Array::from_iter_values(start_id..start_id + num_rows as i32);

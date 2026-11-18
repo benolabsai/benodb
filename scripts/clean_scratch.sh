@@ -48,7 +48,7 @@ shopt -s nullglob
 for d in benchmarks/scratch_*; do TARGETS+=("${d}"); done
 if [[ "${WITH_BUILDS}" -eq 1 ]]; then
     TARGETS+=(target target-jni fuzz/target server/flight_sql/target)
-    TARGETS+=(tests/iceberg_rust_oracle/target spark-benostreamdb/target trino-benostreamdb/target)
+    TARGETS+=(tests/iceberg_rust_oracle/target spark-benodb/target trino-benodb/target)
 fi
 if [[ "${WITH_FIXTURES}" -eq 1 ]]; then
     for d in data/*; do TARGETS+=("${d}"); done
@@ -78,6 +78,6 @@ rm -rf "${TARGETS[@]}"
 echo "--> After:"
 df -h . | tail -1
 echo "Done. Build caches and fixtures rebuild on demand:"
-echo "    cargo build --release -p benostreamdb-flight   # service binary"
+echo "    cargo build --release -p benodb-flight   # service binary"
 echo "    ./scripts/build_connectors.sh                  # maven connector targets"
 echo "    .venv/bin/python scripts/build_three_tier.py   # data/three_tier_db"

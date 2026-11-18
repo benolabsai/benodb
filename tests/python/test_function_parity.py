@@ -1,6 +1,6 @@
 """Function-surface parity across the core, Python, dbt, Trino, and Spark.
 
-The Rust core is the source of truth: `benostreamdb.registered_functions()`
+The Rust core is the source of truth: `benodb.registered_functions()`
 returns every custom UDF/UDAF the engine registers with DataFusion. Adding a
 function to the core without exposing it in the other surfaces fails here, so
 the surfaces cannot silently drift apart.
@@ -8,7 +8,7 @@ the surfaces cannot silently drift apart.
 Surfaces:
   * core   — `src/core/sql/udf/mod.rs::registered_function_names()`
   * python — the embedded session (every function must resolve in SQL)
-  * dbt    — `dbt-benostreamdb/dbt/include/benostreamdb/macros/*.sql`
+  * dbt    — `dbt-benodb/dbt/include/benodb/macros/*.sql`
   * spark  — `BenoStreamCatalogFunctions` (DSv2 `FunctionCatalog`)
   * trino  — the connector forwards SQL to the engine session (`openQuery`);
              Trino has no connector function SPI, so its user-facing function
@@ -23,29 +23,29 @@ import re
 
 import pytest
 
-import benostreamdb
+import benodb
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-MACROS_DIR = ROOT / "dbt-benostreamdb" / "dbt" / "include" / "benostreamdb" / "macros"
+MACROS_DIR = ROOT / "dbt-benodb" / "dbt" / "include" / "benodb" / "macros"
 SPARK_FUNCTIONS_SCALA = (
     ROOT
-    / "spark-benostreamdb"
+    / "spark-benodb"
     / "src"
     / "main"
     / "scala"
     / "com"
-    / "benostreamdb"
+    / "benodb"
     / "spark"
     / "BenoStreamCatalogFunctions.scala"
 )
 TRINO_PAGE_SOURCE = (
     ROOT
-    / "trino-benostreamdb"
+    / "trino-benodb"
     / "src"
     / "main"
     / "java"
     / "com"
-    / "benostreamdb"
+    / "benodb"
     / "trino"
     / "BenoStreamDBPageSource.java"
 )
@@ -179,7 +179,7 @@ TRINO_KNOWN_GAPS = set(DBT_MACRO_FOR)
 
 
 def engine_functions():
-    return set(benostreamdb.registered_functions())
+    return set(benodb.registered_functions())
 
 
 def dbt_macros():
@@ -188,7 +188,7 @@ def dbt_macros():
     for path in MACROS_DIR.glob("*.sql"):
         for match in re.finditer(r"^\{%-?\s*macro\s+([a-z_][a-z0-9_]*)\s*\(", path.read_text(), re.M):
             name = match.group(1)
-            if name.startswith(("default__", "benostreamdb__", "_")):
+            if name.startswith(("default__", "benodb__", "_")):
                 continue
             names.add(name)
     return names
@@ -231,7 +231,7 @@ def test_dbt_macros_exist():
 
 def test_python_resolves_every_core_function():
     """Every core function must resolve in the embedded session."""
-    session = benostreamdb.Session()
+    session = benodb.Session()
     unresolved = []
     for fn in sorted(engine_functions()):
         try:
@@ -276,12 +276,12 @@ def test_spark_passthrough_reader_exists():
     """The pass-through reader is what makes aggregates/graph UDAFs reachable."""
     source = (
         ROOT
-        / "spark-benostreamdb"
+        / "spark-benodb"
         / "src"
         / "main"
         / "scala"
         / "com"
-        / "benostreamdb"
+        / "benodb"
         / "spark"
         / "BenoStreamQueryTable.scala"
     )
@@ -309,7 +309,7 @@ def test_trino_gaps_are_documented():
 
 def test_graph_table_functions_are_registered():
     """The graph traversal table functions are registered in the engine."""
-    registered = set(benostreamdb.registered_table_functions())
+    registered = set(benodb.registered_table_functions())
     assert registered == GRAPH_TABLE_FUNCTIONS, (
         f"graph table functions drifted: registered={sorted(registered)} "
         f"expected={sorted(GRAPH_TABLE_FUNCTIONS)}"
@@ -319,7 +319,7 @@ def test_graph_table_functions_are_registered():
 def test_graph_table_functions_resolve_in_the_session():
     """Each table function is callable; a missing table is a *table* error, not
     an unknown-function error (which would mean it was never registered)."""
-    session = benostreamdb.Session()
+    session = benodb.Session()
     # Per-function argument shapes (seeds are strings; path endpoints are ints).
     calls = {
         "graph_neighbors": "('__no_such_table__', '1', 1)",

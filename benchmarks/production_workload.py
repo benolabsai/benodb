@@ -25,7 +25,7 @@ import numpy as np
 import pyarrow as pa
 
 try:
-    import benostreamdb
+    import benodb
 except ImportError:
     pass
 
@@ -36,7 +36,7 @@ def create_benchmark_table(db_path: str, n_rows: int = 20000, dim: int = 128) ->
         ("id", pa.int64()),
         ("embedding", pa.list_(pa.float32(), dim)),
     ])
-    table = benostreamdb.Table.create(f"file://{db_path}", schema)
+    table = benodb.Table.create(f"file://{db_path}", schema)
     table.add_index(
         "embedding",
         # Full precision by default (matches the engine default); the quantized
@@ -66,7 +66,7 @@ def create_benchmark_table(db_path: str, n_rows: int = 20000, dim: int = 128) ->
 def query_worker(db_path: str, num_queries: int, stop_event: threading.Event, latencies: list, dim: int = 128):
     """Executes vector search queries concurrently and records latency."""
     try:
-        table = benostreamdb.Table(f"file://{db_path}")
+        table = benodb.Table(f"file://{db_path}")
         count = 0
         while not stop_event.is_set() and count < num_queries:
             q = np.random.rand(dim).astype(np.float32)
@@ -89,7 +89,7 @@ def run_concurrency_level(db_path: str, concurrency: int, queries_total: int, di
     latencies = []
 
     # Warmup
-    table = benostreamdb.Table(f"file://{db_path}")
+    table = benodb.Table(f"file://{db_path}")
     for _ in range(10):
         q = np.random.rand(dim).astype(np.float32)
         q /= np.linalg.norm(q)
@@ -152,7 +152,7 @@ def run_concurrent_sweep(args) -> Dict[str, Any]:
             results_by_level.append(res)
 
         report = {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "workload": "concurrent_scaling",
             "host": f"{platform.processor() or platform.machine()} ({platform.system()})",
             "levels": results_by_level,
@@ -162,7 +162,7 @@ def run_concurrent_sweep(args) -> Dict[str, Any]:
         md_lines = [
             "# Multi-Client Concurrency Scaling Benchmark",
             "",
-            "- **Engine**: BenoStreamDB",
+            "- **Engine**: BenoDB",
             f"- **Host**: {report['host']}",
             "- **Workload**: Concurrent ANN Vector Queries (HNSW-TQ8, Top-10)",
             f"- **Queries per Concurrency Tier**: {total_queries_per_level:,}",
@@ -200,7 +200,7 @@ def run_maintenance(args) -> Dict[str, Any]:
         ("embedding", pa.list_(pa.float32(), dim)),
     ])
 
-    t = benostreamdb.Table.create(f"file://{temp_dir}", schema)
+    t = benodb.Table.create(f"file://{temp_dir}", schema)
     t.add_index("embedding", {"type": "hnsw", "device": "cpu"})
 
     # Write 50 small segments (simulate a heavily fragmented table)
@@ -234,7 +234,7 @@ def run_maintenance(args) -> Dict[str, Any]:
 
     def compact_worker():
         t0 = time.time()
-        tbl = benostreamdb.Table(f"file://{temp_dir}")
+        tbl = benodb.Table(f"file://{temp_dir}")
         tbl.rewrite_data_files(2_000_000_000)
         print(f"Compaction finished in {time.time() - t0:.2f}s")
         stop_maint.set()
@@ -256,7 +256,7 @@ def run_maintenance(args) -> Dict[str, Any]:
     shutil.rmtree(temp_dir, ignore_errors=True)
 
     return {
-        "engine": "benostreamdb",
+        "engine": "benodb",
         "workload": "maintenance_saturation",
         "concurrency": args.concurrency,
         "baseline_p99_ms": round(base_p99, 2),
@@ -268,7 +268,7 @@ def run_maintenance(args) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default=None, help="Path to BenoStreamDB table")
+    parser.add_argument("--db", default=None, help="Path to BenoDB table")
     parser.add_argument("--workload", choices=["concurrent", "maintenance"], required=True)
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--queries-total", type=int, default=1000)

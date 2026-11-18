@@ -1,6 +1,6 @@
 # Tutorial 2 — JSON / document retrieval with a JSON-path index
 
-> The runnable Python version is [`examples/tutorials/02_json_document_retrieval.ipynb`](https://github.com/benolabsai/benostreamdb/blob/main/examples/tutorials/02_json_document_retrieval.ipynb).
+> The runnable Python version is [`examples/tutorials/02_json_document_retrieval.ipynb`](https://github.com/benolabsai/benodb/blob/main/examples/tutorials/02_json_document_retrieval.ipynb).
 > This page is the SQL / connector form.
 
 Store semi-structured documents in a `Utf8` JSON column, add a **JSON-path
@@ -65,7 +65,7 @@ SQL**, and **MCP** (`execute_sql`). Only the index DDL spelling differs:
 | :--- | :--- |
 | SQL (engine/Trino/Flight) | `CREATE INDEX idx_doc ON docs (doc) USING json_path;` |
 | Spark | `CALL benostream.system.add_index('docs', 'doc', 'json_path');` |
-| dbt | `{{ benostreamdb__create_index('docs', 'doc', 'json_path') }}` |
+| dbt | `{{ benodb__create_index('docs', 'doc', 'json_path') }}` |
 | Python | `table.add_index("doc", {"type": "json_path", "paths": ["$.user.id"]})` |
 
 ## Why this matters

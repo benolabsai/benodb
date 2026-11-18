@@ -2,11 +2,11 @@
 
 ```bash
 # Install from PyPI
-pip install benostreamdb
+pip install benodb
 
 # Or install from source
-git clone https://github.com/benolabsai/benostreamdb
-cd benostreamdb
+git clone https://github.com/benolabsai/benodb
+cd benodb
 
 # Build Python bindings (CPU + AMD/Intel/Apple GPU backends)
 pip install maturin
@@ -23,7 +23,7 @@ maturin develop --features cuda
 ## ⚠️ Deployment Security
 
 **BenoDB's network servers are not hardened for untrusted networks.**
-The network servers (`benostreamdb-flight`, `bsdb-search`, and `contrib/benostreamdb-mcp`)
+The network servers (`benodb-flight`, `bsdb-search`, and `contrib/benodb-mcp`)
 ship with **no native TLS**. While they support **stateless authentication** (via
 `BSDB_API_KEY` or JWT tokens), they should be deployed on a **trusted internal network**
 or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. Do **not** expose
@@ -36,7 +36,7 @@ Untrusted clients ──► Gateway / reverse proxy (TLS + authn) ──► inte
                                                                    │
                                           ┌────────────────────────┼────────────────────────┐
                                           ▼                        ▼                        ▼
-                                   benostreamdb-flight      bsdb-search              gateway / iceberg_rest
+                                   benodb-flight      bsdb-search              gateway / iceberg_rest
                                           │                        │                        │
                                           └────────────────────────┴────────────────────────┘
                                                                    ▼
@@ -44,7 +44,7 @@ Untrusted clients ──► Gateway / reverse proxy (TLS + authn) ──► inte
 ```
 
 The embedded library (Python/Rust) is in-process and inherits the trust boundary
-of the host application. See [SECURITY.md](https://github.com/benolabsai/benostreamdb/blob/main/SECURITY.md) for the full posture.
+of the host application. See [SECURITY.md](https://github.com/benolabsai/benodb/blob/main/SECURITY.md) for the full posture.
 
 ## GPU Acceleration (Optional)
 
@@ -53,7 +53,7 @@ For GPU-accelerated vector operations, install the appropriate backend:
 **GPU Support (NVIDIA/AMD/Intel/Apple):**
 Hardware acceleration is now part of the base package.
 ```bash
-pip install benostreamdb
+pip install benodb
 # Verify: nvidia-smi / rocm-smi / clinfo
 ```
 
@@ -107,7 +107,7 @@ See [pgvector SQL Guide](PGVECTOR_SQL_GUIDE.md) for complete documentation.
 ## Basic Usage
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create table
 table = bsdb.Table("s3://bucket/my-table")
@@ -148,7 +148,7 @@ BenoDB features a modern fluent query API that supports method chaining for both
 ### Python Fluent API
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/my-table")
 
@@ -185,7 +185,7 @@ results = (table.query()
 The same fluent interface is available in native Rust:
 
 ```rust
-use benostreamdb::{Table, VectorValue};
+use benodb::{Table, VectorValue};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -218,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
 BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # GPU-accelerated batch distance computation
@@ -274,7 +274,7 @@ See [Python Vector API Documentation](PYTHON_VECTOR_API.md) for complete API ref
 
 ```python
 # SQL queries (full DataFusion support with pgvector syntax)
-import benostreamdb as bsdb
+import benodb as bsdb
 session = bsdb.Session()
 session.register("users", table)
 
@@ -312,7 +312,7 @@ table.vacuum(retention_versions=10)
 The Phase-1 synthetic datasets, their generators, and the associated
 micro-benchmark harnesses have been removed from the repository. The maintained,
 measured end-to-end workload is the full-site Wikipedia Graph RAG demo — see
-[`examples/web_ui/README.md`](https://github.com/benolabsai/benostreamdb/blob/main/examples/web_ui/README.md) and
+[`examples/web_ui/README.md`](https://github.com/benolabsai/benodb/blob/main/examples/web_ui/README.md) and
 [`docs/BENCHMARKING.md`](BENCHMARKING.md).
 
 ## Phase 2: Nessie Integration (Next)
@@ -393,13 +393,13 @@ s3://bucket/table/
 ```scala
 // Read
 val df = spark.read
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   .load()
 
 // Write
 df.write
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   .save()
 ```
@@ -413,7 +413,7 @@ WHERE id > 100;  -- Uses scalar index
 ### Python (Direct)
 ```python
 # No Spark needed for local/notebook work
-import benostreamdb as bsdb
+import benodb as bsdb
 df = bsdb.Table("s3://bucket/table").query().execute()
 # Or using traditional API: df = bsdb.Table("s3://bucket/table").to_pandas()
 ```
@@ -430,7 +430,7 @@ We provide a script to build a full matrix of connectors (Java 17/21, Spark 3.5/
 
 ### Hardware Acceleration
 - **Standard**: Build with CPU + Intel Graphics/XPU support (default on Linux/Windows).
-- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenostreamdb.dylib`) without requiring extra flags. Configure at runtime via `spark.benostream.gpu.device=mps` in Spark or `benostream.gpu-device=mps` in Trino.
+- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenodb.dylib`) without requiring extra flags. Configure at runtime via `spark.benostream.gpu.device=mps` in Spark or `benostream.gpu-device=mps` in Trino.
 - **CUDA**: Build for NVIDIA GPUs:
   ```bash
   ./build-connectors.sh --cuda
@@ -466,7 +466,7 @@ pytest tests/
 ### Project Structure
 
 ```
-benostreamdb/
+benodb/
 ├── src/
 │   ├── lib.rs              # Main library
 │   ├── segment.rs          # Hybrid segment writer
@@ -476,8 +476,8 @@ benostreamdb/
 │   ├── maintenance.rs      # Vacuum/GC
 │   ├── python_binding.rs   # PyO3 bindings
 │   └── storage.rs          # Multi-cloud storage
-├── spark-benostream/      # Spark connector (Java)
-├── trino-benostream/      # Trino connector (Java)
+├── spark-benodb/      # Spark connector (Java)
+├── trino-benodb/      # Trino connector (Java)
 ├── tests/
 │   ├── data/               # Test datasets
 │   ├── integration/        # Integration tests
@@ -518,7 +518,7 @@ benostreamdb/
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](https://github.com/benolabsai/benostreamdb/blob/main/CONTRIBUTING.md) for guidelines.
+We welcome contributions! See [CONTRIBUTING.md](https://github.com/benolabsai/benodb/blob/main/CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
@@ -547,7 +547,7 @@ This guide covers two ways to use BenoDB:
 
 1. **The `bsdb-search` REST server** — an OpenSearch / Elasticsearch 7.10-compatible
    API (plus a Qdrant v1.x-compatible API; see
-   [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md)) served on top of the
+   [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md)) served on top of the
    BenoDB engine.
 2. **The Python client** — direct, in-process access to the engine via `pyo3` bindings.
 
@@ -555,7 +555,7 @@ This guide covers two ways to use BenoDB:
 
 ## 1. The `bsdb-search` REST server
 
-`bsdb-search` is an optional add-on crate (`benostreamdb-search`) that exposes an
+`bsdb-search` is an optional add-on crate (`benodb-search`) that exposes an
 Elasticsearch/OpenSearch 7.10 wire-compatible REST API. It is ideal for website
 search, document catalogs, and knowledge bases where a 50–200 ms query latency
 envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
@@ -564,7 +564,7 @@ envelope is acceptable and object-storage-native, scale-to-zero hosting is desir
 
 ```bash
 # From the repository root (the workspace builds both the core and the add-on):
-cargo build --release -p benostreamdb-search --bin bsdb-search
+cargo build --release -p benodb-search --bin bsdb-search
 ```
 
 The binary is produced at `target/release/bsdb-search`.
@@ -572,7 +572,7 @@ The binary is produced at `target/release/bsdb-search`.
 ### Run
 
 ```bash
-# Defaults: bind 127.0.0.1:9200, store indexes under file://~/.benostreamdb/search
+# Defaults: bind 127.0.0.1:9200, store indexes under file://~/.benodb/search
 ./target/release/bsdb-search
 
 # Or with explicit configuration:
@@ -586,7 +586,7 @@ BSDB_SEARCH_STORAGE_URI=file:///data/search \
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `BSDB_SEARCH_STORAGE_URI` | `file://~/.benostreamdb/search` | Index root. Each index `<name>` is a table at `{root}/{name}`. Supports `file://`, `s3://`, `gs://`, `az://`, `http(s)://`. |
+| `BSDB_SEARCH_STORAGE_URI` | `file://~/.benodb/search` | Index root. Each index `<name>` is a table at `{root}/{name}`. Supports `file://`, `s3://`, `gs://`, `az://`, `http(s)://`. |
 | `BSDB_SEARCH_BIND` | `127.0.0.1` | OpenSearch/ES API bind address. |
 | `BSDB_SEARCH_PORT` | `9200` | OpenSearch/ES API port. |
 | `BSDB_SEARCH_AUTO_REFRESH_SECS` | `0` (off) | Periodically flush every index so new docs become searchable without an explicit `_refresh`. |
@@ -638,7 +638,7 @@ curl -s localhost:9200/metrics
 | Refresh | `POST /{index}/_refresh`, `POST /_refresh` |
 | Metrics | `GET /metrics` (Prometheus text format) |
 
-See [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/OPENSEARCH_COMPATIBILITY.md) for the full
+See [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/OPENSEARCH_COMPATIBILITY.md) for the full
 supported / unsupported matrix.
 
 ---
@@ -660,7 +660,7 @@ cd python && pip install -e .
 ### Quickstart
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Open (or create) a table on local disk or object storage.
 table = bsdb.Table("file:///tmp/my_table")
@@ -689,7 +689,7 @@ BenoDB includes **TurboQuant™** out-of-the-box in the free community core engi
 - **TQ4 (4-bit)**: 8x RAM and disk compression for massive datasets.
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("file:///tmp/my_rag_table")
 
@@ -722,13 +722,13 @@ cargo test --workspace
 pytest tests/
 
 # bsdb-search REST conformance suite:
-pytest benostreamdb-search/tests/test_search_api.py
+pytest benodb-search/tests/test_search_api.py
 ```
 
 ---
 
 ## Next steps
 
-- [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/OPENSEARCH_COMPATIBILITY.md) — full API compatibility matrix.
-- [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/OPENSEARCH_COMPATIBILITY.md) — design and positioning.
-- [README.md](https://github.com/benolabsai/benostreamdb/blob/main/README.md) — core engine features, Iceberg compliance, and query engines.
+- [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/OPENSEARCH_COMPATIBILITY.md) — full API compatibility matrix.
+- [OPENSEARCH_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/OPENSEARCH_COMPATIBILITY.md) — design and positioning.
+- [README.md](https://github.com/benolabsai/benodb/blob/main/README.md) — core engine features, Iceberg compliance, and query engines.

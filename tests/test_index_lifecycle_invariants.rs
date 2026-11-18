@@ -17,9 +17,9 @@ use std::sync::Arc;
 use arrow::array::Int64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::table::Table;
 use tempfile::tempdir;
 
 fn edge_batch(offset: i64) -> RecordBatch {

@@ -154,7 +154,7 @@ pull in opposite directions:
   `Argument 'TABLE' has invalid type io.airlift.slice.Slice (expected java.lang.String)`.
 
 So procedure methods take `String`, and their registered defaults are `Slice`.
-Both requirements are satisfied simultaneously; see `BenoStreamProcedures`.
+Both requirements are satisfied simultaneously; see `BenoDBProcedures`.
 
 ### Test stack
 
@@ -239,7 +239,7 @@ Per Trino's developer guide, scalar functions are contributed by the **plugin**:
 ```java
 @Override
 public Set<Class<?>> getFunctions() {
-    return Set.of(BenoStreamScalarFunctions.class);
+    return Set.of(BenoDBScalarFunctions.class);
 }
 ```
 

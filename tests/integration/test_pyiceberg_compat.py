@@ -3,7 +3,7 @@ import os
 import shutil
 import pyarrow as pa
 from pyiceberg.catalog.sql import SqlCatalog
-import benostreamdb as bsdb
+import benodb as bsdb
 
 def test_compatibility():
     print("=== STARTING PYICEBERG COMPATIBILITY TEST ===")

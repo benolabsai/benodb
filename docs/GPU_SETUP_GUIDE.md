@@ -25,7 +25,7 @@ GPU acceleration offloads compute-heavy batch vector distance kernels to hardwar
 BenoDB provides a unified binary package with support for major compute backends. Runtime detection automatically activates available hardware drivers, safely falling back to CPU if drivers are unavailable.
 
 ```bash
-pip install benostreamdb
+pip install benodb
 ```
 
 > **Hardware Requirements:** 
@@ -35,7 +35,7 @@ pip install benostreamdb
 > - **Apple**: Requires macOS 12.3+ (Built-in Metal).
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Auto-detect and use best available compute backend
 device = bsdb.Device("auto")
@@ -122,12 +122,12 @@ Windows users should use **WSL2** to run BenoDB with GPU support:
 **Native Windows (outside WSL2):**
 We build and package native Windows binaries with full architectural support for CUDA via dynamic linking to `nvcuda.dll` and runtime NVRTC JIT compilation. However, because our automated CI test suite currently runs on Linux, native Windows GPU execution is currently **untested in CI**. 
 
-If you are running BenoDB natively on Windows with an NVIDIA GPU, we would love your help: please test your workload and [report your results or open an issue](https://github.com/benolabsai/benostreamdb/issues) to let us know how it runs on your machine. For production workflows today, WSL2 remains our tested and recommended environment.
+If you are running BenoDB natively on Windows with an NVIDIA GPU, we would love your help: please test your workload and [report your results or open an issue](https://github.com/benolabsai/benodb/issues) to let us know how it runs on your machine. For production workflows today, WSL2 remains our tested and recommended environment.
 
 ### Verification
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Create CUDA context
@@ -155,7 +155,7 @@ print(f"GPU time: {stats['total_gpu_time_ms']}ms")
 
 > **Hardware Testing Status (Help Wanted):** BenoDB targets AMD GPUs via its cross-platform **WGPU / Vulkan** compute pipeline. However, our internal testing environment has validated WGPU primarily on Intel integrated graphics; we currently lack physical AMD discrete GPUs (RX 6000/7000 series or Instinct) in our regular CI test harness. While the WGSL distance shaders compile and run against standard Vulkan compute targets, AMD execution is currently **untested on real hardware**.
 >
-> If you have an AMD GPU with ROCm or Vulkan on Linux, we would love your help! Please run the verification snippet below and [report your benchmark results or open an issue](https://github.com/benolabsai/benostreamdb/issues).
+> If you have an AMD GPU with ROCm or Vulkan on Linux, we would love your help! Please run the verification snippet below and [report your benchmark results or open an issue](https://github.com/benolabsai/benodb/issues).
 
 ### Target GPUs
 
@@ -215,7 +215,7 @@ sudo reboot
 ### Verification
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create ROCm context
 ctx = bsdb.ComputeContext("rocm")
@@ -251,7 +251,7 @@ print(f"Computed {len(distances)} distances on AMD GPU")
 ### Verification
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Auto-detect should find Metal on Apple Silicon
 ctx = bsdb.ComputeContext.auto_detect()
@@ -308,7 +308,7 @@ vulkaninfo | grep "vendorID = 0x8086"
 # Verify Vulkan/WGPU installation
 vulkaninfo | grep vendor
 # Or check adapter listing in BenoDB
-python -c "import benostreamdb as bsdb; print(bsdb.Device.list_available_backends())"
+python -c "import benodb as bsdb; print(bsdb.Device.list_available_backends())"
 ```
 
 ### Installation on Windows (via WSL2)
@@ -318,7 +318,7 @@ Windows users should ensure they have the latest Intel Graphics drivers installe
 ### Verification
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create XPU (Intel) context
 device = bsdb.Device("xpu")
@@ -339,7 +339,7 @@ For systems with multiple GPUs, you can pin one device or install a pool.
 Pin a specific device:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # List available backends
 ctx = bsdb.ComputeContext.auto_detect()
@@ -367,7 +367,7 @@ bsdb.set_gpu_device_pool("")
 For Flight SQL, MCP, and other server processes, use the same list:
 
 ```bash
-BSDB_GPU_DEVICE="cuda:0,cuda:1" benostreamdb-flight
+BSDB_GPU_DEVICE="cuda:0,cuda:1" benodb-flight
 ```
 
 The pool is **concurrency scaling**, not single-query sharding: each worker thread is assigned one

@@ -22,7 +22,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 #[derive(Clone)]
 pub struct BenoStreamFlightSqlService {
-    pub session: benostreamdb::core::sql::session::BenoStreamSession,
+    pub session: benodb::core::sql::session::BenoStreamSession,
     tx: std::sync::Arc<tokio::sync::Mutex<TransactionState>>,
     prepared: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, String>>>,
 }
@@ -36,7 +36,7 @@ fn new_statement_handle() -> Vec<u8> {
 
 /// Transaction state for the Flight SQL session.
 ///
-/// BenoStreamDB commits are Iceberg snapshots: a transaction stages statements
+/// BenoDB commits are Iceberg snapshots: a transaction stages statements
 /// and publishes them as a single snapshot on COMMIT (or discards them on
 /// ROLLBACK). Autocommit (the default) executes each statement immediately.
 struct TransactionState {
@@ -135,7 +135,7 @@ fn parse_autocommit_body(body: &[u8]) -> bool {
 }
 
 impl BenoStreamFlightSqlService {
-    pub fn new(session: benostreamdb::core::sql::session::BenoStreamSession) -> Self {
+    pub fn new(session: benodb::core::sql::session::BenoStreamSession) -> Self {
         Self {
             session,
             tx: std::sync::Arc::new(tokio::sync::Mutex::new(TransactionState::default())),
@@ -160,12 +160,11 @@ impl BenoStreamFlightSqlService {
         &self,
         sql: &str,
     ) -> Result<Vec<arrow::record_batch::RecordBatch>, Status> {
-        if flight_read_only() {
-            if self.session.is_ddl(sql).await.unwrap_or(true)
-                || self.session.is_dml(sql).await.unwrap_or(true)
-            {
-                return Err(Status::permission_denied("Server is in read-only mode"));
-            }
+        if flight_read_only()
+            && (self.session.is_ddl(sql).await.unwrap_or(true)
+                || self.session.is_dml(sql).await.unwrap_or(true))
+        {
+            return Err(Status::permission_denied("Server is in read-only mode"));
         }
         let mut df = self
             .session
@@ -203,7 +202,7 @@ impl BenoStreamFlightSqlService {
 /// `Command::Unknown(Any)` with this `type_url` and a JSON body; the server
 /// streams the drained events back. This is the true-streaming counterpart of
 /// the `subscribe_events` SQL table function.
-const SUBSCRIBE_TYPE_URL: &str = "type.googleapis.com/benostreamdb.Subscribe";
+const SUBSCRIBE_TYPE_URL: &str = "type.googleapis.com/benodb.Subscribe";
 
 /// JSON body of a subscription ticket.
 #[derive(serde::Deserialize)]
@@ -241,7 +240,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         &self,
         _request: Request<Streaming<HandshakeRequest>>,
     ) -> Result<Response<BoxStream<'static, Result<HandshakeResponse, Status>>>, Status> {
-        // BenoStreamDB does not require authentication; return a connection id
+        // BenoDB does not require authentication; return a connection id
         // so clients can correlate requests.
         let response = HandshakeResponse {
             protocol_version: 0,
@@ -568,7 +567,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         let mut builder = SqlInfoDataBuilder::new();
         builder.append(
             SqlInfo::FlightSqlServerName,
-            "BenoStreamDB Flight SQL Server",
+            "BenoDB Flight SQL Server",
         );
         builder.append(SqlInfo::FlightSqlServerVersion, "1");
         builder.append(SqlInfo::FlightSqlServerArrowVersion, "1.3");
@@ -809,7 +808,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         let mut data_builder = SqlInfoDataBuilder::new();
         data_builder.append(
             SqlInfo::FlightSqlServerName,
-            "BenoStreamDB Flight SQL Server",
+            "BenoDB Flight SQL Server",
         );
         data_builder.append(SqlInfo::FlightSqlServerVersion, "1");
         data_builder.append(SqlInfo::FlightSqlServerArrowVersion, "1.3");
@@ -1005,7 +1004,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     > {
         let action_type = request.get_ref().r#type.clone();
         // The ADBC Flight SQL driver disables autocommit by sending a
-        // `SetAutocommit` action. BenoStreamDB supports staged commits, so
+        // `SetAutocommit` action. BenoDB supports staged commits, so
         // honour it: enabling autocommit commits any staged statements.
         if action_type.to_ascii_lowercase().contains("autocommit") {
             let enabled = parse_autocommit_body(&request.get_ref().body);

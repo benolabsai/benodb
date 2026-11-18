@@ -33,8 +33,8 @@ Version mapping
 Two distributions carry an INDEPENDENT version line and are resolved from the
 repository rather than from the engine tag:
 
-* ``dbt-benostreamdb``   <- dbt-benostreamdb/dbt/adapters/benostreamdb/__version__.py
-* ``benostream-gpu-ann`` <- benostream-gpu-ann/Cargo.toml
+* ``dbt-benodb``   <- dbt-benodb/dbt/adapters/benodb/__version__.py
+* ``benodb-gpu-ann`` <- benodb-gpu-ann/Cargo.toml
 
 Override with ``--dbt-version`` / ``--gpu-ann-version``, or drop them from the
 run with ``--no-independent``.
@@ -100,26 +100,26 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # PyPI distribution names this repository publishes. Kept in sync with the
-# `[project] name` fields under pyproject.toml / contrib / server / dbt-benostreamdb.
+# `[project] name` fields under pyproject.toml / contrib / server / dbt-benodb.
 PYPI_DISTS = [
-    "benostreamdb",         # engine (maturin / PyO3)
-    "benostreamdb-search",  # contrib/benostreamdb-search
-    "benostreamdb-flight",  # server/flight_sql
-    "benostreamdb-mcp",     # contrib/benostreamdb-mcp
-    "dbt-benostreamdb",     # INDEPENDENT version (dbt convention)
+    "benodb",         # engine (maturin / PyO3)
+    "benodb-search",  # contrib/benodb-search
+    "benodb-flight",  # server/flight_sql
+    "benodb-mcp",     # contrib/benodb-mcp
+    "dbt-benodb",     # INDEPENDENT version (dbt convention)
 ]
 
-# crates.io crate names. benostream-gpu-ann is versioned independently.
+# crates.io crate names. benodb-gpu-ann is versioned independently.
 CRATES = [
-    "benostream-gpu-ann",   # INDEPENDENT version
-    "benostreamdb",
-    "benostreamdb-search",
+    "benodb-gpu-ann",   # INDEPENDENT version
+    "benodb",
+    "benodb-search",
 ]
 
-DBT_VERSION_FILE = REPO_ROOT / "dbt-benostreamdb" / "dbt" / "adapters" / "benostreamdb" / "__version__.py"
-GPU_ANN_CARGO = REPO_ROOT / "benostream-gpu-ann" / "Cargo.toml"
+DBT_VERSION_FILE = REPO_ROOT / "dbt-benodb" / "dbt" / "adapters" / "benodb" / "__version__.py"
+GPU_ANN_CARGO = REPO_ROOT / "benodb-gpu-ann" / "Cargo.toml"
 
-USER_AGENT = "beno-release-teardown (+https://github.com/benolabsai/benostreamdb)"
+USER_AGENT = "beno-release-teardown (+https://github.com/benolabsai/benodb)"
 
 
 # --------------------------------------------------------------------------- #
@@ -319,12 +319,12 @@ def build_plan(args: argparse.Namespace) -> list[tuple[str, str, str]]:
 
     if not args.crates_only:
         for dist in PYPI_DISTS:
-            if dist == "dbt-benostreamdb":
+            if dist == "dbt-benodb":
                 if args.no_independent:
                     continue
                 version = normalize_version(args.dbt_version or read_dbt_version() or "")
                 if not version:
-                    print("  ~ skipping dbt-benostreamdb (could not resolve its version; "
+                    print("  ~ skipping dbt-benodb (could not resolve its version; "
                           "pass --dbt-version)", file=sys.stderr)
                     continue
             else:
@@ -334,12 +334,12 @@ def build_plan(args: argparse.Namespace) -> list[tuple[str, str, str]]:
     if not args.pypi_only:
         # Reverse dependency order: dependents first, core last.
         for crate in CRATES:
-            if crate == "benostream-gpu-ann":
+            if crate == "benodb-gpu-ann":
                 if args.no_independent:
                     continue
                 version = normalize_version(args.gpu_ann_version or read_gpu_ann_version() or "")
                 if not version:
-                    print("  ~ skipping benostream-gpu-ann (could not resolve its version; "
+                    print("  ~ skipping benodb-gpu-ann (could not resolve its version; "
                           "pass --gpu-ann-version)", file=sys.stderr)
                     continue
             else:
@@ -362,10 +362,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pypi-only", action="store_true", help="skip crates.io")
     parser.add_argument("--crates-only", action="store_true", help="skip PyPI")
     parser.add_argument("--no-independent", action="store_true",
-                        help="skip dbt-benostreamdb and benostream-gpu-ann, which "
+                        help="skip dbt-benodb and benodb-gpu-ann, which "
                              "carry their own version lines")
-    parser.add_argument("--dbt-version", help="override dbt-benostreamdb's version")
-    parser.add_argument("--gpu-ann-version", help="override benostream-gpu-ann's version")
+    parser.add_argument("--dbt-version", help="override dbt-benodb's version")
+    parser.add_argument("--gpu-ann-version", help="override benodb-gpu-ann's version")
     args = parser.parse_args(argv)
 
     if args.pypi_only and args.crates_only:

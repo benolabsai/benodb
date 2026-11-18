@@ -11,7 +11,7 @@ invariance (`auto` == `in_memory`).
 import pyarrow as pa
 import pytest
 
-import benostreamdb as b
+import benodb as b
 
 
 @pytest.fixture()

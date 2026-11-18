@@ -10,13 +10,13 @@ It covers:
 - GPU context management
 
 Requirements:
-- benostreamdb installed
+- benodb installed
 - numpy
 - Optional: CUDA, ROCm, or Metal (MPS) for GPU acceleration
 """
 
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # ============================================================================
 # Example 1: Single-Pair Distance Computations

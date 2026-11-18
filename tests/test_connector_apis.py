@@ -1,5 +1,5 @@
 import tempfile
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pandas as pd
 import shutil

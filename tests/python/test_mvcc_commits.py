@@ -11,7 +11,7 @@ Covers the lock-free commit path:
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def _schema():

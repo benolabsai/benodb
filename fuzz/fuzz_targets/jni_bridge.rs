@@ -14,8 +14,8 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     if let Ok(s) = std::str::from_utf8(data) {
         // JNI `createTable`: parse the schema JSON.
-        let _ = benostreamdb::core::jni_util::schema_from_json(s);
+        let _ = benodb::core::jni_util::schema_from_json(s);
         // JNI `getTableSchema`/`createTable`: map an Arrow type name.
-        let _ = benostreamdb::core::jni_util::arrow_type_from_str(s);
+        let _ = benodb::core::jni_util::arrow_type_from_str(s);
     }
 });

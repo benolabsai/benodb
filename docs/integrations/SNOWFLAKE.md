@@ -74,7 +74,7 @@ BASE_LOCATION = 'customer_interactions/';
 Point BenoDB to the Snowflake external volume base location:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Mount external Snowflake table in read-only mode
 table = bsdb.Table.mount_external_iceberg(
@@ -130,7 +130,7 @@ If your organization requires table resolution through the **Iceberg REST Catalo
 Snowflake supports the Iceberg REST Catalog standard via **Snowflake Open Catalog** (Apache Polaris).
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Connect via Iceberg REST Catalog endpoint
 catalog = bsdb.create_catalog("rest", {

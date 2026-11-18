@@ -3,11 +3,11 @@
 use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::reader::HybridReader;
-use benostreamdb::core::search::KeywordSearchParams;
-use benostreamdb::SegmentConfig;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::reader::HybridReader;
+use benodb::core::search::KeywordSearchParams;
+use benodb::SegmentConfig;
+use benodb::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -62,7 +62,7 @@ async fn test_position_aware_inverted_and_phrase_search() -> anyhow::Result<()> 
     // 2. Verify phrase search directly via reader
     let manifest = table.manifest().await?;
     let manifest_manager =
-        benostreamdb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
+        benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
     let all_entries = manifest_manager.load_all_entries(&manifest).await?;
     assert_eq!(all_entries.len(), 1);
 

@@ -5,7 +5,7 @@
 # BenoDB
 **Serverless Index-Streaming Database with Overlay Indexing**
 
-**Links:** [Docs](https://www.benostreamdb.org) · [Benchmarks](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md) · [Changelog](https://github.com/benolabsai/benostreamdb/blob/main/CHANGELOG.md) · [Beno Labs](https://www.benolabsai.com)
+**Links:** [Docs](https://benolabsai.com/docs/) · [Benchmarks](https://github.com/benolabsai/benodb/blob/main/benchmarks/results/BENCHMARK_REPORT.md) · [Changelog](https://github.com/benolabsai/benodb/blob/main/CHANGELOG.md) · [Beno Labs](https://www.benolabsai.com)
 
 > ⚠️ **Developer Preview**
 > BenoDB is an early-stage database engine intended for evaluation, benchmarking, and community feedback. 
@@ -18,7 +18,7 @@
 | Tier | Capabilities | Status |
 | :--- | :--- | :--- |
 | **Preview-Ready** | Embedded Python & Rust engine, Apache Iceberg (V2/V3) Parquet read/write, HNSW (Float32, BQ8, BQ4, SQ8) vector search, Voronoi Puffin sharding compaction, in-process CSR graph analytics (PageRank, shortest path), DuckDB/DataFusion SQL compatibility, Puffin sidecar management | ✅ Fully supported & tested for evaluation |
-| **Connectors** | [Apache Spark](https://www.benostreamdb.org/integrations/spark.html) (3.5 & 4.x, exactly-once writes), [Trino](https://www.benostreamdb.org/integrations/trino.html) (bands 482–483 and 484+), [dbt](https://www.benostreamdb.org/integrations/dbt.html) adapter, [MCP](https://www.benostreamdb.org/integrations/mcp.html) server (stdio + HTTP/SSE), [Flight SQL](https://www.benostreamdb.org/integrations/flight_sql.html) | ⚠️ Functional; each guide lists the supported versions |
+| **Connectors** | [Apache Spark](https://benolabsai.com/docs/integrations/spark.html) (3.5 & 4.x, exactly-once writes), [Trino](https://benolabsai.com/docs/integrations/trino.html) (bands 482–483 and 484+), [dbt](https://benolabsai.com/docs/integrations/dbt.html) adapter, [MCP](https://benolabsai.com/docs/integrations/mcp.html) server (stdio + HTTP/SSE), [Flight SQL](https://benolabsai.com/docs/integrations/flight_sql.html) | ⚠️ Functional; each guide lists the supported versions |
 | **Experimental** | OpenSearch 7.10 & Qdrant REST gateway compatibility, Arrow Flight SQL server | ⚠️ Functional; APIs and performance tuning are actively evolving |
 
 > **Serverless by default.** BenoDB runs directly against object storage and does not require a database server or always-on cluster. For applications that prefer a network-accessible database endpoint, BenoDB also provides an optional Arrow Flight SQL server interface.
@@ -47,12 +47,12 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 > ## 🔒 Security & Warehouse Catalog Policy
 >
 > **1. Stateless Authentication & RBAC**:
-> Both `benostreamdb-flight` and `bsdb-search` support stateless authentication via static API keys (`BSDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
+> Both `benodb-flight` and `bsdb-search` support stateless authentication via static API keys (`BSDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
 >
 > **2. Authoritative Warehouse Catalog Policy (`.benostream-policy.json`)**:
 > Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benostream-policy.json`) and managed directly from the core database product:
 > ```python
-> import benostreamdb as bsdb
+> import benodb as bsdb
 > session = bsdb.connect("s3://bucket/warehouse")
 >
 > # Query remote policy on the bucket
@@ -115,7 +115,7 @@ BenoDB sits between two categories of system that do not overlap. Vector/graph d
 | **Deployment** | Managed cluster | Cluster | Embedded library / scale-to-zero |
 
 > **Supported platforms, cargo feature gates, the trusted/untrusted boundary, and
-> known limitations** are enumerated in [`docs/SUPPORT_MATRIX.md`](https://www.benostreamdb.org/guides/support_matrix.html).
+> known limitations** are enumerated in [`docs/SUPPORT_MATRIX.md`](https://benolabsai.com/docs/guides/support_matrix.html).
 
 ## ⚡ Iceberg V2/V3 Compatibility
 
@@ -135,7 +135,7 @@ BenoDB implements the core Apache Iceberg table format V2 and V3 features requir
 ### New APIs
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create table with sort order (V2)
 table = bsdb.Table("s3://bucket/table")
@@ -185,7 +185,7 @@ In Authoritative Mode, BenoDB acts as the primary lakehouse database. It owns th
 #### Step 1: Create or Open an Authoritative Table
 ```python
 import pyarrow as pa
-import benostreamdb as bsdb
+import benodb as bsdb
 
 schema = pa.schema([
     ("id", pa.int64()),
@@ -257,7 +257,7 @@ If your data already lives in an Apache Iceberg table created by Spark, Flink, T
 Call `Table.mount_external_iceberg()`. Provide the upstream table URI (where the customer's Iceberg metadata and Parquet files live) and your separate overlay storage URI (where BenoDB writes its index sidecars):
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Mount external Iceberg table in read-only mode
 table = bsdb.Table.mount_external_iceberg(
@@ -400,25 +400,25 @@ BenoDB's primary integration surface is the lakehouse stack — **Arrow Flight S
 
 | Connector | Artifact | Entry point |
 | :--- | :--- | :--- |
-| **Arrow Flight SQL** | `benostreamdb-flight` | `cargo run --release -p benostreamdb-flight` (gRPC `:50051`) |
-| **Trino** | `trino-benostreamdb` | `mvn clean install -DskipTests` → plugin ZIP |
-| **Apache Spark** | `spark-benostreamdb` | `mvn clean package -Pspark-4.0` |
-| **dbt** | `pip install dbt-benostreamdb` | `~/.dbt/profiles.yml` |
+| **Arrow Flight SQL** | `benodb-flight` | `cargo run --release -p benodb-flight` (gRPC `:50051`) |
+| **Trino** | `trino-benodb` | `mvn clean install -DskipTests` → plugin ZIP |
+| **Apache Spark** | `spark-benodb` | `mvn clean package -Pspark-4.0` |
+| **dbt** | `pip install dbt-benodb` | `~/.dbt/profiles.yml` |
 
 Build and start the connectors:
 
 ```bash
 # Arrow Flight SQL (binds 127.0.0.1:50051)
-cargo run --release -p benostreamdb-flight
+cargo run --release -p benodb-flight
 
-# Trino connector -> target/trino-benostream-*-plugin.zip
-cd trino-benostreamdb && mvn clean install -DskipTests
+# Trino connector -> target/trino-benodb-*-plugin.zip
+cd trino-benodb && mvn clean install -DskipTests
 
 # Spark connector (4.0 default; also -Pspark-3.5, -Pspark-4.1, -Pspark-4.2)
-cd spark-benostreamdb && mvn clean package -Pspark-4.0
+cd spark-benodb && mvn clean package -Pspark-4.0
 
 # dbt adapter
-pip install dbt-benostreamdb
+pip install dbt-benodb
 ```
 
 Query the engine over Flight SQL from DuckDB:
@@ -429,7 +429,7 @@ LOAD flight;
 SELECT * FROM flight_sql_query('grpc://127.0.0.1:50051', 'SELECT * FROM documents');
 ```
 
-Full setup for each connector: [Flight SQL](https://www.benostreamdb.org/integrations/flight_sql.html) · [Trino](https://www.benostreamdb.org/integrations/trino.html) · [Spark](https://www.benostreamdb.org/integrations/spark.html) · [dbt](https://www.benostreamdb.org/integrations/dbt.html).
+Full setup for each connector: [Flight SQL](https://benolabsai.com/docs/integrations/flight_sql.html) · [Trino](https://benolabsai.com/docs/integrations/trino.html) · [Spark](https://benolabsai.com/docs/integrations/spark.html) · [dbt](https://benolabsai.com/docs/integrations/dbt.html).
 
 
 ### Python Installation
@@ -438,7 +438,7 @@ Full setup for each connector: [Flight SQL](https://www.benostreamdb.org/integra
 The default package includes automatic high-performance hardware detection for NVIDIA CUDA, Apple Metal, Intel Graphics/XPU, and AMD ROCm.
 
 ```bash
-pip install benostreamdb
+pip install benodb
 ```
 
 **Windows Users:**
@@ -475,7 +475,7 @@ Intel Arc and Data Center GPUs are supported natively on Linux.
 clinfo | grep Intel
 ```
 
-See [Python Vector API Documentation](https://www.benostreamdb.org/guides/python_vector_api.html) for detailed GPU setup instructions.
+See [Python Vector API Documentation](https://benolabsai.com/docs/guides/python_vector_api.html) for detailed GPU setup instructions.
 
 ### pgvector SQL Compatibility
 
@@ -512,12 +512,12 @@ LIMIT 10;
 > SELECT * FROM documents ORDER BY binary_quantize(embedding) <~> binary_quantize('[1, 0, 1]'::vector) LIMIT 10;
 > ```
 
-See [pgvector SQL Guide](https://www.benostreamdb.org/guides/pgvector_sql_guide.html) for complete documentation and conversion guide.
+See [pgvector SQL Guide](https://benolabsai.com/docs/guides/pgvector_sql_guide.html) for complete documentation and conversion guide.
 
 ### Basic Usage
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create table
 table = bsdb.Table("s3://bucket/my-table")
@@ -559,7 +559,7 @@ BenoDB features a fluent query API in Rust with method chaining. Python uses the
 The same fluent interface is available in native Rust:
 
 ```rust
-use benostreamdb::{Table, VectorValue};
+use benodb::{Table, VectorValue};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -634,7 +634,7 @@ table.compact_indexes("embedding", target_shard_bytes=536870912)
 table.preload_indexes(max_memory_bytes=8 * 1024**3, spill_to_disk=False)
 
 # 4. Invalidate global engine caches (HNSW, IVF, Voronoi, CSR, and block caches)
-import benostreamdb as bsdb
+import benodb as bsdb
 bsdb.clear_cache(all=True)
 ```
 
@@ -643,7 +643,7 @@ bsdb.clear_cache(all=True)
 BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # GPU-accelerated batch distance computation
@@ -697,12 +697,12 @@ distance = bsdb.hamming_packed(binary1, binary2)
 **Supported Distance Metrics:**
 - L2 (Euclidean), Cosine, Inner Product, L1 (Manhattan), Hamming, Jaccard
 
-See [Python Vector API Documentation](https://www.benostreamdb.org/guides/python_vector_api.html) for complete API reference and GPU installation instructions
+See [Python Vector API Documentation](https://benolabsai.com/docs/guides/python_vector_api.html) for complete API reference and GPU installation instructions
 
 ### SQL queries (full DataFusion support with pgvector syntax)
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 session = bsdb.Session()
 session.register("users", table)
 
@@ -737,13 +737,13 @@ table.compact()
 
 ## 📊 Performance
 
-We maintain reproducible benchmark suites under [`benchmarks/`](https://github.com/benolabsai/benostreamdb/tree/main/benchmarks): an
+We maintain reproducible benchmark suites under [`benchmarks/`](https://github.com/benolabsai/benodb/tree/main/benchmarks): an
 ANN-Benchmarks competitor matrix (FAISS, hnswlib, pgvector, LanceDB, OpenSearch,
 Neo4j+GDS, DuckDB, cuGraph), BEIR lexical/hybrid search, ClickBench SQL OLAP,
 graph analytics, and production workload/concurrency/recovery drills. They roll
 up into
-[`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md),
-and [`docs/BENCHMARKING.md`](https://www.benostreamdb.org/guides/benchmarking.html) gives the commands to
+[`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benodb/blob/main/benchmarks/results/BENCHMARK_REPORT.md),
+and [`docs/BENCHMARKING.md`](https://benolabsai.com/docs/guides/benchmarking.html) gives the commands to
 reproduce every number. Treat any figure that is not in one of those files as
 unverified.
 
@@ -803,7 +803,7 @@ s3://bucket/table/
 Because indexes are overlays, BenoDB can index data it does not own. `Table.register_external` points at an existing Iceberg table's metadata, maps its schema, imports the current snapshot, and builds index overlays over the referenced Parquet files — without rewriting, copying, or taking ownership of the data.
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Attach to an existing Iceberg table and index it in place.
 # The first argument is where the overlay indexes are stored; the second is
@@ -856,7 +856,7 @@ LRU/TinyLFU + TTI, so overflow evicts the least-recently-used entries. The
 > WHEN NOT MATCHED BY SOURCE THEN DELETE;
 > ```
 >
-> The `ON` condition must be an equi-join on the target's key column(s). Clauses are evaluated in order with first-match-wins semantics. The **Spark connector** additionally intercepts Spark's row-level `MERGE INTO` / `UPDATE` / `DELETE` operations (`BenoStreamMergeBuilder` → `BenoStreamRowLevelOperation`) and sends Iceberg position deletes plus appends through the JNI bridge. The **Trino connector** implements Trino's MERGE SPI (`beginMerge`/`finishMerge` + a `ConnectorMergeSink`) and a write path (`beginInsert` + `ConnectorPageSink`), so `INSERT` and `MERGE INTO` work through Trino as well.
+> The `ON` condition must be an equi-join on the target's key column(s). Clauses are evaluated in order with first-match-wins semantics. The **Spark connector** additionally intercepts Spark's row-level `MERGE INTO` / `UPDATE` / `DELETE` operations (`BenoDBMergeBuilder` → `BenoDBRowLevelOperation`) and sends Iceberg position deletes plus appends through the JNI bridge. The **Trino connector** implements Trino's MERGE SPI (`beginMerge`/`finishMerge` + a `ConnectorMergeSink`) and a write path (`beginInsert` + `ConnectorPageSink`), so `INSERT` and `MERGE INTO` work through Trino as well.
 
 ### Spark
 The Spark connector supports **Spark 3.5, 4.0, and 4.1** via a shared JNI FFI bridge. It intercepts row-level operations (like `MERGE INTO`) to take advantage of BenoDB's fast indexing and supports configuring GPU backends.
@@ -864,7 +864,7 @@ The Spark connector supports **Spark 3.5, 4.0, and 4.1** via a shared JNI FFI br
 ```scala
 // Read
 val df = spark.read
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   // Optionally configure the GPU device (cuda, mps, intel, rocm, auto, or cpu)
   .option("benostream.gpu_device", "cuda")
@@ -872,7 +872,7 @@ val df = spark.read
 
 // Write
 df.write
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   .save()
 ```
@@ -888,7 +888,7 @@ The Trino connector is **read/write**. Reads push scalar and vector filtering do
 Configure the warehouse root and GPU backend in the catalog properties:
 
 ```properties
-connector.name=benostreamdb
+connector.name=benodb
 benostream.warehouse=s3://my-bucket/warehouse
 benostream.gpu-device=cuda
 ```
@@ -916,18 +916,18 @@ WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);
 
 You can configure the GPU backend for Trino globally or per-catalog using the properties file (e.g. `etc/catalog/benostream.properties`):
 ```properties
-connector.name=benostreamdb
+connector.name=benodb
 benostream.gpu-device=cuda
 ```
 
 ### Arrow Flight SQL Gateway
-BenoDB provides an optional high-performance Arrow Flight SQL server (`server/flight_sql`, crate `benostreamdb-flight`) running over gRPC (port 50051). This enables any JDBC, ODBC, ADBC, or Arrow-native client (including BI tools and distributed query engines) to query BenoDB with zero-copy Arrow serialization and native index pushdown.
+BenoDB provides an optional high-performance Arrow Flight SQL server (`server/flight_sql`, crate `benodb-flight`) running over gRPC (port 50051). This enables any JDBC, ODBC, ADBC, or Arrow-native client (including BI tools and distributed query engines) to query BenoDB with zero-copy Arrow serialization and native index pushdown.
 
 ```bash
-cargo run -p benostreamdb-flight
+cargo run -p benodb-flight
 ```
 
-### dbt (`dbt-benostreamdb`)
+### dbt (`dbt-benodb`)
 Official dbt adapter for BenoDB over Arrow Flight SQL. Provides native vector search macros and custom materializations:
 
 - **Vector Macros**: `vector_distance(...)`, `knn_search(...)`, `vector_avg(...)`, `type_vector(...)`, `type_sparsevec(...)` with pgvector-compatible operators.
@@ -935,13 +935,13 @@ Official dbt adapter for BenoDB over Arrow Flight SQL. Provides native vector se
 - **DDL Support**: Iceberg-compatible `PARTITIONED BY` syntax.
 
 ```bash
-cd dbt-benostreamdb
+cd dbt-benodb
 pip install -e .
 ```
 
 ### Python (Direct & Network Clients)
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Embedded in-process execution (scales to zero)
 df = bsdb.Table("s3://bucket/table").query().execute()
@@ -959,7 +959,7 @@ df = flight.execute_pandas("SELECT * FROM market_data WHERE symbol = 'NVDA'")
 BenoDB can mount and index **Snowflake Iceberg Tables** residing on customer-managed External Volumes (Amazon S3, GCS, or Azure Blob) in Detached Overlay Mode with zero data duplication and zero Snowflake compute credits:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Mount external Snowflake Iceberg table in read-only mode
 table = bsdb.Table.mount_external_iceberg(
@@ -973,7 +973,7 @@ table.add_index("transcript", "bm25")
 # Keep synchronized when Snowflake commits new data
 table.start_detached_sync_worker(interval_seconds=60)
 ```
-See the [Snowflake Integration Guide](https://www.benostreamdb.org/integrations/snowflake.html) for full configuration and External Volume walkthrough.
+See the [Snowflake Integration Guide](https://benolabsai.com/docs/integrations/snowflake.html) for full configuration and External Volume walkthrough.
 
 ## 🔨 Building Connectors
 
@@ -987,7 +987,7 @@ We provide a script to build a full matrix of connectors (Java 17/21, Spark 3.5/
 
 ### Hardware Acceleration
 - **Standard**: Build with CPU + Intel Graphics/XPU support (default on Linux/Windows).
-- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenostreamdb.dylib`) without requiring extra flags. Configure at runtime via `spark.benostream.gpu.device=mps` in Spark or `benostream.gpu-device=mps` in Trino.
+- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenodb.dylib`) without requiring extra flags. Configure at runtime via `spark.benostream.gpu.device=mps` in Spark or `benostream.gpu-device=mps` in Trino.
 - **CUDA**: Build for NVIDIA GPUs:
   ```bash
   ./build-connectors.sh --cuda
@@ -1005,19 +1005,19 @@ Everything in this section is **optional**. The core engine and the Spark, Trino
 
 ### Search Gateway (OpenSearch / Elasticsearch 7.10 & Qdrant)
 
-`bsdb-search` (`contrib/benostreamdb-search`, crate `benostreamdb-search`) serves an **OpenSearch 1.x / Elasticsearch 7.10**-compatible REST API — plus a **Qdrant**-compatible vector API — on top of the engine. It targets website search, document catalogs, and knowledge bases where a 50–200 ms query envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
+`bsdb-search` (`contrib/benodb-search`, crate `benodb-search`) serves an **OpenSearch 1.x / Elasticsearch 7.10**-compatible REST API — plus a **Qdrant**-compatible vector API — on top of the engine. It targets website search, document catalogs, and knowledge bases where a 50–200 ms query envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
 
-* **OpenSearch / Elasticsearch 7.10 (`:9200`)**: text indexing, bulk writes, and keyword search. See the [OpenSearch compatibility matrix](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/OPENSEARCH_COMPATIBILITY.md).
-* **Qdrant (`:6333`)**: collections, point upsert/retrieve, payload and vector edits, aliases, and the universal query API. See the [Qdrant compatibility matrix](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md).
+* **OpenSearch / Elasticsearch 7.10 (`:9200`)**: text indexing, bulk writes, and keyword search. See the [OpenSearch compatibility matrix](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/OPENSEARCH_COMPATIBILITY.md).
+* **Qdrant (`:6333`)**: collections, point upsert/retrieve, payload and vector edits, aliases, and the universal query API. See the [Qdrant compatibility matrix](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md).
 
 Both APIs are hosted concurrently from a single binary, share the same `AppState` and data files, and require zero data duplication.
 
 ```bash
-cargo build --release -p benostreamdb-search --bin bsdb-search
+cargo build --release -p benodb-search --bin bsdb-search
 BSDB_SEARCH_BIND=127.0.0.1 BSDB_SEARCH_PORT=9200 ./target/release/bsdb-search
 
 # Or during development (defaults: BSDB_SEARCH_PORT=9200, BSDB_QDRANT_PORT=6333)
-cargo run -p benostreamdb-search
+cargo run -p benodb-search
 
 # Index + search (ES 7.10 wire format)
 curl -X POST localhost:9200/articles/_doc -H 'content-type: application/json' \
@@ -1042,18 +1042,18 @@ results = search.hybrid_search(
 
 **Not supported (v1):** ILM (index lifecycle), multi-node sharding/replicas, and Kibana. Stateless authentication (API key / JWT, admin-only writes) *is* supported.
 
-**Background service:** `sudo benostreamdb install-service` installs the gateway as a `systemd`/`launchd` daemon. See [scripts/services/README.md](https://github.com/benolabsai/benostreamdb/blob/main/scripts/services/README.md) for configuration and uninstallation.
+**Background service:** `sudo benodb install-service` installs the gateway as a `systemd`/`launchd` daemon. See [scripts/services/README.md](https://github.com/benolabsai/benodb/blob/main/scripts/services/README.md) for configuration and uninstallation.
 
 ### MCP Server (AI Agent Tools)
 
-`benostreamdb-mcp` (`contrib/benostreamdb-mcp`) exposes BenoDB to LLM agents (Claude Desktop, Cursor, VS Code, Antigravity IDE) as JSON-RPC tools. It ships 12 tools — including `execute_sql`, `hybrid_search`, `graph_rag_search`, `ingest_records`, `list_embedding_models`, and persistent agent memory (`store_memory` / `recall_memory`) — and runs local, no-LLM embeddings by default (`BAAI/bge-small-en-v1.5`, 384-d), so ingestion and memory need no external embedding API.
+`benodb-mcp` (`contrib/benodb-mcp`) exposes BenoDB to LLM agents (Claude Desktop, Cursor, VS Code, Antigravity IDE) as JSON-RPC tools. It ships 12 tools — including `execute_sql`, `hybrid_search`, `graph_rag_search`, `ingest_records`, `list_embedding_models`, and persistent agent memory (`store_memory` / `recall_memory`) — and runs local, no-LLM embeddings by default (`BAAI/bge-small-en-v1.5`, 384-d), so ingestion and memory need no external embedding API.
 
 ```bash
 # Run instantly without local compilation
-uvx benostreamdb-mcp --warehouse /path/to/warehouse
+uvx benodb-mcp --warehouse /path/to/warehouse
 ```
 
-MCP is treated as an **untrusted connector**: if `.benostream-policy.json` is absent, it is locked to read-only across persistent schemas (writes are limited to `scratch.*`). See [`contrib/benostreamdb-mcp/README.md`](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-mcp/README.md) and [`docs/integrations/MCP.md`](https://www.benostreamdb.org/integrations/mcp.html).
+MCP is treated as an **untrusted connector**: if `.benostream-policy.json` is absent, it is locked to read-only across persistent schemas (writes are limited to `scratch.*`). See [`contrib/benodb-mcp/README.md`](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-mcp/README.md) and [`docs/integrations/MCP.md`](https://benolabsai.com/docs/integrations/mcp.html).
 
 ## 🧪 Development
 
@@ -1079,7 +1079,7 @@ pytest tests/
 ### Project Structure
 
 ```
-benostreamdb/
+benodb/
 ├── src/
 │   ├── lib.rs                  # Main library & PyO3 module registration
 │   ├── core/
@@ -1102,15 +1102,15 @@ benostreamdb/
 │   ├── python/                 # PyO3 bindings (table, graph, session, catalogs)
 │   ├── python_distance.rs      # Vector distance API
 │   └── python_gpu_context.rs   # GPU device management
-├── benostream-gpu-ann/         # GPU-accelerated ANN kernels (CUDA, Metal, Vulkan)
+├── benodb-gpu-ann/         # GPU-accelerated ANN kernels (CUDA, Metal, Vulkan)
 ├── server/
-│   └── flight_sql/             # Arrow Flight SQL gRPC server (`benostreamdb-flight`)
+│   └── flight_sql/             # Arrow Flight SQL gRPC server (`benodb-flight`)
 ├── contrib/
-│   ├── benostreamdb-search/    # OpenSearch 7.10 & Qdrant REST gateway (`benostreamdb-search`)
-│   └── benostreamdb-mcp/       # Model Context Protocol agent tool server (`benostreamdb-mcp`)
-├── dbt-benostreamdb/           # Official dbt adapter (Arrow Flight SQL)
-├── spark-benostreamdb/         # Apache Spark connector (Java, Spark 3.5 / 4.0 / 4.1)
-├── trino-benostreamdb/         # Trino connector (Java SPI) + `etc/` configuration templates
+│   ├── benodb-search/    # OpenSearch 7.10 & Qdrant REST gateway (`benodb-search`)
+│   └── benodb-mcp/       # Model Context Protocol agent tool server (`benodb-mcp`)
+├── dbt-benodb/           # Official dbt adapter (Arrow Flight SQL)
+├── spark-benodb/         # Apache Spark connector (Java, Spark 3.5 / 4.0 / 4.1)
+├── trino-benodb/         # Trino connector (Java SPI) + `etc/` configuration templates
 ├── tests/
 │   ├── integration/            # Infrastructure integration tests
 │   ├── benchmarks/             # Performance benchmarks
@@ -1122,26 +1122,26 @@ benostreamdb/
 
 ### ✅ Production Ready Foundations
 - [x] **Core Storage & Concurrency**: Hybrid segment format (Parquet + indexes), Iceberg V2/V3 manifests, atomic `PendingWrite` WAL buffer, `maintenance_lock` barriers, OCC commits.
-- [x] **Vector Search Overlays**: Zero-copy Arrow IPC HNSW & IVF-PQ, TurboQuant™ (TQ4/TQ8), SIMD intrinsics, GPU acceleration (`benostream-gpu-ann`: CUDA, Metal, Vulkan).
+- [x] **Vector Search Overlays**: Zero-copy Arrow IPC HNSW & IVF-PQ, TurboQuant™ (TQ4/TQ8), SIMD intrinsics, GPU acceleration (`benodb-gpu-ann`: CUDA, Metal, Vulkan).
 - [x] **Text & Scalar Overlays**: Inverted BM25 Okapi indexes, Roaring Bitmap scalar indexes, Composite multi-column filters, Statistics pruning.
 - [x] **Embedding Provenance & Vector-Space Guard**: `benostream.embedding.*` Iceberg table properties, mirrored into `metadata/vN.metadata.json`; dimension checks in the engine write path and model/dimension immutability at the commit point across Python, SQL/Flight SQL, MCP, Spark, and Trino.
 - [x] **Core Graph Engine**: Zero-copy Memory-Mapped CSR Graph Index (`MmapCsrGraph`), Core Graph Traversal operator (`Table::graph_neighborhood`), Graph SQL UDFs.
-- [x] **Connectors & Gateways**: Apache Spark (`spark-benostreamdb`), Trino (`trino-benostreamdb`), dbt (`dbt-benostreamdb`), Arrow Flight SQL server (`server/flight_sql`), Contrib Search Gateway (`contrib/benostreamdb-search`), Contrib MCP server (`contrib/benostreamdb-mcp`).
+- [x] **Connectors & Gateways**: Apache Spark (`spark-benodb`), Trino (`trino-benodb`), dbt (`dbt-benodb`), Arrow Flight SQL server (`server/flight_sql`), Contrib Search Gateway (`contrib/benodb-search`), Contrib MCP server (`contrib/benodb-mcp`).
 
 ### 📋 Active Roadmap Themes
 - [x] **Reactive Lakehouse Streaming**: `Table::subscribe()` core API and predicate-filtered subscriptions are shipped. (Arrow Flight streaming subscriptions are deferred).
 - [x] **Declarative Edge Tables & Graph Overlays**: `table_type = 'edge'` DDL and native DataFusion SQL graph walk functions (`graph_neighbors`, etc.) are shipped.
 - [x] **JSON-Path Inverted Index**: Shipped.
 - [ ] **Domain-Specific BM25 Analyzers**: Configurable table tokenizers (CamelCase code tokenizer, multilingual Snowball stemmers, CJK segmentation).
-- [x] **AI Agent Tools & Client Ecosystem**: Dedicated Model Context Protocol (MCP) server (`contrib/benostreamdb-mcp`) shipped. LangChain/LlamaIndex vector store adapters remain.
+- [x] **AI Agent Tools & Client Ecosystem**: Dedicated Model Context Protocol (MCP) server (`contrib/benodb-mcp`) shipped. LangChain/LlamaIndex vector store adapters remain.
 
-*For the complete detailed roadmap and architecture status, see [docs/ROADMAP.md](https://www.benostreamdb.org/guides/roadmap.html).*
+*For the complete detailed roadmap and architecture status, see [docs/ROADMAP.md](https://benolabsai.com/docs/guides/roadmap.html).*
 
 ## 🔗 Links
 
-- **Documentation:** [benostreamdb.org](https://www.benostreamdb.org)
-- **Benchmarks:** [BENCHMARK_REPORT.md](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/results/BENCHMARK_REPORT.md)
-- **Changelog:** [CHANGELOG.md](https://github.com/benolabsai/benostreamdb/blob/main/CHANGELOG.md)
+- **Documentation:** [benolabsai.com/docs](https://benolabsai.com/docs/)
+- **Benchmarks:** [BENCHMARK_REPORT.md](https://github.com/benolabsai/benodb/blob/main/benchmarks/results/BENCHMARK_REPORT.md)
+- **Changelog:** [CHANGELOG.md](https://github.com/benolabsai/benodb/blob/main/CHANGELOG.md)
 - **Engineering Blog:** [benolabsai.com/blog](https://www.benolabsai.com/blog/)
 - **Beno Labs:** [benolabsai.com](https://www.benolabsai.com)
 
@@ -1151,7 +1151,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
-The crate is dual-licensed under **MIT AND Apache-2.0** (see [`Cargo.toml`](https://github.com/benolabsai/benostreamdb/blob/main/Cargo.toml)).
+The crate is dual-licensed under **MIT AND Apache-2.0** (see [`Cargo.toml`](https://github.com/benolabsai/benodb/blob/main/Cargo.toml)).
 
 This project contains modified source code from various upstream open-source projects (including `hnsw_rs` for pre-filtering support), which were originally licensed under Apache 2.0. BenoDB maintains compliance by retaining all original copyright notices and providing prominent notice of modifications in the relevant source files.
 

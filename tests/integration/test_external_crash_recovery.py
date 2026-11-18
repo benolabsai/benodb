@@ -51,7 +51,7 @@ def test_process_kill_recovery():
     bin_path = "../../target/release/bsdb-search"
     if not os.path.exists(bin_path):
         # Fallback to cargo run
-        proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benostreamdb-search"], env=env)
+        proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benodb-search"], env=env)
     else:
         proc = subprocess.Popen([bin_path], env=env)
 
@@ -88,7 +88,7 @@ def test_process_kill_recovery():
     # Restart the server
     print("Restarting bsdb-search...")
     if not os.path.exists(bin_path):
-        proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benostreamdb-search"], env=env)
+        proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benodb-search"], env=env)
     else:
         proc = subprocess.Popen([bin_path], env=env)
 

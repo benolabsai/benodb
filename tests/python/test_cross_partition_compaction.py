@@ -18,7 +18,7 @@ import re
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def _schema():

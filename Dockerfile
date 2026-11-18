@@ -3,8 +3,8 @@
 # Runs Search (ES 7.10 + Qdrant) and Flight SQL in a single container
 #
 # Usage:
-#   docker build -t benostreamdb .
-#   docker run -p 9200:9200 -p 6333:6333 -p 50051:50051 benostreamdb
+#   docker build -t benodb .
+#   docker run -p 9200:9200 -p 6333:6333 -p 50051:50051 benodb
 #
 # Ports:
 #   9200  — Elasticsearch 7.10 compatible REST API
@@ -25,16 +25,16 @@ WORKDIR /app
 
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
-COPY contrib/benostreamdb-search/Cargo.toml contrib/benostreamdb-search/Cargo.toml
+COPY contrib/benodb-search/Cargo.toml contrib/benodb-search/Cargo.toml
 COPY server/flight_sql/Cargo.toml server/flight_sql/Cargo.toml
 
 # Create stub sources for dependency layer caching and manifest validation
 RUN mkdir -p src \
     && echo "pub fn stub() {}" > src/lib.rs \
     && echo "fn main() {}" > build.rs \
-    && mkdir -p contrib/benostreamdb-search/src \
-    && echo "fn main() {}" > contrib/benostreamdb-search/src/main.rs \
-    && echo "pub fn stub() {}" > contrib/benostreamdb-search/src/lib.rs \
+    && mkdir -p contrib/benodb-search/src \
+    && echo "fn main() {}" > contrib/benodb-search/src/main.rs \
+    && echo "pub fn stub() {}" > contrib/benodb-search/src/lib.rs \
     && mkdir -p server/flight_sql/src \
     && echo "fn main() {}" > server/flight_sql/src/main.rs \
     && mkdir -p tests/bin benches \
@@ -43,22 +43,22 @@ RUN mkdir -p src \
     && echo "fn main() {}" > tests/bin/verify_iceberg_read_check.rs \
     && echo "fn main() {}" > benches/performance.rs \
     && echo "fn main() {}" > benches/bench_table.rs \
-    && cargo build --locked --release -p benostreamdb-search -p benostreamdb-flight \
-    && rm -rf target/release/.fingerprint/benostreamdb* \
-              target/release/deps/*benostreamdb* \
+    && cargo build --locked --release -p benodb-search -p benodb-flight \
+    && rm -rf target/release/.fingerprint/benodb* \
+              target/release/deps/*benodb* \
               target/release/deps/libbenostreamdb* \
-              target/release/build/benostreamdb* \
+              target/release/build/benodb* \
               target/release/bsdb-search* \
-              target/release/benostreamdb-flight*
+              target/release/benodb-flight*
 
 # Copy actual source
 COPY build.rs ./
 COPY src ./src
-COPY contrib/benostreamdb-search/src ./contrib/benostreamdb-search/src
+COPY contrib/benodb-search/src ./contrib/benodb-search/src
 COPY server/flight_sql/src ./server/flight_sql/src
 
 # Build both binaries
-RUN cargo build --locked --release -p benostreamdb-search -p benostreamdb-flight
+RUN cargo build --locked --release -p benodb-search -p benodb-flight
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +79,14 @@ WORKDIR /app
 
 # Copy both service binaries
 COPY --from=builder /app/target/release/bsdb-search /usr/local/bin/
-COPY --from=builder /app/target/release/benostreamdb-flight /usr/local/bin/
+COPY --from=builder /app/target/release/benodb-flight /usr/local/bin/
 
 # Copy entrypoint
 COPY docker/quickstart-entrypoint.sh /usr/local/bin/quickstart-entrypoint.sh
 
 # Create default data directory
-RUN mkdir -p /home/benostream/.benostreamdb/search \
-    && chown -R benostream:benostream /home/benostream/.benostreamdb
+RUN mkdir -p /home/benostream/.benodb/search \
+    && chown -R benostream:benostream /home/benostream/.benodb
 
 # ES 7.10 API + Qdrant API + Flight SQL gRPC + Prometheus metrics
 EXPOSE 9200 6333 50051 9090

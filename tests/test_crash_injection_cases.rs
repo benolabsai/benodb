@@ -27,12 +27,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::Table;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::Table;
 use tempfile::tempdir;
 
-/// The fault injector (`benostreamdb::core::fault_injection`) uses a single
+/// The fault injector (`benodb::core::fault_injection`) uses a single
 /// process-global armed point, so tests that arm it must not run concurrently.
 /// Cargo runs the tests in this binary on parallel threads by default, which
 /// previously let one case's `arm`/`disarm` clobber another's and made the
@@ -225,7 +225,7 @@ async fn case_f_two_writers_no_lost_updates() -> anyhow::Result<()> {
 
     eprintln!("[case-f] seed committed");
 
-    use benostreamdb::core::table::builder::TableBuilder;
+    use benodb::core::table::builder::TableBuilder;
     let wal1 = tempdir()?;
     let wal2 = tempdir()?;
     let t1 = TableBuilder::new(&uri)

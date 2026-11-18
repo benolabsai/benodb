@@ -36,7 +36,7 @@ without it, and without the embedder.
 From the repository root:
 
 ```bash
-pip install -e ".[dev]"          # benostreamdb + polars/sentence-transformers etc.
+pip install -e ".[dev]"          # benodb + polars/sentence-transformers etc.
 python scripts/prepare_demo.py
 ```
 
@@ -248,7 +248,7 @@ pruned path share the same app and engine APIs — only scale differs.
   “Installed” while leaving a stale `.so`, so edits appear inert (this cost us
   an evening). Force it explicitly:
   `cargo build --features python && cp target/debug/libbenostreamdb.so
-  .venv*/lib/python*/site-packages/benostreamdb/benostreamdb.abi3.so`
+  .venv*/lib/python*/site-packages/benodb/benodb.abi3.so`
 - **Queries are slow / reading hundreds of GB** → check that segments actually
   carry indexes: a nodes dir with far more `seg_*.parquet` files than
   `*.tq8.centroids.parquet` files means segments were written without the index

@@ -1,5 +1,5 @@
 {
-  "description": "Entity-level Vector Graph RAG on BenoStreamDB (Passages + Entities + Relations + Mentions tables)",
+  "description": "Entity-level Vector Graph RAG on BenoDB (Passages + Entities + Relations + Mentions tables)",
   "top_k": 5,
   "seed_k": 2,
   "hops": 2,

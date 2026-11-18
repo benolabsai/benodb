@@ -15,7 +15,7 @@ import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-UA = "BenoStreamDB/1.0 (https://github.com/benostreamdb) Python-urllib/3.0"
+UA = "BenoStreamDB/1.0 (https://github.com/benodb) Python-urllib/3.0"
 
 
 def download_file(url: str, filepath: str, retries: int = 10) -> bool:

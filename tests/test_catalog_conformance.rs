@@ -29,23 +29,23 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use benostreamdb::core::catalog::common::{
+use benodb::core::catalog::common::{
     apply_table_updates, catalog_conflict_error, catalog_not_found_error,
     ensure_storage_table_initialized, extract_metadata_location_from_updates,
     load_table_metadata_from_location, validate_requirements_against_metadata,
 };
-use benostreamdb::core::catalog::jdbc::JdbcCatalogClient;
-use benostreamdb::core::catalog::memory::MemoryCatalogClient;
-use benostreamdb::core::catalog::nessie::NessieClient;
-use benostreamdb::core::catalog::rest::RestCatalogClient;
-use benostreamdb::core::catalog::unity::UnityCatalogClient;
-use benostreamdb::core::catalog::{create_catalog_async, Catalog, CatalogType};
-use benostreamdb::core::error::BenoStreamError;
-use benostreamdb::core::metadata::TableMetadata;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::table::builder::TableBuilder;
-use benostreamdb::core::table::WalDurability;
-use benostreamdb::Table;
+use benodb::core::catalog::jdbc::JdbcCatalogClient;
+use benodb::core::catalog::memory::MemoryCatalogClient;
+use benodb::core::catalog::nessie::NessieClient;
+use benodb::core::catalog::rest::RestCatalogClient;
+use benodb::core::catalog::unity::UnityCatalogClient;
+use benodb::core::catalog::{create_catalog_async, Catalog, CatalogType};
+use benodb::core::error::BenoStreamError;
+use benodb::core::metadata::TableMetadata;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::table::builder::TableBuilder;
+use benodb::core::table::WalDurability;
+use benodb::Table;
 use parking_lot::Mutex;
 use tempfile::tempdir;
 
@@ -567,7 +567,7 @@ struct MockRestState {
 struct MockCreateTablePayload {
     name: String,
     location: Option<String>,
-    schema: benostreamdb::core::manifest::Schema,
+    schema: benodb::core::manifest::Schema,
 }
 
 #[derive(serde::Deserialize)]
@@ -891,7 +891,7 @@ async fn sql_ddl_external_catalog_lifecycle_memory_and_jdbc() -> Result<()> {
 
 #[tokio::test]
 async fn search_gateway_precreated_storage_registration_is_idempotent() -> Result<()> {
-    // Reproduces `benostreamdb-search`'s exact sequence: `Table::create_async` first, then
+    // Reproduces `benodb-search`'s exact sequence: `Table::create_async` first, then
     // `catalog.create_table(ns, tbl, schema, Some(&uri))`.
     let wh_dir = tempdir()?;
     let mem_loc = format!("{}/pre/mem_idx", canon_dir_uri(wh_dir.path()));

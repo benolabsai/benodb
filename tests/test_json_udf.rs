@@ -6,7 +6,7 @@
 
 use arrow::array::{Array, BooleanArray, ListArray, StringArray};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::sql::session::BenoStreamSession;
+use benodb::core::sql::session::BenoStreamSession;
 
 fn session() -> BenoStreamSession {
     BenoStreamSession::new(None)
@@ -209,7 +209,7 @@ async fn json_udfs_filter_rows() -> anyhow::Result<()> {
 
 #[test]
 fn json_udfs_are_registered() {
-    use benostreamdb::core::sql::udf;
+    use benodb::core::sql::udf;
     let names: Vec<String> = udf::all_json_udfs()
         .iter()
         .map(|f| f.name().to_string())

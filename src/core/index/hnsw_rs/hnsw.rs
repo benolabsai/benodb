@@ -402,7 +402,7 @@ impl LayerGenerator {
     /// generate a layer with given maxlevel. upper layers (higher index) are of decreasing probabilities.
     /// thread safe method.
     ///
-    /// Deterministic: draws come from [`benostream_gpu_ann::INDEX_BUILD_SEED`]
+    /// Deterministic: draws come from [`benodb_gpu_ann::INDEX_BUILD_SEED`]
     /// plus a monotonic counter, not from OS entropy. Node levels decide the
     /// graph's shape, so an entropy-seeded sampler made every build produce a
     /// different index and a correspondingly different recall — the same
@@ -413,7 +413,7 @@ impl LayerGenerator {
             .draws
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut rng = rand::rngs::StdRng::seed_from_u64(
-            benostream_gpu_ann::INDEX_BUILD_SEED ^ draw.wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            benodb_gpu_ann::INDEX_BUILD_SEED ^ draw.wrapping_mul(0x9E37_79B9_7F4A_7C15),
         );
         let xsi: f64 = rng.sample(self.unif);
         let level = -xsi.ln() * self.scale;

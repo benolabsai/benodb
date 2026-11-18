@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Add a canonical URL to every built page.
 
-The same HTML is served from two hosts: www.benostreamdb.org (GitHub Pages,
-site root) and www.benolabsai.com/docs/ (BenoLabs, imported copy). Without a
-canonical tag search engines index both. This makes the Pages site canonical,
-which is also the host the cross-directory documentation links point at.
+The same HTML is served from https://benolabsai.com/docs/ (Beno Labs primary
+domain) and may also be mirrored on GitHub Pages. Setting the canonical link
+to https://benolabsai.com/docs/ consolidates search equity on the single
+canonical domain.
 """
 
 import pathlib
 import re
 import sys
 
-BASE = "https://www.benostreamdb.org/"
+BASE = "https://benolabsai.com/docs/"
 SKIP_PREFIXES = ("rust/", "_modules/")
 
 

@@ -15,8 +15,8 @@ use std::time::Instant;
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::Table;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::Table;
 use serde_json::json;
 use tempfile::tempdir;
 

@@ -4,7 +4,7 @@ use anyhow::Result;
 use apache_avro::{types::Value as AvroValue, Schema as AvroSchema, Writer};
 use arrow::array::{FixedSizeListArray, Float32Array, Int32Array};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::fs::File;
 use std::sync::Arc;
 

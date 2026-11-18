@@ -1,5 +1,5 @@
 
-import benostreamdb
+import benodb
 import pyarrow
 import time
 import sys
@@ -17,7 +17,7 @@ def verify_iceberg_read():
     print(f"Connecting to BenoStreamDB Table at {URI}...")
     try:
         # Create Table instance
-        table = benostreamdb.Table(URI)
+        table = benodb.Table(URI)
         print("Table connected successfully.")
         
         # Read to PyArrow Table

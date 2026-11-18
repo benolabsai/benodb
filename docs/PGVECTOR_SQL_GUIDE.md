@@ -229,7 +229,7 @@ LIMIT 10;
 ### Python API
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/documents")
 

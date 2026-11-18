@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "index_type": "hnsw",
   "dataset": "gist-960-euclidean",
   "workload": "vector_ann",

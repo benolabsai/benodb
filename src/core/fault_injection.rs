@@ -14,7 +14,7 @@
 //! calls [`check`], which is a single relaxed atomic load on the hot path.
 //!
 //! ```no_run
-//! use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
+//! use benodb::core::fault_injection::{arm, disarm, CrashPoint};
 //! arm(CrashPoint::ManifestCommit);
 //! // ... run a write/commit; it will fail at the manifest commit boundary ...
 //! disarm();

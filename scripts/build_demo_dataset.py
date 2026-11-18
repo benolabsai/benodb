@@ -40,7 +40,7 @@ import pyarrow.parquet as pq
 # --dumps-dir or BSDB_DATA.
 DEFAULT_DUMPS = os.environ.get(
     "BSDB_DATA",
-    os.path.join(os.path.expanduser("~"), "data", "benostreamdb"),
+    os.path.join(os.path.expanduser("~"), "data", "benodb"),
 )
 
 
@@ -185,13 +185,13 @@ def stream_int64_edges(edges_path: str, out_path: str, drop: np.ndarray,
 
 def load_into_hdb(tmp_uri: str, edges_int: str):
     """Load the int64 edge table into a temporary BenoStreamDB instance."""
-    import benostreamdb
+    import benodb
 
     tmp_dir = tmp_uri.removeprefix("file://")
     if os.path.exists(tmp_dir):
         shutil.rmtree(tmp_dir)
 
-    table = benostreamdb.Table(tmp_uri)
+    table = benodb.Table(tmp_uri)
     pf = pq.ParquetFile(edges_int)
     t0 = time.time()
     for rg in range(pf.metadata.num_row_groups):
@@ -282,7 +282,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dumps-dir", default=DEFAULT_DUMPS,
                         help="directory holding the full wiki parquets "
-                             "(default: $HOME/data/benostreamdb)")
+                             "(default: $HOME/data/benodb)")
     parser.add_argument("--nodes", default=None,
                         help="default: <dumps-dir>/nodes.parquet")
     parser.add_argument("--edges", default=None,

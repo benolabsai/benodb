@@ -125,7 +125,7 @@ fn check_jemalloc() -> PyResult<String> {
 
 #[cfg(feature = "python")]
 #[pymodule]
-fn benostreamdb(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn benodb(m: &Bound<'_, PyModule>) -> PyResult<()> {
     tame_glibc_arenas();
     #[cfg(all(
         not(target_os = "macos"),

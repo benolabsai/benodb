@@ -18,8 +18,8 @@ use arrow::array::{FixedSizeListArray, Int32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
 
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::Table;
 
 fn vector_schema(dim: usize) -> Arc<Schema> {
     Arc::new(Schema::new(vec![
@@ -70,7 +70,7 @@ fn count_vector_index_files(dir: &std::path::Path) -> usize {
             } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                 if name.ends_with(".puffin") {
                     if let Ok(bytes) = std::fs::read(&path) {
-                        if let Ok(reader) = benostreamdb::core::puffin::PuffinReader::new(
+                        if let Ok(reader) = benodb::core::puffin::PuffinReader::new(
                             std::io::Cursor::new(bytes),
                         ) {
                             if reader

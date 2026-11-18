@@ -9,19 +9,19 @@ set -e
 
 WORKLOAD="${WORKLOAD:-vector}"
 
-# BenoStreamDB index variants: the plain engine name is full-precision HNSW
+# BenoDB index variants: the plain engine name is full-precision HNSW
 # (parity with the other float HNSW engines); a `_tq8`/`_tq4`/`_pq` suffix
 # selects the quantized/compressed index so the recall/size trade-off is
 # reported explicitly instead of hiding behind a single number.
 case "$ENGINE" in
-    benostreamdb)     BSDB_INDEX=hnsw ;;
-    benostreamdb_tq8) BSDB_INDEX=hnsw_tq8 ;;
-    benostreamdb_sq)  BSDB_INDEX=hnsw_sq8 ;;
-    benostreamdb_tq4) BSDB_INDEX=hnsw_tq4 ;;
+    benodb)     BSDB_INDEX=hnsw ;;
+    benodb_tq8) BSDB_INDEX=hnsw_tq8 ;;
+    benodb_sq)  BSDB_INDEX=hnsw_sq8 ;;
+    benodb_tq4) BSDB_INDEX=hnsw_tq4 ;;
     *)                BSDB_INDEX="" ;;
 esac
 
-# BenoStreamDB is installed from the mounted abi3 wheel for every workload that
+# BenoDB is installed from the mounted abi3 wheel for every workload that
 # uses it (any index variant) and the BEIR comparison.
 #
 # `dist/` can hold several wheels of the same version at once — a local
@@ -39,7 +39,7 @@ if [ -n "$BSDB_INDEX" ] || [ "$WORKLOAD" = "beir" ]; then
     pip install --no-deps --force-reinstall "$WHEEL"
 fi
 
-# BenoStreamDB's vector workload uses the ANN-Benchmarks harness (it reports
+# BenoDB's vector workload uses the ANN-Benchmarks harness (it reports
 # pure-index latency too); every other engine/workload uses run_competitor.py.
 if [ -n "$BSDB_INDEX" ] && [ "$WORKLOAD" = "vector" ]; then
     # A refined point is a separate operating point of the same engine, so it needs
@@ -62,7 +62,7 @@ fi
 case "$WORKLOAD" in
     beir)
         # BEIR lexical/hybrid: one process runs every engine (embedded Tantivy +
-        # BenoStreamDB, and the server-backed OpenSearch/Elasticsearch), so the
+        # BenoDB, and the server-backed OpenSearch/Elasticsearch), so the
         # whole comparison shares this container's envelope. The dataset is
         # mounted read-only at /opt/bench/beir_data; reports land in
         # /results/beir/ (mounted from benchmarks/beir/results). The device is
@@ -97,7 +97,7 @@ case "$WORKLOAD" in
             --out "/results/${ENGINE}_${SQL_DATASET:-sql}_${DEVICE}.json"
         ;;
     *)
-        # Same artifact-naming rule as the BenoStreamDB branch: a refined operating
+        # Same artifact-naming rule as the BenoDB branch: a refined operating
         # point must not overwrite its unrefined sibling.
         REFINE_TAG_C=""
         if [ "${REFINE_FACTOR:-1}" != "1" ]; then

@@ -12,7 +12,7 @@ use anyhow::Result;
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 
 fn docs_batch() -> RecordBatch {

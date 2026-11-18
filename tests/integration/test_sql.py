@@ -1,5 +1,5 @@
 import time
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import pyarrow as pa
 import pytest

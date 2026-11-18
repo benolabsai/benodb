@@ -10,13 +10,13 @@
 | :--- | :--- | :--- |
 | ✅ **Developer Preview** | **Core Lakehouse Engine** | Apache Iceberg V2/V3 format, Parquet storage, DataFusion ANSI SQL, MVCC lock-free commits, WAL, Ingest RAM backpressure. |
 | ✅ **Developer Preview** | **Concurrency & Durability** | Unified atomic write buffer (`PendingWrite`), Table-wide maintenance barriers (`maintenance_lock`), Fenced vacuum/orphan GC. |
-| ✅ **Developer Preview** | **Vector Search Overlays** | Zero-copy Arrow IPC HNSW & IVF-PQ, TurboQuant™ (TQ8; TQ4 retiring), SIMD intrinsics, GPU acceleration (`benostream-gpu-ann`: CUDA, Metal, Vulkan). |
+| ✅ **Developer Preview** | **Vector Search Overlays** | Zero-copy Arrow IPC HNSW & IVF-PQ, TurboQuant™ (TQ8; TQ4 retiring), SIMD intrinsics, GPU acceleration (`benodb-gpu-ann`: CUDA, Metal, Vulkan). |
 | ✅ **Developer Preview** | **Text & Scalar Overlays** | Inverted BM25 Okapi indexes, Roaring Bitmap scalar indexes, Composite multi-column filters, Statistics pruning. |
 | ✅ **Developer Preview** | **Core Graph Primitives** | Zero-copy Memory-Mapped CSR Graph Index (`MmapCsrGraph`), Core Graph Traversal operator (`Table::graph_neighborhood`), Graph SQL UDFs. |
 | ✅ **Developer Preview** | **JSON Path Functions & Index** | PostgreSQL `json_*` UDFs (`json_extract_path`, `json_contains`, `json_path_query`, …) over `Utf8` columns, plus a `json_path` `(path, value) -> row_ids` Puffin overlay with planner pushdown. |
-| ✅ **Developer Preview** | **Lakehouse Connectors** | Native Apache Spark connector (`spark-benostreamdb`), Trino connector (`trino-benostreamdb`), Official dbt adapter (`dbt-benostreamdb`). Full engine function-surface parity across Python/dbt/Spark/Trino, guarded by `tests/python/test_function_parity.py`. |
-| ✅ **Developer Preview** | **Ecosystem Interfaces** | Optional Arrow Flight SQL server (`server/flight_sql`), Contrib Search Gateway (`contrib/benostreamdb-search`: OpenSearch 7.10 & Qdrant REST), stateless auth (API key + JWT, shared module). |
-| ✅ **Developer Preview** | **AI-Native & Search Extensions** | MCP server (`contrib/benostreamdb-mcp`), SQL graph traversal (`FROM graph_neighbors(...)`), `Table::subscribe()` change feed + predicate-filtered subscriptions. |
+| ✅ **Developer Preview** | **Lakehouse Connectors** | Native Apache Spark connector (`spark-benodb`), Trino connector (`trino-benodb`), Official dbt adapter (`dbt-benodb`). Full engine function-surface parity across Python/dbt/Spark/Trino, guarded by `tests/python/test_function_parity.py`. |
+| ✅ **Developer Preview** | **Ecosystem Interfaces** | Optional Arrow Flight SQL server (`server/flight_sql`), Contrib Search Gateway (`contrib/benodb-search`: OpenSearch 7.10 & Qdrant REST), stateless auth (API key + JWT, shared module). |
+| ✅ **Developer Preview** | **AI-Native & Search Extensions** | MCP server (`contrib/benodb-mcp`), SQL graph traversal (`FROM graph_neighbors(...)`), `Table::subscribe()` change feed + predicate-filtered subscriptions. |
 ---
 
 ## 🏛️ Architectural Foundations (Completed)
@@ -24,7 +24,7 @@
 BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
 1. **The Overlay Invariant**: Parquet data files in Apache Iceberg are the authoritative source of truth. All secondary indexes (CSR graph, HNSW vector, BM25 text, Roaring bitmaps) are **advisory, rebuildable sidecar overlays**. If an index is lost or deleted, queries fall back to Parquet scans while the overlay rebuilds.
 2. **Serverless-First, Server-Optional**: The core database is an in-process, embeddable library (Python/Rust/JVM) operating directly against object storage (S3/GCS/Azure/Local). Arrow Flight SQL provides an optional single-process network access layer for remote clients and BI tools.
-3. **Lakehouse Independence**: All core connectors (`dbt-benostreamdb`, `spark-benostreamdb`, `trino-benostreamdb`) and optional servers (`server/flight_sql`) operate independently of contrib compatibility packages.
+3. **Lakehouse Independence**: All core connectors (`dbt-benodb`, `spark-benodb`, `trino-benodb`) and optional servers (`server/flight_sql`) operate independently of contrib compatibility packages.
 
 ### Key Completed Milestones
 - **Core Concurrency Hardening**:
@@ -58,7 +58,7 @@ BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
     (`BSDB_INGEST_BACKPRESSURE_GRACE_SECS`, default 60s), so a writer can no
     longer block forever when process RSS is already at/above the cap for reasons
     the write cannot relieve.
-- **MCP Server (`contrib/benostreamdb-mcp`)**:
+- **MCP Server (`contrib/benodb-mcp`)**:
   - Dedicated MCP server exposing BenoDB tables, schemas, SQL queries, and
     hybrid vector/graph retrieval as native tools for Claude Desktop, Cursor, and
     Antigravity. Windows `.msi` installer via `cargo-wix`.
@@ -112,7 +112,7 @@ BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
 ## 📋 Active Roadmap Themes
 
 > **Tracking.** Actionable open items are tracked as GitHub issues labeled
-> [`roadmap`](https://github.com/benolabsai/benostreamdb/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap).
+> [`roadmap`](https://github.com/benolabsai/benodb/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap).
 > The themes below retain the design rationale and priority; the issue list is the
 > source of truth for status. `status: committed` marks current-cycle work,
 > `status: exploratory` marks ideas awaiting user or benchmark validation, and
@@ -241,7 +241,7 @@ Themes are ordered by priority.
 >
 > **Approach: Integrate Unum's `simsimd` crate.** `simsimd` provides production-hardened, zero-dependency C/assembly kernels with automatic runtime CPU dispatching across AVX2, AVX-512, AVX-512-FP16, ARM NEON, and ARM SVE. Integrating `simsimd` accelerates CPU-bound HNSW traversals across all platforms while eliminating ~400 lines of fragile `unsafe` architecture-specific intrinsics.
 
-- [ ] **Integrate `simsimd` dependency into `benostreamdb` and `benostream-gpu-ann`** — 🟠 **High**:
+- [ ] **Integrate `simsimd` dependency into `benodb` and `benodb-gpu-ann`** — 🟠 **High**:
   - Add `simsimd` (Apache-2.0, pure Rust bindings with compiled SIMD kernels) to workspace dependencies.
 - [ ] **Wire runtime dispatch in `src/core/index/distance.rs`** — 🟠 **High**:
   - Replace manual `dot_product_avx2`, `l2_distance_squared_avx2`, and `dot_product_portable` with `simsimd::spatial` / `simsimd::binary` dispatches.
@@ -282,22 +282,22 @@ Themes are ordered by priority.
 *Native interfaces for AI frameworks and autonomous agent runtimes.* — 🟠 **Medium**
 
 - [ ] **LangChain & LlamaIndex Partner Integrations** — 🟢 **Deferred**:
-  - `langchain-benostreamdb`: LangChain-compatible `VectorStore` and `Retriever` implementations with metadata filtering.
-  - `llama-index-vector-stores-benostreamdb`: LlamaIndex vector store index adapter.
+  - `langchain-benodb`: LangChain-compatible `VectorStore` and `Retriever` implementations with metadata filtering.
+  - `llama-index-vector-stores-benodb`: LlamaIndex vector store index adapter.
 - [ ] **Broker Event Adapters** — 🟢 **Deferred**:
   - Pluggable Kafka, RabbitMQ, and NATS consumers for automated event-driven
     lakehouse ingestion.
-  - **Placement: a new `contrib/benostreamdb-ingest` crate, not the core.** The
+  - **Placement: a new `contrib/benodb-ingest` crate, not the core.** The
     publish/subscribe seam already lives in the core — the
-    [`WorkCoordinator` trait](https://github.com/benolabsai/benostreamdb/blob/main/src/core/table/coordinator.rs#L89) (with
+    [`WorkCoordinator` trait](https://github.com/benolabsai/benodb/blob/main/src/core/table/coordinator.rs#L89) (with
     `WorkUnit` / `Lease`), its only implementation
-    [`ObjectStoreCoordinator`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/table/coordinator.rs#L112), and the
+    [`ObjectStoreCoordinator`](https://github.com/benolabsai/benodb/blob/main/src/core/table/coordinator.rs#L112), and the
     claim → read → write → commit loop in
-    [`ingest_with_coordinator`](https://github.com/benolabsai/benostreamdb/blob/main/src/core/table/ingest.rs#L304). A broker
+    [`ingest_with_coordinator`](https://github.com/benolabsai/benodb/blob/main/src/core/table/ingest.rs#L304). A broker
     adapter is therefore just another `impl WorkCoordinator`, so **no new core
     API is required**:
     ```
-    contrib/benostreamdb-ingest/
+    contrib/benodb-ingest/
       Cargo.toml            # [[lib]] + [[bin]] bsdb-ingest; features = kafka/nats/rabbitmq
       src/kafka.rs          # KafkaWorkCoordinator    : impl WorkCoordinator
       src/nats.rs           # NatsWorkCoordinator     : impl WorkCoordinator
@@ -362,7 +362,7 @@ Themes are ordered by priority.
 > **Current state.** JSON is stored as a `Utf8` string column (text, not a
 > decomposed binary form, so the functions use PostgreSQL's `json_*` names, not
 > `jsonb_*`). The search gateway
-> (`contrib/benostreamdb-search/src/infer.rs`) already infers an Arrow schema
+> (`contrib/benodb-search/src/infer.rs`) already infers an Arrow schema
 > from sample documents (ES 7.10 dynamic mapping).
 
 - [ ] **Iceberg v3 `variant` Mapping** — 🟢 **Deferred**:
@@ -447,18 +447,18 @@ Themes are ordered by priority.
 > 2. **Dynamic Range & DC Offset Bottleneck (Solved via Residual Encoding)**: Storing inverted list vectors as residuals $r = x - c_j$ compresses coordinate variance by 70–85%, eliminating the large DC offsets that distort 4-bit and 8-bit quantization.
 > 3. **CPU Scan Throughput Bottleneck (Solved via SIMD FastScan)**: Storing 4-bit subvector codes interleaved in contiguous blocks allows distance lookup tables to fit entirely inside SIMD registers. Lookups execute via hardware byte shuffles (`_mm256_shuffle_epi8` on x86, `vtbl1_u8` on ARM NEON), evaluating 32 vector distances per cycle without L1/L2 cache misses.
 
-- [x] **e-means Coarse Quantizer Engine (`benostream-gpu-ann/src/e_means.rs` & `src/core/index/e_means.rs`)** — ✅ **Completed**:
-  - Bumped sub-crate `benostream-gpu-ann` to `v0.2.0`.
+- [x] **e-means Coarse Quantizer Engine (`benodb-gpu-ann/src/e_means.rs` & `src/core/index/e_means.rs`)** — ✅ **Completed**:
+  - Bumped sub-crate `benodb-gpu-ann` to `v0.2.0`.
   - Implemented streaming mini-batch accumulator, cosine step schedule ($\alpha_0 \to 0.1\alpha_0$), and mass-proportional donor splitting with alternating coordinate perturbation ($\epsilon = 10^{-4}$).
   - Hardware dispatch across GPU (CUDA/Metal/WGPU) and multi-core CPU with Rayon.
   - Gated dispatch in `src/core/index/ivf.rs` (`simple_kmeans_with_seed`), preserving capacity-capped Voronoi balancing. Verified: 10,000 vectors clustered into 64 partitions in 150ms.
 - [x] **Fuzzing & Robustness (`fuzz/fuzz_targets/e_means.rs`)** — ✅ **Completed**:
   - Registered `e_means` fuzz target fuzzing degenerate inputs (zero vectors, colinear points, extreme norms, NaNs).
-- [x] **Residual Inverted List Encoding (`src/core/index/ivf.rs` & `benostream-gpu-ann/src/ivf_flat.rs`)** — ✅ **Completed in v0.16.0**:
+- [x] **Residual Inverted List Encoding (`src/core/index/ivf.rs` & `benodb-gpu-ann/src/ivf_flat.rs`)** — ✅ **Completed in v0.16.0**:
   - Subtract coarse centroid $c_j$ during inverted list insertion ($r = x - c_j$): `IvfIndex::use_residuals` defaults to enabled.
   - Compute query residual $q_r = q - c_j$ once per probed cluster during fine search, preserving exact distance equivalence while shrinking storage and quantization noise.
-- [x] **In-Register 4-bit SIMD FastScan Engine (`benostream-gpu-ann/src/`)** — ✅ **Completed in v0.16.0**:
-  - 4-bit codebook quantization and interleaved block packing live in `fastscan.rs`, the residual-encoded IVF scan in `ivf_fastscan.rs`, with `benostream-gpu-ann/tests/test_ivf_fastscan.rs` as the regression gate. These are in the `benostream-gpu-ann` sub-crate, not `src/core/index/`.
+- [x] **In-Register 4-bit SIMD FastScan Engine (`benodb-gpu-ann/src/`)** — ✅ **Completed in v0.16.0**:
+  - 4-bit codebook quantization and interleaved block packing live in `fastscan.rs`, the residual-encoded IVF scan in `ivf_fastscan.rs`, with `benodb-gpu-ann/tests/test_ivf_fastscan.rs` as the regression gate. These are in the `benodb-gpu-ann` sub-crate, not `src/core/index/`.
 - [ ] **Empirical Benchmarks (SIFT-1M & Cohere-10M)** — 🔴 **Still open**:
   - Benchmark index construction wall-clock time and query recall@10 vs. latency curves across Lloyd, e-means, and FastScan.
   - The v0.16.0 runs measured *quantizer modes* (SQ8, PQ) on BigANN-10M and Cohere-10M, not clustering algorithms. What is missing is a controlled A/B of Lloyd against e-means at matched recall, and a FastScan-vs-scalar-scan latency pair; no artifact exists for either yet.

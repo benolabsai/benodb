@@ -43,7 +43,7 @@ fn batch(ids: &[i32]) -> Result<RecordBatch> {
 
 async fn build(dir: &std::path::Path, version: i32) -> Result<()> {
     let uri = format!("file://{}", dir.display());
-    let table = benostreamdb::core::table::Table::create_async(uri, schema())
+    let table = benodb::core::table::Table::create_async(uri, schema())
         .await
         .with_context(|| format!("create table at {}", dir.display()))?;
     table.set_format_version(version);

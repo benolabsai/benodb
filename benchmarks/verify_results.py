@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
+# Copyright (c) 2026 Richard Albright and BenoDB Contributors.
 """Fail the sweep when the measured vector artifacts violate an invariant.
 
 The report is only as trustworthy as the arithmetic inside its artifacts, and
@@ -74,7 +74,7 @@ TIMING_EPS = 1e-9
 # instance, re-ranks with the raw vector after normalizing at build time, so its
 # recall legitimately moves in both directions), and asserting our internal
 # invariant about someone else's code produces noise instead of trust.
-OWN_ENGINE_PREFIX = "benostreamdb"
+OWN_ENGINE_PREFIX = "benodb"
 
 QUANTIZED_SUFFIXES = ("_sq", "_sq8", "_tq8", "_tq4", "_pq")
 QUANTIZED_PRECISIONS = {"sq", "sq8", "tq8", "tq4", "pq", "int8", "binary"}

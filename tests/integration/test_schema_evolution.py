@@ -11,7 +11,7 @@ import pytest
 import tempfile
 import shutil
 import pyarrow as pa
-from benostreamdb import Table
+from benodb import Table
 
 
 @pytest.fixture

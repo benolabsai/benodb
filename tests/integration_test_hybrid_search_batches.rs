@@ -12,8 +12,8 @@ use anyhow::Result;
 use arrow::array::{Float32Builder, Int64Array, ListBuilder, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::Table;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

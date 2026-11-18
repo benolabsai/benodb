@@ -1,5 +1,5 @@
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest

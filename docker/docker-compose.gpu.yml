@@ -11,11 +11,11 @@
 # ---------------------------------------------------------------------------
 
 services:
-  benostreamdb:
+  benodb:
     build:
       context: ..
       dockerfile: docker/Dockerfile.gpu
-    image: benostreamdb/quickstart:gpu
+    image: benodb/quickstart:gpu
     environment:
       - BSDB_SEARCH_DEVICE=auto
       - NVIDIA_VISIBLE_DEVICES=all

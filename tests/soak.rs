@@ -15,9 +15,9 @@
 use arrow::array::{FixedSizeListArray, Int64Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::VectorSearchParams;
-use benostreamdb::Table;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::VectorSearchParams;
+use benodb::Table;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;
@@ -182,7 +182,7 @@ async fn visible_rows(table: &Table) -> usize {
 #[tokio::test]
 #[ignore = "soak test; run with `-- --ignored` and BSDB_SOAK_SECONDS"]
 async fn maintenance_churn_soak() {
-    use benostreamdb::core::index::VectorValue;
+    use benodb::core::index::VectorValue;
 
     let secs: u64 = std::env::var("BSDB_SOAK_SECONDS")
         .ok()

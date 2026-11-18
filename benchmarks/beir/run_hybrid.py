@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BEIR Hybrid Search Benchmark Runner: BenoStreamDB vs LanceDB.
+"""BEIR Hybrid Search Benchmark Runner: BenoDB vs LanceDB.
 
 Evaluates retrieval quality (Recall@10, nDCG@10, MRR@10), index footprint on disk,
 throughput (QPS), and latency (p50/p99) across:
@@ -11,7 +11,7 @@ Competitor:
 - LanceDB (embedded columnar vector + Tantivy FTS + RRFReranker)
 
 Usage:
-    python benchmarks/beir/run_hybrid.py --dataset scifact --engines benostreamdb,lancedb --out benchmarks/beir/results/scifact_hybrid.md
+    python benchmarks/beir/run_hybrid.py --dataset scifact --engines benodb,lancedb --out benchmarks/beir/results/scifact_hybrid.md
 """
 
 from __future__ import annotations
@@ -153,13 +153,13 @@ def _env_record() -> Dict[str, Any]:
 def _engine_backend(engine: str) -> str:
     """The backend the engine actually used (``cuda``/``metal``/``cpu``/...).
 
-    For BenoStreamDB this is the live GPU context; competitors are CPU-only, so
+    For BenoDB this is the live GPU context; competitors are CPU-only, so
     they report ``cpu``. This is what distinguishes a real GPU run from a CPU
     run that merely happened inside the GPU container.
     """
-    if engine in ("benostreamdb", "bsdb"):
+    if engine in ("benodb", "bsdb"):
         try:
-            import benostreamdb as bsdb
+            import benodb as bsdb
 
             return bsdb.gpu_device()
         except Exception:
@@ -354,15 +354,15 @@ def compute_ir_metrics(
     }
 
 
-def run_benostreamdb_hybrid(
+def run_benodb_hybrid(
     corpus: List[Tuple[str, str, np.ndarray]],
     queries: Dict[str, Tuple[str, np.ndarray]],
     qrels: Dict[str, Dict[str, int]],
     k: int = 10,
     rrf_k: int = 60,
 ) -> Dict[str, Any]:
-    """Runs Dense-only, Sparse-only (BM25), and Hybrid (RRF) on BenoStreamDB."""
-    import benostreamdb as bsdb
+    """Runs Dense-only, Sparse-only (BM25), and Hybrid (RRF) on BenoDB."""
+    import benodb as bsdb
 
     tmpdir = tempfile.mkdtemp(prefix="bsdb_hybrid_")
     dim = len(corpus[0][2])
@@ -455,7 +455,7 @@ def run_benostreamdb_hybrid(
         metrics_hybrid = compute_ir_metrics(ret_hybrid, qrels, k=k)
 
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "available": True,
             "build_s": build_s,
             "index_mb": round(total_index_bytes / (1024 * 1024), 2),
@@ -566,7 +566,7 @@ def run_lancedb_hybrid(
 def main():
     parser = argparse.ArgumentParser(description="BEIR Hybrid Search Benchmark Runner")
     parser.add_argument("--dataset", default="scifact", help="Dataset name under benchmarks/beir/data/")
-    parser.add_argument("--engines", default="benostreamdb,lancedb", help="Comma-separated engines to run")
+    parser.add_argument("--engines", default="benodb,lancedb", help="Comma-separated engines to run")
     parser.add_argument("--k", type=int, default=10, help="Top-k retrieval limit")
     parser.add_argument("--rrf-k", type=int, default=60, help="RRF constant (default: 60)")
     parser.add_argument("--limit-queries", type=int, default=None, help="Limit number of queries evaluated")
@@ -600,20 +600,20 @@ def main():
 
     engines = [e.strip() for e in args.engines.split(",") if e.strip()]
     runners = {
-        "benostreamdb": run_benostreamdb_hybrid,
+        "benodb": run_benodb_hybrid,
         "lancedb": run_lancedb_hybrid,
     }
 
-    # In the GPU pass, select the GPU backend for BenoStreamDB so the run is a
+    # In the GPU pass, select the GPU backend for BenoDB so the run is a
     # real GPU run rather than a CPU run that merely happened inside the GPU
     # container. `auto` picks the best available device; override with
     # BSDB_GPU_DEVICE (e.g. `cuda:1`).
     if args.device == "gpu":
         try:
-            import benostreamdb as bsdb
+            import benodb as bsdb
 
             resolved = bsdb.set_gpu_device(os.environ.get("BSDB_GPU_DEVICE", "auto"))
-            print(f"BenoStreamDB GPU backend: {resolved}", flush=True)
+            print(f"BenoDB GPU backend: {resolved}", flush=True)
         except Exception as exc:  # no GPU / no wheel: fall back to CPU
             print(f"GPU device selection failed ({exc}); using CPU", flush=True)
 
@@ -638,9 +638,9 @@ def main():
 
         results.append(res)
 
-    # Compute Top-K Agreement between BenoStreamDB and LanceDB
+    # Compute Top-K Agreement between BenoDB and LanceDB
     agreement_pct = None
-    bsdb_res = next((r for r in results if r["engine"] == "benostreamdb" and r.get("available")), None)
+    bsdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
     lance_res = next((r for r in results if r["engine"] == "lancedb" and r.get("available")), None)
     if bsdb_res and lance_res:
         overlaps = []
@@ -651,7 +651,7 @@ def main():
                 overlap = len(b_hits.intersection(l_hits)) / max(len(b_hits.union(l_hits)), 1)
                 overlaps.append(overlap)
         agreement_pct = float(np.mean(overlaps)) * 100.0 if overlaps else 0.0
-        print(f"\nBenoStreamDB vs LanceDB Top-{args.k} Jaccard Agreement: {agreement_pct:.1f}%", flush=True)
+        print(f"\nBenoDB vs LanceDB Top-{args.k} Jaccard Agreement: {agreement_pct:.1f}%", flush=True)
 
     # Format Markdown Report
     env_bits = []
@@ -661,7 +661,7 @@ def main():
         env_bits.append(f"{env['mem']} RAM")
     envelope_str = ", ".join(env_bits) if env_bits else "unconstrained (host)"
     lines = [
-        "# BEIR Hybrid Search Benchmark Results: BenoStreamDB vs Competitor",
+        "# BEIR Hybrid Search Benchmark Results: BenoDB vs Competitor",
         "",
         f"- **Dataset**: `{args.dataset}`",
         f"- **Corpus Documents**: {len(corpus):,}",
@@ -703,18 +703,18 @@ def main():
             "",
             "### Differential Oracle & Result Agreement",
             "",
-            f"- **Top-{args.k} Jaccard Overlap**: **{agreement_pct:.1f}%** between BenoStreamDB Hybrid and LanceDB Hybrid.",
+            f"- **Top-{args.k} Jaccard Overlap**: **{agreement_pct:.1f}%** between BenoDB Hybrid and LanceDB Hybrid.",
             "- High ranking agreement validates correct multi-modal retrieval and reciprocal rank fusion mathematics against an established embedded vector database.",
         ])
 
-    # If BenoStreamDB has internal breakdown, output it as well
+    # If BenoDB has internal breakdown, output it as well
     if bsdb_res and "sparse" in bsdb_res and "dense" in bsdb_res:
         sp = bsdb_res["sparse"]
         dn = bsdb_res["dense"]
         hy = bsdb_res["hybrid"]
         lines.extend([
             "",
-            "### BenoStreamDB Single-Modality vs Hybrid Lift Breakdown",
+            "### BenoDB Single-Modality vs Hybrid Lift Breakdown",
             "",
             f"| Search Mode | Index Size | QPS | p50 Latency | Recall@{args.k} | nDCG@{args.k} | MRR@{args.k} |",
             "|---|---|---|---|---|---|---|",

@@ -1,0 +1,210 @@
+package com.benodb.spark.jni
+
+import org.slf4j.LoggerFactory
+
+class BenoDBJNIBridge private () {
+  
+  @native def addIndex(table: String, column: String, indexType: String): Boolean
+  @native def buildIndex(table: String, segmentId: String): Boolean
+  @native def setPrimaryKey(table: String, columns: String): Boolean
+  @native def dropPrimaryKey(table: String, columns: String): Boolean
+  @native def setGpuContext(deviceType: String): Boolean
+  @native def dropIndex(table: String, column: String, indexType: String): Boolean
+  @native def compactTable(table: String): Boolean
+  @native def listIndexes(table: String): String
+  @native def rebuildClusterIndex(table: String, column: String, k: Int, m: Int, efConstruction: Int, targetShardBytes: Long): Boolean
+  @native def warmupTable(table: String, nProbes: Int, maxMemoryGb: Double): Boolean
+  @native def vectorSearch(table: String, segmentId: String, column: String, k: Int, queryVectorPtr: Long, queryVectorLen: Int, outArrayPtr: Long, outSchemaPtr: Long): Int
+  @native def regionalDriftSearch(table: String, query: String, seedsJson: String, topK: Int, hops: Int, nDepth: Int, kFollowups: Int, mode: String, outArrayPtr: Long, outSchemaPtr: Long): Int
+  @native def gatherMetrics(): String
+
+  // --- Native data/metadata surface (mirrors the Trino connector; no Iceberg Java) ---
+  @native def getTableSchema(tableUri: String): String
+  @native def getPrimaryKey(tableUri: String): String
+  @native def createTable(tableUri: String, schemaJson: String): Boolean
+  @native def appendBatch(tableUri: String, inArrayPtr: Long, inSchemaPtr: Long): Boolean
+  @native def writeMode(tableUri: String): String
+  @native def stageDataFiles(tableUri: String, inArrayPtr: Long, inSchemaPtr: Long): String
+  @native def commitStagedEntries(tableUri: String, token: String, entriesJson: String): Boolean
+  @native def stageBatch(tableUri: String, token: String, inArrayPtr: Long, inSchemaPtr: Long): Boolean
+  @native def commitStaged(tableUri: String, token: String): Boolean
+  @native def discardStaged(token: String): Boolean
+  @native def mergeRows(tableUri: String, keyColumns: String, inArrayPtr: Long, inSchemaPtr: Long): Boolean
+  @native def deleteRows(tableUri: String, filter: String): Boolean
+  @native def deleteRowsBatch(tableUri: String, predicatesJson: String): Boolean
+  @native def openQuery(tableUri: String, sql: String): Long
+  @native def readQueryBatch(handle: Long, outArrayPtr: Long, outSchemaPtr: Long): Long
+  @native def closeQuery(handle: Long): Unit
+  @native def listSchemas(warehouse: String): String
+  @native def listTables(warehouse: String, schema: String): String
+  @native def createSchema(warehouse: String, schema: String): Boolean
+  @native def dropTable(tableUri: String): Boolean
+
+  def runRegionalDriftSearch(
+      table: String,
+      query: String,
+      seeds: Seq[Long],
+      topK: Int,
+      hops: Int,
+      nDepth: Int,
+      kFollowups: Int,
+      mode: String
+  ): Seq[Long] = {
+    if (!BenoDBJNIBridge.isLoaded || seeds.isEmpty) {
+      return Seq.empty
+    }
+
+    import org.apache.arrow.c.{ArrowArray, ArrowSchema, Data}
+    import org.apache.arrow.memory.RootAllocator
+    import org.apache.arrow.vector.BigIntVector
+
+    val allocator = new RootAllocator()
+    val arrowArray = ArrowArray.allocateNew(allocator)
+    val arrowSchema = ArrowSchema.allocateNew(allocator)
+    
+    val seedsJson = seeds.mkString("[\"", "\",\"", "\"]")
+
+    try {
+      val res = regionalDriftSearch(
+        table, query, seedsJson, topK, hops, nDepth, kFollowups, mode,
+        arrowArray.memoryAddress(), arrowSchema.memoryAddress()
+      )
+      if (res < 0) return Seq.empty
+
+      val root = Data.importVectorSchemaRoot(allocator, arrowArray, arrowSchema, null)
+      try {
+        val rowIdVec = root.getVector("node_id").asInstanceOf[BigIntVector]
+        val count = root.getRowCount
+        val results = new scala.collection.mutable.ArrayBuffer[Long](count)
+        var i = 0
+        while (i < count) {
+          results += rowIdVec.get(i)
+          i += 1
+        }
+        results.toSeq
+      } finally {
+        root.close()
+      }
+    } catch {
+      case e: Throwable =>
+        BenoDBJNIBridge.logger.error("Error invoking native regionalDriftSearch", e)
+        Seq.empty
+    } finally {
+      arrowArray.close()
+      arrowSchema.close()
+      allocator.close()
+    }
+  }
+
+  /**
+   * High-level accelerated vector search using Arrow C Data interface.
+   * If native library is loaded and index exists, executes accelerated HNSW search.
+   * Otherwise returns empty sequence.
+   */
+  def searchVectors(
+      table: String,
+      segmentId: String,
+      column: String,
+      queryVector: Array[Float],
+      k: Int
+  ): Seq[(Long, Float)] = {
+    if (!BenoDBJNIBridge.isLoaded || queryVector == null || queryVector.length == 0 || k <= 0) {
+      return Seq.empty
+    }
+
+    import org.apache.arrow.c.{ArrowArray, ArrowSchema, Data}
+    import org.apache.arrow.memory.RootAllocator
+    import org.apache.arrow.vector.{BigIntVector, Float4Vector}
+    import java.nio.{ByteBuffer, ByteOrder}
+
+    val allocator = new RootAllocator()
+    val arrowArray = ArrowArray.allocateNew(allocator)
+    val arrowSchema = ArrowSchema.allocateNew(allocator)
+
+    // Allocate direct buffer for float query vector
+    val directBuf = ByteBuffer.allocateDirect(queryVector.length * 4).order(ByteOrder.nativeOrder())
+    directBuf.asFloatBuffer().put(queryVector)
+    val queryPtr = try {
+      val field = directBuf.getClass.getDeclaredField("address")
+      field.setAccessible(true)
+      field.getLong(directBuf)
+    } catch {
+      case _: Throwable => 0L
+    }
+
+    if (queryPtr == 0L) {
+      arrowArray.close()
+      arrowSchema.close()
+      allocator.close()
+      return Seq.empty
+    }
+
+    try {
+      val res = vectorSearch(
+        table,
+        segmentId,
+        column,
+        k,
+        queryPtr,
+        queryVector.length,
+        arrowArray.memoryAddress(),
+        arrowSchema.memoryAddress()
+      )
+      if (res < 0) {
+        return Seq.empty
+      }
+
+      val root = Data.importVectorSchemaRoot(allocator, arrowArray, arrowSchema, null)
+      try {
+        val rowIdVec = root.getVector("_row_id").asInstanceOf[BigIntVector]
+        val distVec = root.getVector("_distance").asInstanceOf[Float4Vector]
+        val count = root.getRowCount
+        val results = new scala.collection.mutable.ArrayBuffer[(Long, Float)](count)
+        var i = 0
+        while (i < count) {
+          results += ((rowIdVec.get(i), distVec.get(i)))
+          i += 1
+        }
+        results.toSeq
+      } finally {
+        root.close()
+      }
+    } catch {
+      case e: Throwable =>
+        BenoDBJNIBridge.logger.error("Error invoking native vectorSearch", e)
+        Seq.empty
+    } finally {
+      arrowArray.close()
+      arrowSchema.close()
+      allocator.close()
+    }
+  }
+
+}
+
+object BenoDBJNIBridge {
+  private val logger = LoggerFactory.getLogger(classOf[BenoDBJNIBridge])
+  private var instance: BenoDBJNIBridge = _
+  private var loaded = false
+
+  def getInstance(): BenoDBJNIBridge = {
+    if (instance == null) {
+      synchronized {
+        if (instance == null) {
+          try {
+            System.loadLibrary("benostreamdb")
+            loaded = true
+            logger.info("Successfully loaded native BenoDB library.")
+          } catch {
+            case e: UnsatisfiedLinkError =>
+              logger.warn(s"Failed to load native BenoDB library: ${e.getMessage}. Using fallback/mock implementation for testing.")
+          }
+          instance = new BenoDBJNIBridge()
+        }
+      }
+    }
+    instance
+  }
+  
+  def isLoaded: Boolean = loaded
+}

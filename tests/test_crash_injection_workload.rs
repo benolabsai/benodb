@@ -27,11 +27,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use arrow::array::{FixedSizeListArray, Int32Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::VectorSearchParams;
-use benostreamdb::Table;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::VectorSearchParams;
+use benodb::Table;
 use tempfile::tempdir;
 
 const DIM: usize = 8;

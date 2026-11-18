@@ -13,7 +13,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def test_add_primary_key_and_filter(tmp_path):

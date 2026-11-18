@@ -170,7 +170,7 @@ python benchmarks/ann_benchmarks/run.py \
 
 ### 4.2 Competitor adapters: `benchmarks/competitors/`
 
-[`run_competitor.py`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/competitors/run_competitor.py) is the single
+[`run_competitor.py`](https://github.com/benolabsai/benodb/blob/main/benchmarks/competitors/run_competitor.py) is the single
 runner; each engine is an adapter accepting the same `--cores`, `--ram-gb`,
 `--m`, `--ef-construction`, `--ef-search`, `--metric`, `--dataset`, `--queries`
 arguments and emitting the JSON schema of §6. Implemented so far:
@@ -178,15 +178,15 @@ arguments and emitting the JSON schema of §6. Implemented so far:
 - **Vector:** `faiss`, `hnswlib` (embedded); `pgvector` (`--dsn`), `lancedb`
   (`--path`), `opensearch` (`--host`).
 - **Graph:** `networkx` (reference), `neo4j` GDS (`--uri`), `cugraph` (GPU),
-  `benostreamdb`.
+  `benodb`.
 - **SQL:** `duckdb`, `datafusion` (embedded); `clickhouse`, `trino` (server);
-  `benostreamdb`.
+  `benodb`.
 - **Storage / table format:** Iceberg round-trip (Spark/Trino) + Delta Lake —
   `benchmarks/iceberg_roundtrip/run.py`.
 
 Adapters report `{"available": false, "error": ...}` when the client library or
 server is missing, so a partial environment still produces a clear report. See
-[`benchmarks/competitors/README.md`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/competitors/README.md).
+[`benchmarks/competitors/README.md`](https://github.com/benolabsai/benodb/blob/main/benchmarks/competitors/README.md).
 
 ### 4.3 Production workload harness (to build)
 
@@ -216,7 +216,7 @@ For the competitor, enforce the same envelope with the process's cgroup, or
 whether the data is warm (page cache) or cold.
 
 **Containerized runs (one profile for everyone).**
-[`benchmarks/competitors/docker_bench.sh`](https://github.com/benolabsai/benostreamdb/blob/main/benchmarks/competitors/docker_bench.sh)
+[`benchmarks/competitors/docker_bench.sh`](https://github.com/benolabsai/benodb/blob/main/benchmarks/competitors/docker_bench.sh)
 applies a single envelope (`--cpus` / `--mem`) to **every** participant — the
 server engines *and* the runner that executes each client, including
 BenoDB — so no one gets more resources than another. It records the host
@@ -252,7 +252,7 @@ Every run emits a machine-readable record:
 
 ```json
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "engine_version": "0.13.0",
   "dataset": "sift-128-euclidean",
   "workload": "vector_ann",
@@ -320,7 +320,7 @@ scripted scenario with its own pass/fail criteria.
    harness must report steady-state numbers, and state whether the index is
    resident (warm) or being re-read (cold).
 2. **Build the extension you measure.** The Python numbers come from the native
-   extension (`python/benostreamdb/benostreamdb.abi3.so`). Rebuild it with
+   extension (`python/benodb/benodb.abi3.so`). Rebuild it with
    `maturin develop --release` before any benchmark run; a stale `.so` invalidates
    the result. (This bit us once — see §11.)
 3. **Single source of truth for versions.** Core, flight, search, dbt, Spark, and
@@ -358,7 +358,7 @@ scripted scenario with its own pass/fail criteria.
 - **Coverage:** `.github/workflows/coverage.yml` enforces a line-coverage floor.
 - **Benchmark jobs:** `.github/workflows/benchmarks.yml` runs the vector, graph,
   SQL, and BEIR lexical suites on a fixed runner and publishes JSON + Markdown
-  to `results/`. The BEIR step runs the embedded `benostreamdb,tantivy` baseline
+  to `results/`. The BEIR step runs the embedded `benodb,tantivy` baseline
   (the single CI runner is inherently equal-envelope); the canonical
   envelope-controlled run is `docker_bench.sh --workload beir`.
 
@@ -372,7 +372,7 @@ The reported per-query latency was **not** the search algorithm, the manifest, o
 Parquet I/O. Three compounding defects, found and fixed:
 
 1. **Stale native extension.** The first measurements used a
-   `benostreamdb.abi3.so` built ~1 hour before the sources. Always rebuild with
+   `benodb.abi3.so` built ~1 hour before the sources. Always rebuild with
    `maturin develop --release` before a run (§8.2). This alone took ~205 ms → ~20 ms.
 2. **The declared vector index was never built.** `add_index` on an empty table
    registered the config, but the incoming column was a **`list<double>`**

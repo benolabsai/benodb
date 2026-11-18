@@ -42,22 +42,22 @@ Validated against **pyiceberg 0.12.0** / **pyarrow 25.0.1**.
 | Nanosecond timestamps | V2 | ✅ Conformant | `Timestamp(Nanosecond)` round-trips without precision loss. |
 | Row lineage (`_row_id`, `_last_updated_sequence_number`) | V3 | ✅ Conformant | `next-row-id` in metadata; `first-row-id`/`added-rows` on the snapshot. |
 | Equality / position deletes | V2 | ✅ Conformant | Delete files registered in manifest entries (used for deletes across V2 and V3 tables today). |
-| Deletion vectors | V3 | ✅ Written & read (format-version 3) | `Table::delete_async` writes a spec-exact `deletion-vector-v1` Puffin blob (`del-dv-<uuid>.puffin`, footer `referenced-data-file` / `cardinality`) and the manifest carries `content = 1` (`POSITION_DELETES`), `file_format = "PUFFIN"`, and fields `143–145`; the Avro `format-version` metadata is stamped from the table's version. `HybridReader` fetches the blob byte range and masks the positions, compaction materializes them, and `vacuum` retains referenced DVs. Verified against `apache/iceberg-rust` 0.11 in [`tests/iceberg_rust_oracle`](https://github.com/benolabsai/benostreamdb/blob/main/tests/iceberg_rust_oracle/README.md). Merge-on-read deletes share the same codec. |
-| Puffin index blobs | — | ⚠️ Extension | BenoStream overlay indexes (HNSW/TQ/PQ/BM25/bitmap) ride in Puffin; standard readers ignore them and fall back to full scans. |
-| `_staging`, `_wal` directories | — | ⚠️ Extension | BenoStream durability artifacts; standard readers ignore them. |
+| Deletion vectors | V3 | ✅ Written & read (format-version 3) | `Table::delete_async` writes a spec-exact `deletion-vector-v1` Puffin blob (`del-dv-<uuid>.puffin`, footer `referenced-data-file` / `cardinality`) and the manifest carries `content = 1` (`POSITION_DELETES`), `file_format = "PUFFIN"`, and fields `143–145`; the Avro `format-version` metadata is stamped from the table's version. `HybridReader` fetches the blob byte range and masks the positions, compaction materializes them, and `vacuum` retains referenced DVs. Verified against `apache/iceberg-rust` 0.11 in [`tests/iceberg_rust_oracle`](https://github.com/benolabsai/benodb/blob/main/tests/iceberg_rust_oracle/README.md). Merge-on-read deletes share the same codec. |
+| Puffin index blobs | — | ⚠️ Extension | BenoDB overlay indexes (HNSW/TQ/PQ/BM25/bitmap) ride in Puffin; standard readers ignore them and fall back to full scans. |
+| `_staging`, `_wal` directories | — | ⚠️ Extension | BenoDB durability artifacts; standard readers ignore them. |
 
 Legend: ✅ conformant and machine-checked · ⚠️ documented deviation/extension.
 
 ## Known deviations from the Iceberg spec
 
-1. **BenoStream overlay indexes (Puffin).** Index blobs are an extension. A
+1. **BenoDB overlay indexes (Puffin).** Index blobs are an extension. A
    standard Iceberg reader sees the data files and returns correct results via a
-   full scan; only BenoStream uses the overlay indexes.
+   full scan; only BenoDB uses the overlay indexes.
 2. **`_staging/` and `_wal/` directories** live beside the table. They are
    ignored by standard readers and excluded from orphan cleanup.
 3. **pgvector-style vector types** (`FixedSizeList<Float32>` etc.) are stored as
    standard Iceberg `list<float>` columns; vector distance operators are
-   BenoStream SQL extensions (see the README's pgvector notes).
+   BenoDB SQL extensions (see the README's pgvector notes).
 
 ## Bugs found and fixed by this validation
 

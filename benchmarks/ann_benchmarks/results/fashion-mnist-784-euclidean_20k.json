@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "index_type": "hnsw",
   "dataset": "fashion-mnist-784-euclidean",
   "workload": "vector_ann",

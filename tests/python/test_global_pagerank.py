@@ -2,7 +2,7 @@ import os
 import shutil
 import pytest
 import pyarrow as pa
-from benostreamdb import Table
+from benodb import Table
 
 @pytest.fixture
 def table_fixture(tmpdir):

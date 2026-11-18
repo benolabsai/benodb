@@ -110,7 +110,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./trino-benostreamdb/etc:/etc/trino
+      - ./trino-benodb/etc:/etc/trino
     environment:
       - TRINO_ENV=dev
       - PG_CONN_RW=${PG_CONN_RW}

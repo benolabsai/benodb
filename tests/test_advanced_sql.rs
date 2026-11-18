@@ -4,25 +4,25 @@ use anyhow::Result;
 use arrow::array::{FixedSizeListArray, Float32Array, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorMetric;
-use benostreamdb::core::manifest::{PartitionField, PartitionSpec};
-use benostreamdb::core::table::VectorSearchParams;
-use benostreamdb::Table;
+use benodb::core::index::VectorMetric;
+use benodb::core::manifest::{PartitionField, PartitionSpec};
+use benodb::core::table::VectorSearchParams;
+use benodb::Table;
 use std::sync::Arc;
 
 async fn clear_caches() {
-    benostreamdb::core::cache::MANIFEST_CACHE.invalidate_all();
-    benostreamdb::core::cache::MANIFEST_LIST_CACHE.invalidate_all();
-    benostreamdb::core::cache::LATEST_VERSION_CACHE.invalidate_all();
-    benostreamdb::core::cache::INDEX_CACHE.invalidate_all();
-    benostreamdb::core::cache::BYTE_CACHE.invalidate_all();
-    benostreamdb::core::cache::HNSW_CACHE.invalidate_all();
-    benostreamdb::core::cache::HNSW_IVF_CACHE.invalidate_all();
-    benostreamdb::core::cache::INVERTED_INDEX_CACHE.invalidate_all();
-    benostreamdb::core::cache::ANALYZER_META_CACHE.invalidate_all();
-    benostreamdb::core::cache::PARQUET_META_CACHE.invalidate_all();
-    benostreamdb::core::cache::BLOOM_FILTER_CACHE.invalidate_all();
-    benostreamdb::core::cache::BLOCK_CACHE.invalidate_all();
+    benodb::core::cache::MANIFEST_CACHE.invalidate_all();
+    benodb::core::cache::MANIFEST_LIST_CACHE.invalidate_all();
+    benodb::core::cache::LATEST_VERSION_CACHE.invalidate_all();
+    benodb::core::cache::INDEX_CACHE.invalidate_all();
+    benodb::core::cache::BYTE_CACHE.invalidate_all();
+    benodb::core::cache::HNSW_CACHE.invalidate_all();
+    benodb::core::cache::HNSW_IVF_CACHE.invalidate_all();
+    benodb::core::cache::INVERTED_INDEX_CACHE.invalidate_all();
+    benodb::core::cache::ANALYZER_META_CACHE.invalidate_all();
+    benodb::core::cache::PARQUET_META_CACHE.invalidate_all();
+    benodb::core::cache::BLOOM_FILTER_CACHE.invalidate_all();
+    benodb::core::cache::BLOCK_CACHE.invalidate_all();
 }
 
 async fn get_complex_schema(dim: usize) -> SchemaRef {
@@ -134,7 +134,7 @@ async fn test_hybrid_sql_vector_search() -> Result<()> {
     let query_vec = vec![0.1; dim];
     let vs_params = VectorSearchParams::new(
         "embedding",
-        benostreamdb::core::index::VectorValue::Float32(query_vec),
+        benodb::core::index::VectorValue::Float32(query_vec),
         5,
     );
 
@@ -276,7 +276,7 @@ async fn test_cosine_similarity_search() -> Result<()> {
     let query_vec = vec![1.0, 0.1, 0.0, 0.0];
     let vs_params = VectorSearchParams::new(
         "embedding",
-        benostreamdb::core::index::VectorValue::Float32(query_vec),
+        benodb::core::index::VectorValue::Float32(query_vec),
         1,
     )
     .with_metric(VectorMetric::Cosine);

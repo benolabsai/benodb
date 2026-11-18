@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "index_type": "hnsw_tq8",
   "dataset": "nytimes-256-angular",
   "workload": "vector_ann",

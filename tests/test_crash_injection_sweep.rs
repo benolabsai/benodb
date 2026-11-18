@@ -21,8 +21,8 @@ use std::sync::Arc;
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::fault_injection::{arm, disarm, CrashPoint};
-use benostreamdb::Table;
+use benodb::core::fault_injection::{arm, disarm, CrashPoint};
+use benodb::Table;
 use tempfile::tempdir;
 
 const SEED_ROWS: i32 = 10;

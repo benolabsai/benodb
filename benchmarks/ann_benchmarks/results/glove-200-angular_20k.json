@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "index_type": "hnsw",
   "dataset": "glove-200-angular",
   "workload": "vector_ann",

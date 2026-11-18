@@ -1,7 +1,7 @@
 import tempfile
 import pytest
 import numpy as np
-import benostreamdb as hs
+import benodb as hs
 import os
 import shutil
 

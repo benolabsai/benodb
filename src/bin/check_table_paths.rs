@@ -3,10 +3,10 @@
 //! Diagnostic: open a table and report whether its manifest entries resolve to
 //! readable data files at the current location.
 
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::reader::HybridReader;
-use benostreamdb::core::storage::create_object_store;
-use benostreamdb::SegmentConfig;
+use benodb::core::manifest::ManifestManager;
+use benodb::core::reader::HybridReader;
+use benodb::core::storage::create_object_store;
+use benodb::SegmentConfig;
 use futures::StreamExt;
 
 #[tokio::main]

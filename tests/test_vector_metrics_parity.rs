@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
 use anyhow::Result;
-use benostreamdb::core::index::hnsw_ivf::HnswIvfIndex;
-use benostreamdb::core::index::{VectorMetric, VectorValue};
-use benostreamdb::core::manifest::IndexAlgorithm;
+use benodb::core::index::hnsw_ivf::HnswIvfIndex;
+use benodb::core::index::{VectorMetric, VectorValue};
+use benodb::core::manifest::IndexAlgorithm;
 use std::collections::HashSet;
 
 fn normalize(vec: &mut [f32]) {
@@ -26,19 +26,19 @@ fn compute_brute_force(
         .enumerate()
         .map(|(i, v)| {
             let d = match metric {
-                VectorMetric::L2 => benostreamdb::core::index::distance::l2_distance(query, v),
+                VectorMetric::L2 => benodb::core::index::distance::l2_distance(query, v),
                 VectorMetric::Cosine => {
-                    benostreamdb::core::index::distance::cosine_distance(query, v)
+                    benodb::core::index::distance::cosine_distance(query, v)
                 }
                 VectorMetric::InnerProduct => {
-                    (1.0 - benostreamdb::core::index::distance::dot_product(query, v)).max(0.0)
+                    (1.0 - benodb::core::index::distance::dot_product(query, v)).max(0.0)
                 }
-                VectorMetric::L1 => benostreamdb::core::index::distance::l1_distance(query, v),
+                VectorMetric::L1 => benodb::core::index::distance::l1_distance(query, v),
                 VectorMetric::Hamming => {
-                    benostreamdb::core::index::distance::hamming_distance(query, v)
+                    benodb::core::index::distance::hamming_distance(query, v)
                 }
                 VectorMetric::Jaccard => {
-                    benostreamdb::core::index::distance::jaccard_distance(query, v)
+                    benodb::core::index::distance::jaccard_distance(query, v)
                 }
             };
             (i, d)

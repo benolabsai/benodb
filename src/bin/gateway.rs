@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use benostreamdb::SegmentConfig;
+use benodb::SegmentConfig;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::SystemTime;
@@ -25,7 +25,7 @@ async fn main() {
     }));
 
     // Task 3: Use proper telemetry init
-    let _telemetry_guard = match benostreamdb::telemetry::tracing::init_tracing("gateway") {
+    let _telemetry_guard = match benodb::telemetry::tracing::init_tracing("gateway") {
         Ok(guard) => guard,
         Err(e) => {
             eprintln!("Failed to initialize tracing: {e}");
@@ -155,8 +155,8 @@ struct QueryResponse {
     rows: Vec<String>, // Mock result
 }
 
-use benostreamdb::core::reader::HybridReader;
-use benostreamdb::core::segment::HybridSegmentWriter;
+use benodb::core::reader::HybridReader;
+use benodb::core::segment::HybridSegmentWriter;
 // use object_store::local::LocalFileSystem;
 use std::sync::Arc;
 
@@ -168,7 +168,7 @@ async fn query_handler(Json(payload): Json<QueryRequest>) -> impl IntoResponse {
     // Ideally this comes from payload or config. defaulting to /tmp for local PoC
     let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
     println!("Connecting to storage: {}", uri);
-    let store = match benostreamdb::core::storage::create_object_store(&uri) {
+    let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, %uri, "failed to create object store");
@@ -184,7 +184,7 @@ async fn query_handler(Json(payload): Json<QueryRequest>) -> impl IntoResponse {
     let reader = HybridReader::new(config, store, &uri);
 
     // User-supplied: a malformed filter must be a 400, not a panic.
-    let filter = match benostreamdb::core::planner::QueryFilter::parse(&payload.filter) {
+    let filter = match benodb::core::planner::QueryFilter::parse(&payload.filter) {
         Some(f) => f,
         None => {
             let response = QueryResponse {

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""ANN-Benchmarks harness for BenoStreamDB.
+"""ANN-Benchmarks harness for BenoDB.
 
 Downloads a standard ANN-Benchmarks dataset (HDF5), loads it into a
-BenoStreamDB table with a vector index, and reports the standard metrics:
+BenoDB table with a vector index, and reports the standard metrics:
 recall@k, QPS, build time, index size, and p50/p99 latency.
 
 Two things are exposed so the comparison is apples-to-apples:
@@ -69,7 +69,7 @@ DATASET_METRIC = {
 def configure_env(cores: int, ram_gb: float) -> None:
     """Constrain the engine to the competitor's cores and RAM.
 
-    Must run before `import benostreamdb` so the values are in place when the
+    Must run before `import benodb` so the values are in place when the
     engine reads them.
     """
     os.environ.setdefault("RAYON_NUM_THREADS", str(cores))
@@ -177,7 +177,7 @@ def main() -> None:
     ap.add_argument("--queries", type=int, default=1000, help="number of test queries")
     ap.add_argument("--limit", type=int, default=0, help="cap the train set size (0 = all)")
     ap.add_argument("--index", default="hnsw", help="index type (hnsw, hnsw_tq8)")
-    ap.add_argument("--engine", default="benostreamdb", help="engine label written to the record (e.g. benostreamdb_tq8)")
+    ap.add_argument("--engine", default="benodb", help="engine label written to the record (e.g. benodb_tq8)")
     ap.add_argument("--m", type=int, default=16, help="HNSW M (complexity)")
     ap.add_argument("--ef-construction", type=int, default=200, help="HNSW ef_construction (quality)")
     ap.add_argument("--ef-search", type=int, default=200, help="HNSW ef_search (query beam width)")
@@ -204,7 +204,7 @@ def main() -> None:
         print(f"resource envelope: cores={cores} ram_gb={ram_gb}", flush=True)
 
     # Import after the env is configured.
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     # Pin the run to the requested backend. `--device` used to be written
     # straight into the result record without touching the engine, so the

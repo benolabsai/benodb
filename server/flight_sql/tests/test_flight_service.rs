@@ -4,8 +4,8 @@ use arrow_flight::sql::{
     CommandGetTables, CommandStatementQuery, TicketStatementQuery,
 };
 use arrow_flight::{FlightDescriptor, Ticket};
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb_flight::BenoStreamFlightSqlService;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb_flight::BenoStreamFlightSqlService;
 use futures::StreamExt;
 use tonic::Request;
 

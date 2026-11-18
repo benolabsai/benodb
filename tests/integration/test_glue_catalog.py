@@ -11,7 +11,7 @@ Environment variables:
 - GLUE_DATABASE (default: test_db)
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pytest
 import json
 import os

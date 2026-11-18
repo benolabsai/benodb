@@ -11,11 +11,11 @@ def test_imports():
     """Test that all modules and functions can be imported"""
     print("Testing imports...")
     try:
-        import benostreamdb as bsdb
-        print("✓ benostreamdb module imported successfully")
+        import benodb as bsdb
+        print("✓ benodb module imported successfully")
     except ImportError as e:
-        print(f"✗ Failed to import benostreamdb: {e}")
-        raise Exception(f"Failed to import benostreamdb: {e}")
+        print(f"✗ Failed to import benodb: {e}")
+        raise Exception(f"Failed to import benodb: {e}")
     
     # Test GPU Context API
     print("\nTesting GPU Context API...")
@@ -30,7 +30,7 @@ def test_imports():
         print(f"✓ ComputeContext('cpu') works: backend={cpu_ctx.backend}")
     except Exception as e:
         print(f"✗ GPU Context API failed: {e}")
-        raise Exception(f"Failed to import benostreamdb: {e}")
+        raise Exception(f"Failed to import benodb: {e}")
     
     # Test Distance API - Single-pair functions
     print("\nTesting Distance API - Single-pair functions...")
@@ -52,7 +52,7 @@ def test_imports():
             print(f"✓ {name}(a, b) = {result}")
         except Exception as e:
             print(f"✗ {name} failed: {e}")
-            raise Exception(f"Failed to import benostreamdb: {e}")
+            raise Exception(f"Failed to import benodb: {e}")
     
     # Test Distance API - Batch functions
     print("\nTesting Distance API - Batch functions...")
@@ -78,7 +78,7 @@ def test_imports():
             print(f"✓ {name}(query, vectors) shape = {result.shape}, values = {result}")
         except Exception as e:
             print(f"✗ {name} failed: {e}")
-            raise Exception(f"Failed to import benostreamdb: {e}")
+            raise Exception(f"Failed to import benodb: {e}")
     
     # Test Sparse Vector API
     print("\nTesting Sparse Vector API...")
@@ -104,7 +104,7 @@ def test_imports():
         print(f"✓ sparse_a.to_dense() shape = {dense.shape}")
     except Exception as e:
         print(f"✗ Sparse Vector API failed: {e}")
-        raise Exception(f"Failed to import benostreamdb: {e}")
+        raise Exception(f"Failed to import benodb: {e}")
     
     # Test Binary Vector API
     print("\nTesting Binary Vector API...")
@@ -130,7 +130,7 @@ def test_imports():
         print(f"✓ jaccard_auto(a_unpacked, b_unpacked) = {jaccard_auto}")
     except Exception as e:
         print(f"✗ Binary Vector API failed: {e}")
-        raise Exception(f"Failed to import benostreamdb: {e}")
+        raise Exception(f"Failed to import benodb: {e}")
     
     # Test with auto_detect
     print("\n" + "="*60)

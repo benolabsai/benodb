@@ -10,11 +10,11 @@ write/backfill, so these tests assert the configured index columns.)
 
 import pyarrow as pa
 
-import benostreamdb
+import benodb
 
 
 def test_create_edge_table_configures_forward_and_reverse_csr(tmp_path):
-    table = benostreamdb.Table.create_edge_table(f"file://{tmp_path}/edges")
+    table = benodb.Table.create_edge_table(f"file://{tmp_path}/edges")
     # `create_edge_table` stamps the edge metadata, which triggers the CSR config.
     assert table.is_edge_table()
     cols = set(table.index_columns)
@@ -23,7 +23,7 @@ def test_create_edge_table_configures_forward_and_reverse_csr(tmp_path):
 
 def test_set_property_edge_is_idempotent(tmp_path):
     schema = pa.schema([pa.field("src", pa.uint64()), pa.field("dst", pa.uint64())])
-    table = benostreamdb.Table.create(f"file://{tmp_path}/e2", schema)
+    table = benodb.Table.create(f"file://{tmp_path}/e2", schema)
     table.set_properties({"table_type": "edge", "src_col": "src", "dst_col": "dst"})
     assert {"src", "dst"} <= set(table.index_columns)
     # Re-declaring must not error or duplicate.
@@ -32,7 +32,7 @@ def test_set_property_edge_is_idempotent(tmp_path):
 
 
 def test_plain_table_gets_no_graph_index(tmp_path):
-    table = benostreamdb.Table.from_arrow(
+    table = benodb.Table.from_arrow(
         f"file://{tmp_path}/plain", pa.table({"a": [1, 2]})
     )
     assert not table.is_edge_table()

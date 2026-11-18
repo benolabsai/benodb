@@ -22,7 +22,7 @@ Usage:
   python scripts/build_three_tier.py                    # run all stages
   python scripts/build_three_tier.py --stages tier      # just one stage
   python scripts/build_three_tier.py --stages download,parse
-  python scripts/build_three_tier.py --data-dir ~/data/benostreamdb
+  python scripts/build_three_tier.py --data-dir ~/data/benodb
 
 Everything is driven by flags/env; no manual stitching required.
 """
@@ -44,7 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 DEFAULT_DUMP_DATE = "2026-09-01"
 DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_EMBED_DIMS = 384
-DEFAULT_UA = "BenoStreamDB/1.0 (https://github.com/benostreamdb) Python-urllib/3.0"
+DEFAULT_UA = "BenoStreamDB/1.0 (https://github.com/benodb) Python-urllib/3.0"
 
 ALL_STAGES = ["download", "parse", "merge", "tier", "embed", "load"]
 
@@ -524,7 +524,7 @@ def stage_load(args, repo_root: str) -> None:
     import pyarrow.parquet as pq
 
     sys.path.insert(0, os.path.join(repo_root, "python"))
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     os.makedirs(args.table_dir, exist_ok=True)
     try:
@@ -632,7 +632,7 @@ def _write_batched(table, df, name: str, batch: int) -> None:
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    default_data_dir = os.environ.get("BSDB_DATA", os.path.expanduser("~/data/benostreamdb"))
+    default_data_dir = os.environ.get("BSDB_DATA", os.path.expanduser("~/data/benodb"))
 
     ap = argparse.ArgumentParser(description="3-tier Wikipedia Graph-RAG pipeline")
     ap.add_argument("--stages", default=",".join(ALL_STAGES),

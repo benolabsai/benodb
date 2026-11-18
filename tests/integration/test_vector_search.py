@@ -3,7 +3,7 @@ import sys
 import os
 import time
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path

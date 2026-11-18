@@ -3,8 +3,8 @@
 use anyhow::Result;
 use arrow::array::Int32Array;
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::reader::HybridReader;
-use benostreamdb::SegmentConfig;
+use benodb::core::reader::HybridReader;
+use benodb::SegmentConfig;
 
 use object_store::memory::InMemory;
 use std::sync::Arc;
@@ -38,11 +38,11 @@ async fn test_hnsw_ivf_native_integration() -> Result<()> {
     // The SegmentWriter logic is complex to mock entirely here without writing files.
     // However, HnswIvfIndex::build and save can be tested.
 
-    use benostreamdb::core::index::hnsw_ivf::HnswIvfIndex;
-    let algo = benostreamdb::core::manifest::IndexAlgorithm::hnsw();
+    use benodb::core::index::hnsw_ivf::HnswIvfIndex;
+    let algo = benodb::core::manifest::IndexAlgorithm::hnsw();
     let index = HnswIvfIndex::build(
         vectors.clone(),
-        benostreamdb::core::index::VectorMetric::L2,
+        benodb::core::index::VectorMetric::L2,
         Some(10),
         Some(16),
         &algo,
@@ -132,14 +132,14 @@ async fn test_hnsw_ivf_native_integration() -> Result<()> {
     let root_uri = temp_dir.path().to_string_lossy().into_owned();
     let reader = HybridReader::new(config, local_store, &root_uri);
 
-    let query_val = benostreamdb::core::index::VectorValue::Float32(query);
+    let query_val = benodb::core::index::VectorValue::Float32(query);
     let results = reader
         .vector_search_index(
             "embedding",
             &query_val,
             k,
             None,
-            benostreamdb::core::index::VectorMetric::L2,
+            benodb::core::index::VectorMetric::L2,
             None,
             None,
             false, // use_mmap
@@ -179,7 +179,7 @@ async fn test_hnsw_ivf_native_integration() -> Result<()> {
             &query_val,
             k,
             None,
-            benostreamdb::core::index::VectorMetric::L2,
+            benodb::core::index::VectorMetric::L2,
             None,
             None,
             false,
@@ -217,7 +217,7 @@ async fn test_hnsw_ivf_native_integration() -> Result<()> {
     Ok(())
 }
 
-/// Regression test for: https://github.com/benolabsai/benostreamdb/issues/blob_type_puffin_dispatch
+/// Regression test for: https://github.com/benolabsai/benodb/issues/blob_type_puffin_dispatch
 ///
 /// Bug: When a ManifestEntry's IndexFile had `blob_type = Some("hnsw_tq8")`, the reader
 /// branched into `load_puffin_async()`, which attempted to GET a single-file Puffin container
@@ -230,9 +230,9 @@ async fn test_hnsw_ivf_native_integration() -> Result<()> {
 async fn test_tq8_index_loaded_via_multifile_not_puffin() -> Result<()> {
     use arrow::array::{FixedSizeListBuilder, Float32Builder, Int32Array};
     use arrow::datatypes::{DataType, Field, Schema};
-    use benostreamdb::core::index::hnsw_ivf::HnswIvfIndex;
-    use benostreamdb::core::index::{VectorMetric, VectorValue};
-    use benostreamdb::core::manifest::{IndexAlgorithm, IndexFile};
+    use benodb::core::index::hnsw_ivf::HnswIvfIndex;
+    use benodb::core::index::{VectorMetric, VectorValue};
+    use benodb::core::manifest::{IndexAlgorithm, IndexFile};
     use object_store::local::LocalFileSystem;
 
     let dim = 32usize;
@@ -332,14 +332,14 @@ async fn test_tq8_index_loaded_via_multifile_not_puffin() -> Result<()> {
         ..Default::default()
     };
 
-    let mut config = benostreamdb::SegmentConfig::new("", seg_id);
+    let mut config = benodb::SegmentConfig::new("", seg_id);
     config.index_files.push(index_file);
 
     let local_store = Arc::new(LocalFileSystem::new_with_prefix(temp_dir.path())?);
     // Unique root_uri keeps this run's disk-cache entries distinct from any
     // other process using the same relative segment filenames.
     let root_uri = temp_dir.path().to_string_lossy().into_owned();
-    let reader = benostreamdb::core::reader::HybridReader::new(config, local_store, &root_uri);
+    let reader = benodb::core::reader::HybridReader::new(config, local_store, &root_uri);
 
     // Query for vector 42 — it should be the nearest neighbour of itself.
     let query = VectorValue::Float32(vectors[42].clone());

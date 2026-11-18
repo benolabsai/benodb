@@ -90,11 +90,11 @@ services:
   # ---------------------
   # 3. BenoStreamDB (All APIs)
   # ---------------------
-  benostreamdb:
+  benodb:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: benostreamdb/quickstart:latest
+    image: benodb/quickstart:latest
     container_name: bsdb-server
     restart: unless-stopped
     # Bind the host ports to loopback only: the quickstart is for local
@@ -128,7 +128,7 @@ services:
           memory: 4G
           cpus: "2.0"
     volumes:
-      - bsdb-cache:/home/benostream/.benostreamdb
+      - bsdb-cache:/home/benostream/.benodb
     networks:
       - benostream_net
     depends_on:

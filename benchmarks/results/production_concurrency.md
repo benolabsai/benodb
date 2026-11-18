@@ -1,6 +1,6 @@
 # Multi-Client Concurrency Scaling Benchmark
 
-- **Engine**: BenoStreamDB
+- **Engine**: BenoDB
 - **Host**: x86_64 (Linux)
 - **Workload**: Concurrent ANN Vector Queries (HNSW-TQ8, Top-10)
 - **Queries per Concurrency Tier**: 1,000

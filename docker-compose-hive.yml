@@ -79,10 +79,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Mount the Trino configurations (contains catalogs: iceberg_hive, benostreamdb, memory, etc.)
-      - ./trino-benostreamdb/etc:/etc/trino
+      # Mount the Trino configurations (contains catalogs: iceberg_hive, benodb, memory, etc.)
+      - ./trino-benodb/etc:/etc/trino
       # Mount our compiled BenoStreamDB Trino connector plugin
-      - ./trino-benostreamdb/target/trino-benostream-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benostream
+      - ./trino-benodb/target/trino-benostream-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benostream
     environment:
       - TRINO_ENV=dev
       - TRINO_S3_ACCESS_KEY=admin

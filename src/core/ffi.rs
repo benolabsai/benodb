@@ -136,7 +136,7 @@ impl BenoStreamSession {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBPageSource_openSession(
+pub extern "system" fn Java_com_benodb_trino_BenoDBPageSource_openSession(
     mut env: JNIEnv,
     _class: JClass,
     path: JString,
@@ -184,12 +184,12 @@ use arrow::ffi::{to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
 
 use arrow::array::Array; // Fix E0599
 
-/// Native method implementation for `com.benostreamdb.trino.BenoStreamDBPageSource.readBatch`
+/// Native method implementation for `com.benodb.trino.BenoStreamDBPageSource.readBatch`
 ///
 /// Expected Java Signature:
 /// long readBatch(long handle, long outArrayPtr, long outSchemaPtr)
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBPageSource_readBatch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBPageSource_readBatch(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -242,7 +242,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBPageSource_readBa
 /// table query per split. The handle is a `BenoStreamSession`, NOT a
 /// `QuerySession`: use `readFileSessionBatch`/`closeFileSession` with it.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openFileSession(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_openFileSession(
     env: JNIEnv,
     _class: JClass,
     path: JString,
@@ -252,7 +252,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openFil
 
 /// Trino: pull one batch from a file-scoped session.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_readFileSessionBatch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_readFileSessionBatch(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -286,7 +286,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_readFil
 
 /// Trino: free a file-scoped session handle.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_closeFileSession(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_closeFileSession(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -300,7 +300,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_closeFi
 
 /// Trino Integration: Split Generation
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBSplitManager_getSplits(
+pub extern "system" fn Java_com_benodb_trino_BenoDBSplitManager_getSplits(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -369,7 +369,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBSplitManager_getS
 
 /// Spark Integration: List Data Files with Index Metadata
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamScanBuilder_listDataFiles(
+pub extern "system" fn Java_com_benodb_spark_BenoDBScanBuilder_listDataFiles(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -437,7 +437,7 @@ fn list_splits_json(uri: &str) -> String {
 
 /// Spark Integration: file-level scan splits for multi-partition reads.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamScanBuilder_listSplits(
+pub extern "system" fn Java_com_benodb_spark_BenoDBScanBuilder_listSplits(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -459,7 +459,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamScanBuilder_listSpl
 
 /// Trino: file-level scan splits for multi-split reads.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listSplits(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_listSplits(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -481,7 +481,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listSpl
 
 /// Spark Integration: Get Splits (Legacy/Fallback)
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamScanBuilder_getSplits(
+pub extern "system" fn Java_com_benodb_spark_BenoDBScanBuilder_getSplits(
     env: JNIEnv,
     _class: JClass,
     _options: JObject,
@@ -523,7 +523,7 @@ fn open_session_helper(mut env: JNIEnv, path: JString) -> jlong {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamPartitionReader_openSession(
+pub extern "system" fn Java_com_benodb_spark_BenoDBPartitionReader_openSession(
     env: JNIEnv,
     _class: JClass,
     path: JString,
@@ -532,7 +532,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamPartitionReader_ope
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamPartitionReader_readBatch(
+pub extern "system" fn Java_com_benodb_spark_BenoDBPartitionReader_readBatch(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -593,7 +593,7 @@ fn split_columns(raw: &str) -> Vec<String> {
 
 /// Spark: add an index on `column` using the named algorithm/category.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_addIndex(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_addIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -682,7 +682,7 @@ async fn run_build_index(uri: String, target: String) -> anyhow::Result<()> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_buildIndex(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_buildIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -713,7 +713,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_build
 /// Spark: set the table primary key to the comma-separated `columns`.
 /// Forwards to the canonical implementation above.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_setPrimaryKey(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_setPrimaryKey(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -725,7 +725,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_setPr
 /// Spark: drop the comma-separated `columns` from the table primary key.
 /// Forwards to the canonical implementation above.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_dropPrimaryKey(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_dropPrimaryKey(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -740,7 +740,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_dropP
 /// single column can only have one index to drop.
 /// Spark: drop the index on `column`. Forwards to the canonical implementation.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_dropIndex(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_dropIndex(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -752,7 +752,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_dropI
 
 /// Spark: compact the table's data files. Forwards to the canonical implementation.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_compactTable(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_compactTable(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -763,7 +763,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_compa
 /// Spark: list the table's indexes as a JSON array of index-file records.
 /// Forwards to the canonical implementation above.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_listIndexes(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_listIndexes(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -773,7 +773,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_listI
 
 /// Spark: rebuild global cluster index for the table.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_rebuildClusterIndex(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_rebuildClusterIndex(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -796,7 +796,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_rebui
 
 /// Spark: pre-warm cluster index caches for the table.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_warmupTable(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_warmupTable(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -807,7 +807,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_warmu
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_setGpuContext(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_setGpuContext(
     mut env: JNIEnv,
     _class: JClass,
     device_type: JString,
@@ -827,7 +827,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_setGp
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setGpuContext(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_setGpuContext(
     mut env: JNIEnv,
     _class: JClass,
     device_type: JString,
@@ -851,7 +851,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setGpuC
 /// one device round-robin, so a single query spreads across GPUs. A list of 0
 /// or 1 devices is a no-op (the process-wide `setGpuContext` still applies).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setGpuDevicePool(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_setGpuDevicePool(
     mut env: JNIEnv,
     _class: JClass,
     devices: JString,
@@ -865,7 +865,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setGpuD
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_setGpuDevicePool(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_setGpuDevicePool(
     mut env: JNIEnv,
     _class: JClass,
     devices: JString,
@@ -886,7 +886,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use std::sync::Arc;
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_vectorSearch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_vectorSearch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -913,7 +913,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_vecto
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_vectorSearch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_vectorSearch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1092,7 +1092,7 @@ fn vector_search_impl(
 // procedure forwards to it. Only `node_id` is exported because that is exactly
 // what the callers read (see runRegionalDriftSearch in the Spark bridge).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_regionalDriftSearch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_regionalDriftSearch(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1106,7 +1106,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_regio
     out_array_ptr: jlong,
     out_schema_ptr: jlong,
 ) -> jint {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_regionalDriftSearch(
+    Java_com_benodb_trino_BenoDBJNIBridge_regionalDriftSearch(
         env,
         _class,
         table_uri,
@@ -1123,7 +1123,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_regio
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_regionalDriftSearch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_regionalDriftSearch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1265,7 +1265,7 @@ unsafe fn import_batch(
 
 /// Trino: return the table's Arrow schema as JSON.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getTableSchema(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_getTableSchema(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1292,7 +1292,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getTabl
 
 /// Trino: append an Arrow batch to the table and commit.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_appendBatch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_appendBatch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1338,7 +1338,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_appendB
 
 /// Trino: merge (upsert) an Arrow batch on the given key columns.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_mergeRows(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_mergeRows(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1393,7 +1393,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_mergeRo
 
 /// Trino: delete rows matching a filter.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_deleteRows(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_deleteRows(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1670,7 +1670,7 @@ use crate::core::jni_util::{schema_from_json, schema_to_json};
 
 /// Trino: return the table's primary-key column names as a JSON array.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getPrimaryKey(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_getPrimaryKey(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1697,7 +1697,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getPrim
 
 /// Trino: create a table from a `[{name, type, nullable}]` JSON schema.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_createTable(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_createTable(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1768,7 +1768,7 @@ impl QuerySession {
 /// multi-table table functions such as `graph_rag_search`, which references a
 /// document table and an edge table in one statement.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openQueryMulti(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_openQueryMulti(
     mut env: JNIEnv,
     _class: JClass,
     tables_json: JString,
@@ -1820,7 +1820,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openQue
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openQuery(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_openQuery(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1853,7 +1853,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openQue
 
 /// Trino: read the next batch from a query handle (C Data Interface export).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_readQueryBatch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_readQueryBatch(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -1888,7 +1888,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_readQue
 
 /// Trino: free a query handle.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_closeQuery(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_closeQuery(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -1902,7 +1902,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_closeQu
 
 /// Trino: add an index on `column` using the named algorithm/category.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_addIndex(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_addIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -1952,7 +1952,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_addInde
 /// `segment_id` is the column to rebuild; `"all"`, `"null"`, or empty means
 /// "fill in every missing index file" (the offline batch build).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_buildIndex(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_buildIndex(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2201,7 +2201,7 @@ fn warmup_table_impl(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_rebuildClusterIndex(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_rebuildClusterIndex(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2223,7 +2223,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_rebuild
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_warmupTable(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_warmupTable(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2234,7 +2234,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_warmupT
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setPrimaryKey(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_setPrimaryKey(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2244,7 +2244,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_setPrim
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropPrimaryKey(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_dropPrimaryKey(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2254,7 +2254,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropPri
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropIndex(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_dropIndex(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2265,7 +2265,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropInd
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_compactTable(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_compactTable(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2274,7 +2274,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_compact
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listIndexes(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_listIndexes(
     env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2285,7 +2285,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listInd
 /// Trino: run vector + BM25 retrieval, fuse with RRF, and stream the hydrated
 /// rows. The fused score is returned as `rrf_score`.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_hybridSearch(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_hybridSearch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2411,7 +2411,7 @@ fn list_subdirs(
 
 /// Trino: list the schemas (top-level directories) under the warehouse.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listSchemas(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_listSchemas(
     mut env: JNIEnv,
     _class: JClass,
     warehouse: JString,
@@ -2436,7 +2436,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listSch
 
 /// Trino: list the tables (sub-directories) under `<warehouse>/<schema>`.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listTables(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_listTables(
     mut env: JNIEnv,
     _class: JClass,
     warehouse: JString,
@@ -2466,7 +2466,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listTab
 
 /// Trino: create a schema (a top-level directory under the warehouse).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_createSchema(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_createSchema(
     mut env: JNIEnv,
     _class: JClass,
     warehouse: JString,
@@ -2502,7 +2502,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_createS
 
 /// Trino: drop a table by deleting every object under its URI.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropTable(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_dropTable(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2547,7 +2547,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropTab
 /// The connector registers this with Spark's metrics system so the host's
 /// existing Prometheus/JMX sink picks up the engine's metrics.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_gatherMetrics(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_gatherMetrics(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -2559,7 +2559,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_gathe
 
 /// Trino: render the engine's Prometheus metrics as text.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_gatherMetrics(
+pub extern "system" fn Java_com_benodb_trino_BenoDBJNIBridge_gatherMetrics(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -2574,7 +2574,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_gatherM
 //
 // The Spark connector is native-backed (like the Trino connector) instead of
 // wrapping Iceberg's Java `SparkTable`, so it needs the same JNI entry points
-// under the `com.benostreamdb.spark.jni.BenoStreamJNIBridge` class name. JNI
+// under the `com.benodb.spark.jni.BenoStreamJNIBridge` class name. JNI
 // resolves a native method to a symbol derived from its *declaring class*, so
 // these thin wrappers forward to the shared Trino implementations (identical
 // bodies, no duplication).
@@ -2582,7 +2582,7 @@ pub extern "system" fn Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_gatherM
 
 /// Spark: free a partition-reader session handle (the per-file `BenoStreamSession`).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamPartitionReader_closeSession(
+pub extern "system" fn Java_com_benodb_spark_BenoDBPartitionReader_closeSession(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -2595,23 +2595,23 @@ pub extern "system" fn Java_com_benostreamdb_spark_BenoStreamPartitionReader_clo
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_getTableSchema(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_getTableSchema(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
 ) -> jstring {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getTableSchema(env, class, table_uri)
+    Java_com_benodb_trino_BenoDBJNIBridge_getTableSchema(env, class, table_uri)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_appendBatch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_appendBatch(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
     in_array_ptr: jlong,
     in_schema_ptr: jlong,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_appendBatch(
+    Java_com_benodb_trino_BenoDBJNIBridge_appendBatch(
         env,
         class,
         table_uri,
@@ -2621,7 +2621,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_appen
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_mergeRows(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_mergeRows(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
@@ -2629,7 +2629,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_merge
     in_array_ptr: jlong,
     in_schema_ptr: jlong,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_mergeRows(
+    Java_com_benodb_trino_BenoDBJNIBridge_mergeRows(
         env,
         class,
         table_uri,
@@ -2640,18 +2640,18 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_merge
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_deleteRows(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_deleteRows(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
     filter: JString,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_deleteRows(env, class, table_uri, filter)
+    Java_com_benodb_trino_BenoDBJNIBridge_deleteRows(env, class, table_uri, filter)
 }
 
 /// Spark: buffer one driver-replayed batch under `token`.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_stageBatch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_stageBatch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2664,7 +2664,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_stage
 
 /// Spark: commit everything staged for `token` as a single snapshot.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_commitStaged(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_commitStaged(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2675,7 +2675,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_commi
 
 /// Spark: drop a token's staged batches without writing them.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_discardStaged(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_discardStaged(
     mut env: JNIEnv,
     _class: JClass,
     token: JString,
@@ -2685,7 +2685,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_disca
 
 /// Spark: apply a JSON array of delete predicates (OR-combined per commit).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_deleteRowsBatch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_deleteRowsBatch(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2708,7 +2708,7 @@ fn committed_entry_tokens() -> &'static std::sync::Mutex<std::collections::HashS
 
 /// Spark: how this table wants writes performed (`"files"` or `"buffered"`).
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_writeMode(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_writeMode(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2736,7 +2736,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_write
 /// Spark: write one task's batch as data files and return their manifest
 /// entries as JSON. Nothing is committed — the driver commits the entries.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_stageDataFiles(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_stageDataFiles(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2782,7 +2782,7 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_stage
 
 /// Spark: commit staged manifest entries in one snapshot. Idempotent per token.
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_commitStagedEntries(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_commitStagedEntries(
     mut env: JNIEnv,
     _class: JClass,
     table_uri: JString,
@@ -2847,22 +2847,22 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_commi
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_getPrimaryKey(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_getPrimaryKey(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
 ) -> jstring {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_getPrimaryKey(env, class, table_uri)
+    Java_com_benodb_trino_BenoDBJNIBridge_getPrimaryKey(env, class, table_uri)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_createTable(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_createTable(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
     schema_json: JString,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_createTable(
+    Java_com_benodb_trino_BenoDBJNIBridge_createTable(
         env,
         class,
         table_uri,
@@ -2871,24 +2871,24 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_creat
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_openQuery(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_openQuery(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
     sql: JString,
 ) -> jlong {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_openQuery(env, class, table_uri, sql)
+    Java_com_benodb_trino_BenoDBJNIBridge_openQuery(env, class, table_uri, sql)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_readQueryBatch(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_readQueryBatch(
     env: JNIEnv,
     class: JClass,
     handle: jlong,
     out_array_ptr: jlong,
     out_schema_ptr: jlong,
 ) -> jlong {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_readQueryBatch(
+    Java_com_benodb_trino_BenoDBJNIBridge_readQueryBatch(
         env,
         class,
         handle,
@@ -2898,50 +2898,50 @@ pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_readQ
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_closeQuery(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_closeQuery(
     env: JNIEnv,
     class: JClass,
     handle: jlong,
 ) {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_closeQuery(env, class, handle)
+    Java_com_benodb_trino_BenoDBJNIBridge_closeQuery(env, class, handle)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_listSchemas(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_listSchemas(
     env: JNIEnv,
     class: JClass,
     warehouse: JString,
 ) -> jstring {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listSchemas(env, class, warehouse)
+    Java_com_benodb_trino_BenoDBJNIBridge_listSchemas(env, class, warehouse)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_listTables(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_listTables(
     env: JNIEnv,
     class: JClass,
     warehouse: JString,
     schema: JString,
 ) -> jstring {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_listTables(env, class, warehouse, schema)
+    Java_com_benodb_trino_BenoDBJNIBridge_listTables(env, class, warehouse, schema)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_createSchema(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_createSchema(
     env: JNIEnv,
     class: JClass,
     warehouse: JString,
     schema: JString,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_createSchema(env, class, warehouse, schema)
+    Java_com_benodb_trino_BenoDBJNIBridge_createSchema(env, class, warehouse, schema)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_benostreamdb_spark_jni_BenoStreamJNIBridge_dropTable(
+pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_dropTable(
     env: JNIEnv,
     class: JClass,
     table_uri: JString,
 ) -> jboolean {
-    Java_com_benostreamdb_trino_BenoStreamDBJNIBridge_dropTable(env, class, table_uri)
+    Java_com_benodb_trino_BenoDBJNIBridge_dropTable(env, class, table_uri)
 }
 
 #[cfg(test)]

@@ -1,0 +1,42 @@
+package com.benodb.spark.procedures
+
+import org.apache.spark.sql.connector.catalog.procedures.{BoundProcedure, ProcedureParameter, UnboundProcedure}
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.connector.read.Scan
+
+class AddIndexProcedure extends UnboundProcedure with BoundProcedure {
+  
+  override def name(): String = "add_index"
+  override def description(): String = "Adds a BenoDB index to a column"
+  override def isDeterministic: Boolean = true
+  override def bind(inputType: StructType): BoundProcedure = this
+  
+  override def parameters(): Array[ProcedureParameter] = Array(
+    ProcedureParameter.in("table", DataTypes.StringType).build(),
+    ProcedureParameter.in("column", DataTypes.StringType).build(),
+    // hnsw | hnsw_pq | hnsw_tq4 | hnsw_tq8 | bm25 | bloom | bitmap |
+    // composite_bitmap | csr_graph | json_path (see the SQL manual).
+    //
+    // `defaultValue` is parsed as a SQL expression, so a VARCHAR default must be a
+    // quoted literal. Unquoted `"vector"` fails analysis on Spark 4.0.1 with
+    // INVALID_DEFAULT_VALUE.UNRESOLVED_EXPRESSION.
+    ProcedureParameter.in("algorithm", DataTypes.StringType).defaultValue("'vector'").build()
+  )
+      
+  override def call(inputArgs: InternalRow): java.util.Iterator[Scan] = {
+    val table = inputArgs.getString(0)
+    val column = inputArgs.getString(1)
+    val algorithm =
+      if (inputArgs.numFields > 2 && !inputArgs.isNullAt(2)) inputArgs.getString(2) else "vector"
+    
+    val jniBridge = com.benodb.spark.jni.BenoDBJNIBridge.getInstance()
+    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benostream.gpu.device", "auto")
+    jniBridge.setGpuContext(gpuDevice)
+    // For standalone parsing
+    val tableIdentifier = BenoDBTableResolver.resolveFromSession(table)
+    jniBridge.addIndex(tableIdentifier, column, algorithm)
+    
+    java.util.Collections.emptyIterator()
+  }
+}

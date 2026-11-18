@@ -1,4 +1,4 @@
-# MuSiQue Multi-Hop GraphRAG Benchmark Image for BenoStreamDB
+# MuSiQue Multi-Hop GraphRAG Benchmark Image for BenoDB
 #
 # Designed to run under strict Azure cgroup envelopes (e.g. D8s / 32 GiB RAM or D8lds / 16 GiB RAM).
 # Compatible with Ubuntu 26.04 host toolchain and GLIBC_2.43.
@@ -47,10 +47,10 @@
 #     --cpus=8 \
 #     --memory=32g \
 #     --memory-swap=32g \
-#     -v /home/ralbright/projects/benostreamdb/dist:/wheels:ro \
+#     -v /home/ralbright/projects/benodb/dist:/wheels:ro \
 #     -v /home/ralbright/data/datasets/musique:/data/musique \
 #     -v /home/ralbright/.cache/huggingface:/root/.cache/huggingface:ro \
-#     -v /home/ralbright/projects/benostreamdb/benchmarks/scratch_musique:/work/scratch \
+#     -v /home/ralbright/projects/benodb/benchmarks/scratch_musique:/work/scratch \
 #     bsdb-musique:local \
 #       --data-dir /data/musique \
 #       --scratch-dir /work/scratch \
@@ -99,7 +99,7 @@ RUN chmod +x /opt/bench/run_musique_entrypoint.sh
 
 # Volumes:
 # - /data/musique: Dataset directory (raw jsonl download)
-# - /wheels: BenoStreamDB release wheel from host dist/
+# - /wheels: BenoDB release wheel from host dist/
 # - /work/scratch: Iceberg corpus, edge tables, and output reports
 VOLUME ["/data/musique", "/wheels", "/work/scratch"]
 

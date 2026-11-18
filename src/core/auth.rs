@@ -343,7 +343,7 @@ mod tests {
         let secret = b"k";
         let cfg = AuthConfig {
             jwt_secret: Some(secret.to_vec()),
-            jwt_audience: Some("benostreamdb".to_string()),
+            jwt_audience: Some("benodb".to_string()),
             jwt_issuer: Some("https://idp.example".to_string()),
             ..Default::default()
         };
@@ -355,7 +355,7 @@ mod tests {
         let ok = hs256_token(
             secret,
             &format!(
-                r#"{{"sub":"a","exp":{future},"aud":"benostreamdb","iss":"https://idp.example"}}"#
+                r#"{{"sub":"a","exp":{future},"aud":"benodb","iss":"https://idp.example"}}"#
             ),
         );
         assert!(cfg.verify(&ok).is_ok());

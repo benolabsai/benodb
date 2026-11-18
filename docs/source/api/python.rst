@@ -1,12 +1,12 @@
 Python API Reference
 ====================
 
-The BenoStreamDB Python package provides a high-level, Pandas-compatible interface for managing tables, executing hybrid searches, and integrating with data catalogs.
+The BenoDB Python package provides a high-level, Pandas-compatible interface for managing tables, executing hybrid searches, and integrating with data catalogs.
 
 Table
 -----
 
-.. autoclass:: benostreamdb.Table
+.. autoclass:: benodb.Table
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ Table
 Query
 -----
 
-.. autoclass:: benostreamdb.Query
+.. autoclass:: benodb.Query
    :members:
    :undoc-members:
    :show-inheritance:
@@ -24,7 +24,7 @@ Query
 Session
 -------
 
-.. autoclass:: benostreamdb.Session
+.. autoclass:: benodb.Session
    :members:
    :undoc-members:
    :show-inheritance:
@@ -33,7 +33,7 @@ Session
 Embedding Registry
 ------------------
 
-.. automodule:: benostreamdb.embeddings
+.. automodule:: benodb.embeddings
    :members:
    :undoc-members:
    :show-inheritance:

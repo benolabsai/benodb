@@ -1,4 +1,4 @@
-# OpenSearch 2.11 vs BenoStreamDB — REST API Benchmark
+# OpenSearch 2.11 vs BenoDB — REST API Benchmark
 
 **Generated:** 2026-09-12T14:28:24  
 **Host:** AMD Ryzen 9 5900XT 16-Core Processor (Linux 7.0.0-31-generic)  
@@ -10,31 +10,31 @@
 
 | System | docs/s | total | mean/doc | p95/doc | refresh (until searchable) |
 |---|---|---|---|---|---|
-| BenoStreamDB | 12,872 | 7.8s | 0.044ms | 0.058ms | 2980ms |
+| BenoDB | 12,872 | 7.8s | 0.044ms | 0.058ms | 2980ms |
 
 ## Total Time to Searchable State (Ingest + Refresh)
 
 | System | Ingest Time | Refresh Time | Total Time |
 |---|---|---|---|
-| BenoStreamDB | 7.8s | 3.0s | **10.7s** |
+| BenoDB | 7.8s | 3.0s | **10.7s** |
 
 ## Query latency (p50 / p95 / p99, 100 runs each)
 
 | System | Operation | p50 (ms) | p95 (ms) | p99 (ms) |
 |---|---|---|---|---|
-| BenoStreamDB | match_bm25 | 4.632 | 4.769 | 5.073 |
-| BenoStreamDB | filtered | 5.257 | 6.473 | 6.746 |
-| BenoStreamDB | knn | 299.323 | 310.387 | 319.039 |
-| BenoStreamDB | hybrid_rrf | 294.283 | 302.98 | 305.005 |
+| BenoDB | match_bm25 | 4.632 | 4.769 | 5.073 |
+| BenoDB | filtered | 5.257 | 6.473 | 6.746 |
+| BenoDB | knn | 299.323 | 310.387 | 319.039 |
+| BenoDB | hybrid_rrf | 294.283 | 302.98 | 305.005 |
 
 ## Verdict vs plan Step 4.2 envelope (50–200 ms)
 
 | System | Operation | p95 | verdict |
 |---|---|---|---|
-| BenoStreamDB | match_bm25 | 4.769ms | below envelope (<50ms) |
-| BenoStreamDB | filtered | 6.473ms | below envelope (<50ms) |
-| BenoStreamDB | knn | 310.387ms | ABOVE envelope (> 200ms) |
-| BenoStreamDB | hybrid_rrf | 302.98ms | ABOVE envelope (> 200ms) |
+| BenoDB | match_bm25 | 4.769ms | below envelope (<50ms) |
+| BenoDB | filtered | 6.473ms | below envelope (<50ms) |
+| BenoDB | knn | 310.387ms | ABOVE envelope (> 200ms) |
+| BenoDB | hybrid_rrf | 302.98ms | ABOVE envelope (> 200ms) |
 
 ## Storage Footprint (True Cost of Data Lake Architecture)
 
@@ -42,13 +42,13 @@
 
 | System | Primary Data (Lake) | Secondary Indexes (Search) | Data Duplication? | Total True Footprint |
 |---|---|---|---|---|
-| BenoStreamDB (local) | 182.43 MB (Parquet) | 217.33 MB (HNSW+BM25) | No | **399.78 MB** |
+| BenoDB (local) | 182.43 MB (Parquet) | 217.33 MB (HNSW+BM25) | No | **399.78 MB** |
 
 ## Memory Usage
 
 | System | Memory Ingest (RSS/Heap) | Memory Post-Search |
 |---|---|---|
-| BenoStreamDB (local) | 877.5 MB RSS | 13573.7 MB RSS |
+| BenoDB (local) | 877.5 MB RSS | 13573.7 MB RSS |
 
 ## Fairness caveats
 

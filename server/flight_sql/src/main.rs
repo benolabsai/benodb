@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tonic::transport::Server;
 
-use benostreamdb_flight::BenoStreamFlightSqlService;
+use benodb_flight::BenoStreamFlightSqlService;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,21 +13,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Structured tracing (OTLP when JAEGER_ENABLED=true) and the metrics
     // recorder, so the engine's `metrics`-facade metrics are captured.
-    let _telemetry_guard = benostreamdb::telemetry::tracing::init_tracing("flight_sql")?;
-    benostreamdb::core::telemetry::install_metrics_recorder();
+    let _telemetry_guard = benodb::telemetry::tracing::init_tracing("flight_sql")?;
+    benodb::core::telemetry::install_metrics_recorder();
 
     // Pin a GPU device or install a round-robin device pool for this process
     // from BSDB_GPU_DEVICE / BENOSTREAM_GPU_DEVICE (e.g. "cuda:1" or
     // "cuda:0,cuda:1"), so vector search runs on the intended device(s)
     // without per-query plumbing.
-    if let Some(dev) = benostreamdb::core::index::gpu::apply_gpu_context_from_env() {
+    if let Some(dev) = benodb::core::index::gpu::apply_gpu_context_from_env() {
         println!("GPU device/pool: {}", dev);
     }
 
     // HTTP observability surface: /metrics, /health, /readyz.
     spawn_observability_server();
 
-    let mut session = benostreamdb::core::sql::session::BenoStreamSession::new(None);
+    let mut session = benodb::core::sql::session::BenoStreamSession::new(None);
 
     // Base location used to derive `CREATE TABLE` URIs when the catalog does
     // not assign one.
@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ~/.benostream/config.toml. Bound under BSDB_CATALOG_NAME (default: the
     // catalog type, e.g. "rest") so `CREATE TABLE <name>.<schema>.<table>`
     // mirrors into it.
-    match benostreamdb::core::catalog::CatalogConfig::load_default() {
+    match benodb::core::catalog::CatalogConfig::load_default() {
         Ok(cfg) => {
             let catalog_type = cfg.catalog_type;
-            match benostreamdb::core::catalog::create_catalog_async(catalog_type, cfg.config).await
+            match benodb::core::catalog::create_catalog_async(catalog_type, cfg.config).await
             {
                 Ok(catalog) => {
                     let name = std::env::var("BSDB_CATALOG_NAME")
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Stateless auth (API key / JWT) via a tonic interceptor. No user database:
     // identity is delegated to a shared secret or an external IdP's signing key.
-    let auth = Arc::new(benostreamdb::core::auth::AuthConfig::from_env());
+    let auth = Arc::new(benodb::core::auth::AuthConfig::from_env());
     if auth.enabled() {
         tracing::info!("Flight SQL authentication enabled (API key and/or JWT)");
     } else {
@@ -127,10 +127,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Tonic interceptor enforcing [`benostreamdb::core::auth::AuthConfig`].
+/// Tonic interceptor enforcing [`benodb::core::auth::AuthConfig`].
 #[derive(Clone)]
 struct AuthInterceptor {
-    auth: Arc<benostreamdb::core::auth::AuthConfig>,
+    auth: Arc<benodb::core::auth::AuthConfig>,
 }
 
 impl tonic::service::Interceptor for AuthInterceptor {
@@ -165,13 +165,13 @@ impl tonic::service::Interceptor for AuthInterceptor {
 /// Spawn the HTTP observability server on `BSDB_METRICS_BIND:BSDB_METRICS_PORT`
 /// (default `127.0.0.1:9090`), serving `/metrics`, `/health`, and `/readyz`.
 fn spawn_observability_server() {
-    let addr = benostreamdb::core::telemetry::metrics_addr();
+    let addr = benodb::core::telemetry::metrics_addr();
     tokio::spawn(async move {
         use axum::{routing::get, Router};
         let app = Router::new()
             .route(
                 "/metrics",
-                get(|| async { benostreamdb::core::telemetry::render_metrics() }),
+                get(|| async { benodb::core::telemetry::render_metrics() }),
             )
             .route("/health", get(|| async { "ok" }))
             .route("/readyz", get(|| async { "ok" }));

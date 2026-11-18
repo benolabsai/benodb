@@ -13,11 +13,11 @@
 use arrow::array::{FixedSizeListArray, Int64Array};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::reader::stats::ReaderCounters;
-use benostreamdb::core::table::VectorSearchParams;
-use benostreamdb::Table;
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::reader::stats::ReaderCounters;
+use benodb::core::table::VectorSearchParams;
+use benodb::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 

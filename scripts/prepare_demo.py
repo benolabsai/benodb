@@ -45,7 +45,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # BSDB_DATA.
 DATA = os.environ.get(
     "BSDB_DATA",
-    os.path.join(os.path.expanduser("~"), "data", "benostreamdb"),
+    os.path.join(os.path.expanduser("~"), "data", "benodb"),
 )
 EMB = os.path.join(DATA, "embeddings")
 # BenoStreamDB tables stay on the SSD in the repo's original location.
@@ -352,7 +352,7 @@ def _load_nodes_child(quant, delete_shards, row_start, row_end):
     ``BSDB_INDEX_BUILD_CONCURRENCY`` (default 2) and the heap is trimmed at flush
     and build boundaries. Chunking remains the demo's belt-and-braces reset.
     """
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     nodes_dir = os.path.join(DB, "nodes")
     nodes_path = os.path.join(DATA, "wiki_nodes.parquet")
@@ -464,9 +464,9 @@ def _resume_offset(loaded: int, chunk_rows: int) -> int:
 
 def stage_load(rebuild: bool, quant: str, delete_shards: bool,
                chunk_rows: int, row_start: int, row_end: int):
-    # benostreamdb self-tunes glibc arenas (mallopt M_ARENA_MAX=2) at import;
+    # benodb self-tunes glibc arenas (mallopt M_ARENA_MAX=2) at import;
     # the chunked design below additionally resets allocator high-water marks.
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     edges_dir = os.path.join(DB, "edges")
     nodes_dir = os.path.join(DB, "nodes")
@@ -567,7 +567,7 @@ def stage_compact(min_file_size_bytes: int = 2_000_000_000):
     their vector/inverted indexes (the engine carries the table's index config
     into the compactor; the config itself is restored from the manifest on open).
     """
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     nodes_dir = os.path.join(DB, "nodes")
     if not _table_loaded(nodes_dir):
@@ -590,7 +590,7 @@ def main():
     ap.add_argument("--stage", choices=["download", "parse", "resolve", "embed", "load", "compact", "all"], default="all")
     ap.add_argument("--dumps-dir", default=DATA,
                     help="directory holding the wiki dumps, parsed parquets and "
-                         "embedding shards (default: $HOME/data/benostreamdb). "
+                         "embedding shards (default: $HOME/data/benodb). "
                          "Tables are always written to <repo>/data/wiki_graph_db.")
     ap.add_argument("--workers", type=int, default=3, help="download parallelism")
     ap.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5",

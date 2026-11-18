@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the competitor + BenoStreamDB benchmark matrix in Docker with a single
+# Run the competitor + BenoDB benchmark matrix in Docker with a single
 # shared hardware profile applied to every participant.
 #
 #   # CPU baseline (default):
@@ -12,16 +12,16 @@
 #   # Both passes, tagged device=cpu and device=gpu:
 #   benchmarks/competitors/docker_bench.sh --both --cpus 8 --mem 16g
 #
-#   # BEIR lexical/hybrid (BenoStreamDB vs Tantivy vs OpenSearch), same envelope:
+#   # BEIR lexical/hybrid (BenoDB vs Tantivy vs OpenSearch), same envelope:
 #   benchmarks/competitors/docker_bench.sh --workload beir --cpus 8 --mem 16g
 #   benchmarks/competitors/docker_bench.sh --workload beir --beir-mode hybrid \
-#       --beir-engines benostreamdb,lancedb --cpus 8 --mem 16g
+#       --beir-engines benodb,lancedb --cpus 8 --mem 16g
 #
 # Every participant (server engines AND the runner that executes each client,
-# including BenoStreamDB) is constrained to the same --cpus/--memory envelope.
+# including BenoDB) is constrained to the same --cpus/--memory envelope.
 # The envelope and the host hardware profile are written to results/.
 #
-# BenoStreamDB needs an abi3 wheel: build it first, or pass --build-wheel.
+# BenoDB needs an abi3 wheel: build it first, or pass --build-wheel.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,23 +41,23 @@ M=16
 EFC=200
 EFS=200
 # `lancedb` uses LanceDB's scalar-quantized HNSW (HnswSq).
-# `benostreamdb` is full-precision HNSW (parity with the other float HNSW
-# engines); `benostreamdb_tq8` is the TurboQuant-compressed variant, so
+# `benodb` is full-precision HNSW (parity with the other float HNSW
+# engines); `benodb_tq8` is the TurboQuant-compressed variant, so
 # the recall/size trade-off is visible rather than conflated.
-CPU_ENGINES="faiss faiss_sq hnswlib lancedb lancedb_sq pgvector opensearch qdrant qdrant_sq milvus milvus_sq weaviate weaviate_sq benostreamdb benostreamdb_tq8 benostreamdb_sq"
+CPU_ENGINES="faiss faiss_sq hnswlib lancedb lancedb_sq pgvector opensearch qdrant qdrant_sq milvus milvus_sq weaviate weaviate_sq benodb benodb_tq8 benodb_sq"
 # The GPU pass runs only engines with a *working* GPU execution path. CPU-only
 # competitors run on the CPU inside the GPU container and now correctly report
 # device=cpu (per-engine backend), so re-measuring them adds nothing — the CPU
 # pass already covers every engine once. FAISS is excluded because faiss-gpu-cu12
 # has no Blackwell (sm_120) kernels on this class of GPU (`faiss.get_num_gpus()`
 # returns 0), so it silently falls back to CPU. Override with --gpu-engines.
-GPU_ENGINES="benostreamdb benostreamdb_tq8"
+GPU_ENGINES="benodb benodb_tq8"
 UP_ENGINES="pgvector opensearch qdrant milvus weaviate neo4j memgraph clickhouse trino"
 # Workload families. `vector` is the default; `graph` and `sql` reuse the same
 # runner image and envelope but dispatch to the graph/SQL adapters.
 WORKLOAD=vector
-GRAPH_ENGINES="networkx neo4j memgraph kuzu cugraph benostreamdb"
-SQL_ENGINES="duckdb datafusion clickhouse trino benostreamdb"
+GRAPH_ENGINES="networkx neo4j memgraph kuzu cugraph benodb"
+SQL_ENGINES="duckdb datafusion clickhouse trino benodb"
 ALGORITHM=pagerank
 GRAPH_NODES=10000
 GRAPH_EDGES_COUNT=50000
@@ -73,7 +73,7 @@ SQL_DATASET=""
 # BEIR lexical/hybrid workload. One process runs every engine, so the whole
 # comparison shares a single container envelope (see the `beir` dispatch below).
 BEIR_DATASET=scifact
-BEIR_ENGINES="benostreamdb,tantivy,opensearch"
+BEIR_ENGINES="benodb,tantivy,opensearch"
 BEIR_MODE=lexical
 DO_CPU=1
 DO_GPU=0
@@ -276,7 +276,7 @@ PY
   run_pass cpu bench "$SQL_ENGINES"
 elif [[ "$WORKLOAD" == "beir" ]]; then
   # BEIR lexical/hybrid: a single process runs every engine (embedded Tantivy +
-  # BenoStreamDB, plus the server-backed OpenSearch), so the whole comparison
+  # BenoDB, plus the server-backed OpenSearch), so the whole comparison
   # shares one container envelope. OpenSearch is the only server-backed engine,
   # so it is brought up under the same envelope as the runner.
   if [[ "$ENGINES_ONLY" == "0" ]]; then
@@ -335,7 +335,7 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*_*.json"))):
         rows.append(f"| {r.get('engine')} | - | - | unavailable: {r.get('error','')} | - | - | - | - | - |")
         continue
     # Compare like-for-like: the competitor adapters return ids only (no payload
-    # fetch), so use BenoStreamDB's pure-index number when the harness reports it
+    # fetch), so use BenoDB's pure-index number when the harness reports it
     # rather than its full search+row-fetch number.
     qps = r.get("pure_index_qps", r.get("qps", "-"))
     p50 = r.get("pure_p50_ms", r.get("p50_ms", "-"))

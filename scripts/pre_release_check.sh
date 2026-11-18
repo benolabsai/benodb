@@ -87,9 +87,9 @@ errs = []
 # Pyproject dynamic versions
 for p in [
     "pyproject.toml",
-    "contrib/benostreamdb-search/pyproject.toml",
+    "contrib/benodb-search/pyproject.toml",
     "server/flight_sql/pyproject.toml",
-    "contrib/benostreamdb-mcp/pyproject.toml",
+    "contrib/benodb-mcp/pyproject.toml",
 ]:
     path = root / p
     if not path.exists():
@@ -100,48 +100,48 @@ for p in [
 
 # Inter-crate dependencies
 for p in [
-    "contrib/benostreamdb-search/Cargo.toml",
+    "contrib/benodb-search/Cargo.toml",
     "server/flight_sql/Cargo.toml",
 ]:
     path = root / p
     if not path.exists():
         errs.append(f"{p}: file not found")
         continue
-    m = re.search(r'benostreamdb = \{ version = "([^"]+)"', path.read_text())
+    m = re.search(r'benodb = \{ version = "([^"]+)"', path.read_text())
     if not m or m.group(1) != v:
         found = m.group(1) if m else "missing"
-        errs.append(f"{p}: benostreamdb dependency pin is '{found}', expected '{v}'")
+        errs.append(f"{p}: benodb dependency pin is '{found}', expected '{v}'")
 
 # dbt adapter checks
-dbt_pyproject = root / "dbt-benostreamdb/pyproject.toml"
+dbt_pyproject = root / "dbt-benodb/pyproject.toml"
 if dbt_pyproject.exists():
-    m = re.search(r'benostreamdb>=([^",\s]+)', dbt_pyproject.read_text())
+    m = re.search(r'benodb>=([^",\s]+)', dbt_pyproject.read_text())
     if not m or m.group(1) != v:
         found = m.group(1) if m else "missing"
-        errs.append(f"dbt-benostreamdb/pyproject.toml: benostreamdb>= floor is '{found}', expected '{v}'")
+        errs.append(f"dbt-benodb/pyproject.toml: benodb>= floor is '{found}', expected '{v}'")
 
-dbt_project_yml = root / "dbt-benostreamdb/dbt/include/benostreamdb/dbt_project.yml"
+dbt_project_yml = root / "dbt-benodb/dbt/include/benodb/dbt_project.yml"
 if dbt_project_yml.exists():
     m = re.search(r'^version:\s*([0-9\.\w]+)', dbt_project_yml.read_text(), re.MULTILINE)
     if not m or m.group(1) != v:
         found = m.group(1) if m else "missing"
-        errs.append(f"dbt-benostreamdb/dbt/include/benostreamdb/dbt_project.yml: version is '{found}', expected '{v}'")
+        errs.append(f"dbt-benodb/dbt/include/benodb/dbt_project.yml: version is '{found}', expected '{v}'")
 
 # Spark POM revision
-spark_pom = root / "spark-benostreamdb/pom.xml"
+spark_pom = root / "spark-benodb/pom.xml"
 if spark_pom.exists():
     m = re.search(r'<revision>([^<]+)</revision>', spark_pom.read_text())
     if not m or m.group(1) != v:
         found = m.group(1) if m else "missing"
-        errs.append(f"spark-benostreamdb/pom.xml: <revision> is '{found}', expected '{v}'")
+        errs.append(f"spark-benodb/pom.xml: <revision> is '{found}', expected '{v}'")
 
 # Trino POM revision
-trino_pom = root / "trino-benostreamdb/pom.xml"
+trino_pom = root / "trino-benodb/pom.xml"
 if trino_pom.exists():
     m = re.search(r'<revision>([^<]+)</revision>', trino_pom.read_text())
     if not m or m.group(1) != v:
         found = m.group(1) if m else "missing"
-        errs.append(f"trino-benostreamdb/pom.xml: <revision> is '{found}', expected '{v}'")
+        errs.append(f"trino-benodb/pom.xml: <revision> is '{found}', expected '{v}'")
 
 if errs:
     print("\nVersion Alignment Errors:")
@@ -242,10 +242,10 @@ if ! "${PY_BIN}" - <<'PY'
 import pathlib, sys, tomllib
 
 bad = []
-for p in ["pyproject.toml", "dbt-benostreamdb/pyproject.toml",
-          "contrib/benostreamdb-search/pyproject.toml",
+for p in ["pyproject.toml", "dbt-benodb/pyproject.toml",
+          "contrib/benodb-search/pyproject.toml",
           "server/flight_sql/pyproject.toml",
-          "contrib/benostreamdb-mcp/pyproject.toml"]:
+          "contrib/benodb-mcp/pyproject.toml"]:
     path = pathlib.Path(p)
     if not path.exists():
         bad.append(f"{p}: missing")

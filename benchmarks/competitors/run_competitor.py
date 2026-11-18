@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # pyright: reportMissingImports=false
-"""Competitor runner for the BenoStreamDB benchmark plan.
+"""Competitor runner for the BenoDB benchmark plan.
 
 Runs a competitor under the same resource envelope and parameter set as the
-BenoStreamDB harness (`benchmarks/ann_benchmarks/run.py`) and emits the same
+BenoDB harness (`benchmarks/ann_benchmarks/run.py`) and emits the same
 metrics, so results are directly comparable.
 
 Workload families:
@@ -83,12 +83,12 @@ _GPU_ENGINES = {"cugraph"}
 def apply_envelope(
     cores: int, ram_gb: float, engine: str = "", device: str = "cpu"
 ) -> None:
-    """Best-effort process limits so the competitor matches BenoStreamDB.
+    """Best-effort process limits so the competitor matches BenoDB.
 
     Threads: set the common BLAS/OMP env vars (must be set before numpy/faiss
     import to take effect; the runner sets them as early as possible). RAM: use
     ``RLIMIT_AS`` when ``ram_gb`` is given, so an over-budget run fails loudly
-    instead of silently using more memory than BenoStreamDB was given — except
+    instead of silently using more memory than BenoDB was given — except
     for GPU engines, where virtual address space far exceeds physical RAM (see
     ``_GPU_ENGINES``).
     """
@@ -471,7 +471,7 @@ class LanceDbAdapter(VectorAdapter):
                     qb = qb.nprobes(max(1, int(ef_search) // 10))
             except (AttributeError, TypeError):
                 pass
-            # Two-stage exact rescoring, the same concept as BenoStreamDB's
+            # Two-stage exact rescoring, the same concept as BenoDB's
             # `refine_factor`: LanceDB re-ranks the candidate set from the
             # full-precision payload instead of the quantized codes. Only meaningful
             # for a quantized index, so it is guarded and opt-in via REFINE_FACTOR.
@@ -1063,7 +1063,7 @@ def _vector_backend(adapter: "VectorAdapter", device: str) -> str:
     name = getattr(adapter, "name", "")
     if name == "faiss":
         return "gpu" if getattr(adapter, "_used_gpu", False) else "cpu"
-    if name in ("benostreamdb", "bsdb"):
+    if name in ("benodb", "bsdb"):
         return "gpu"
     return "cpu"
 
@@ -1359,8 +1359,8 @@ def _graph_neo4j(args, edges) -> dict:
         driver.close()
 
 
-def _graph_benostreamdb(args, edges) -> dict:
-    import benostreamdb as bsdb
+def _graph_benodb(args, edges) -> dict:
+    import benodb as bsdb
     import pyarrow as pa
     import tempfile
     import shutil
@@ -1409,7 +1409,7 @@ def _graph_benostreamdb(args, edges) -> dict:
             raise RuntimeError(f"unknown algorithm {args.algorithm}")
         elapsed = round(time.time() - t0, 3)
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "workload": "graph",
             "available": True,
             "algorithm": args.algorithm,
@@ -1640,7 +1640,7 @@ def _graph_kuzu(args, edges) -> dict:
 _GRAPH_LAYER = {
     "neo4j": "neo4j GDS (native JVM)",
     "memgraph": "memgraph MAGE (native engine)",
-    "benostreamdb": "embedded (in-process Rust)",
+    "benodb": "embedded (in-process Rust)",
     "bsdb": "embedded (in-process Rust)",
     "networkx": "embedded (in-process Python)",
     "kuzu": "embedded (in-process C++)",
@@ -1670,8 +1670,8 @@ def _graph_dispatch(args) -> dict:
         }
     edges = np.loadtxt(args.graph_edges, dtype=np.int64, ndmin=2)
     engine = args.engine
-    if engine in ("benostreamdb", "bsdb"):
-        return _graph_benostreamdb(args, edges)
+    if engine in ("benodb", "bsdb"):
+        return _graph_benodb(args, edges)
     if engine == "cugraph":
         return _graph_cugraph(args, edges)
     if engine == "memgraph":
@@ -2184,8 +2184,8 @@ def _sql_trino(args) -> dict:
     }
 
 
-def _sql_benostreamdb(args) -> dict:
-    import benostreamdb as bsdb
+def _sql_benodb(args) -> dict:
+    import benodb as bsdb
     import pyarrow.parquet as pq
     import tempfile
     import shutil
@@ -2206,7 +2206,7 @@ def _sql_benostreamdb(args) -> dict:
         res = table.sql(sql)
         elapsed = round(time.time() - t0, 3)
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "workload": "sql",
             "available": True,
             "sql": sql,
@@ -2228,8 +2228,8 @@ def run_sql(args) -> dict:
         rec = _sql_clickhouse(args)
     elif engine == "trino":
         rec = _sql_trino(args)
-    elif engine in ("benostreamdb", "bsdb"):
-        rec = _sql_benostreamdb(args)
+    elif engine in ("benodb", "bsdb"):
+        rec = _sql_benodb(args)
     else:
         return {
             "engine": engine,
@@ -2400,10 +2400,10 @@ def main() -> None:
     apply_envelope(args.cores, args.ram_gb, args.engine, args.device)
 
     try:
-        if args.workload == "sql" or args.engine in ("duckdb", "datafusion", "clickhouse", "trino") or (args.engine in ("benostreamdb", "bsdb") and (args.sql or (args.parquet and not args.dataset))):
+        if args.workload == "sql" or args.engine in ("duckdb", "datafusion", "clickhouse", "trino") or (args.engine in ("benodb", "bsdb") and (args.sql or (args.parquet and not args.dataset))):
             emit(run_sql(args), args.out)
             return
-        if args.workload == "graph" or args.engine in ("networkx", "neo4j", "memgraph", "kuzu", "cugraph") or (args.engine in ("benostreamdb", "bsdb") and args.graph_edges):
+        if args.workload == "graph" or args.engine in ("networkx", "neo4j", "memgraph", "kuzu", "cugraph") or (args.engine in ("benodb", "bsdb") and args.graph_edges):
             emit(run_graph(args), args.out)
             return
         if args.workload == "lexical" or args.engine == "tantivy" or (args.engine == "opensearch" and args.beir_corpus):

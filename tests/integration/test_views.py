@@ -1,5 +1,5 @@
 import sys
-import benostreamdb as bsdb
+import benodb as bsdb
 import time
 
 def test_view_creation():

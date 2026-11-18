@@ -7,8 +7,8 @@ GPU backends in a throwaway subprocess and degrades to CPU instead of killing
 the process.
 """
 
-import benostreamdb
-from benostreamdb import Device
+import benodb
+from benodb import Device
 
 
 def test_cpu_device_always_works():
@@ -16,7 +16,7 @@ def test_cpu_device_always_works():
 
 
 def test_probe_returns_bool_and_never_crashes():
-    ok = benostreamdb._probe_backend_subprocess("cuda")
+    ok = benodb._probe_backend_subprocess("cuda")
     assert isinstance(ok, bool)
 
 
@@ -24,7 +24,7 @@ def test_probe_short_circuits_inside_child(monkeypatch):
     # Inside a probe child the guard must return True without spawning again
     # (otherwise the probe would recurse forever).
     monkeypatch.setenv("BSDB_SKIP_GPU_PROBE", "1")
-    assert benostreamdb._probe_backend_subprocess("cuda") is True
+    assert benodb._probe_backend_subprocess("cuda") is True
 
 
 def test_cuda_device_never_crashes():

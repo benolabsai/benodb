@@ -2,7 +2,7 @@
 //
 // Independent Iceberg reader oracle for BenoStreamDB conformance testing.
 //
-// This crate deliberately does **not** depend on `benostreamdb`. It opens a
+// This crate deliberately does **not** depend on `benodb`. It opens a
 // table tree with the upstream `apache/iceberg-rust` crate and asserts what an
 // external engine must be able to see: exact row values, schema field ids,
 // bounds, `format-version`, and the row-lineage columns. Sharing no code with

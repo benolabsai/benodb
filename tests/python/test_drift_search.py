@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import pyarrow as pa
-from benostreamdb import Table
+from benodb import Table
 import os
 
 def setup_test_tables(tmp_path):

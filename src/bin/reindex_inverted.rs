@@ -13,7 +13,7 @@
 //! ```
 
 use anyhow::Result;
-use benostreamdb::Table;
+use benodb::Table;
 use clap::Parser;
 
 #[derive(Parser, Debug)]

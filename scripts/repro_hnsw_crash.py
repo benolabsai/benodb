@@ -22,7 +22,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 sys.path.insert(0, os.path.abspath("python"))
-import benostreamdb as bsdb  # noqa: E402
+import benodb as bsdb  # noqa: E402
 
 
 def main() -> int:
@@ -33,7 +33,7 @@ def main() -> int:
     ap.add_argument(
         "--part",
         default=os.path.expanduser(
-            "~/data/benostreamdb/three_tier/section_embeddings_parts/part_0000.parquet"
+            "~/data/benodb/three_tier/section_embeddings_parts/part_0000.parquet"
         ),
     )
     ap.add_argument("--batch", type=int, default=100_000)

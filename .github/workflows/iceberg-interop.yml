@@ -1,7 +1,7 @@
 name: Iceberg Interop (JVM)
 
 # Cross-engine certification with *external writers/readers*: Apache Spark and
-# Trino open tables written by BenoStreamDB and assert the row set. This is the
+# Trino open tables written by BenoDB and assert the row set. This is the
 # JVM counterpart to the Rust `apache/iceberg-rust` oracle that runs per-PR in
 # `ci.yml`.
 #
@@ -10,7 +10,7 @@ name: Iceberg Interop (JVM)
 #     Iceberg runtime, and a Trino server needs ~40 s to become queryable;
 #   * the JVM path only changes when the *table format* or the fixture changes,
 #     which is exactly what the path filter below watches.
-# The connector suites (`spark-benostreamdb`, `trino-benostreamdb`) still run on
+# The connector suites (`spark-benodb`, `trino-benodb`) still run on
 # every PR in `ci.yml`; those test the connector, not the on-disk format.
 #
 # Version pins (verified against Maven Central):
@@ -49,7 +49,7 @@ env:
 
 jobs:
   #########################
-  # Spark reads BenoStreamDB tables
+  # Spark reads BenoDB tables
   #########################
   spark-interop:
     name: Spark ${{ matrix.spark }} reads Iceberg
@@ -118,19 +118,19 @@ jobs:
         run: |
           pip install maturin
           maturin build --features python
-          pip install "$(ls target/wheels/benostreamdb-*.whl)[dev]"
+          pip install "$(ls target/wheels/benodb-*.whl)[dev]"
 
       - name: Install PySpark ${{ matrix.spark }}
         run: pip install "pyspark==${{ matrix.spark }}" pandas pyarrow pytest
 
-      - name: Spark reads a BenoStreamDB table (V2 + V3 lineage)
+      - name: Spark reads a BenoDB table (V2 + V3 lineage)
         env:
           BSDB_SPARK_ICEBERG_PACKAGES: ${{ matrix.packages }}
         run: |
           pytest -v tests/test_cross_engine_compat.py -k "spark"
 
   #########################
-  # Trino reads BenoStreamDB tables
+  # Trino reads BenoDB tables
   #
   # Trino's Iceberg connector is configured with a `filesystem` catalog over the
   # same directory the fixtures are written to, which is why the test directory
@@ -175,7 +175,7 @@ jobs:
         run: |
           pip install maturin
           maturin build --features python
-          pip install "$(ls target/wheels/benostreamdb-*.whl)[dev]"
+          pip install "$(ls target/wheels/benodb-*.whl)[dev]"
 
       - name: Install the Trino client
         run: pip install trino pandas pyarrow pytest
@@ -187,7 +187,7 @@ jobs:
           mkdir -p /tmp/benostream_compat_tests
           pytest -v tests/test_cross_engine_compat.py -k "not spark and not trino" || true
           python - <<'PY'
-          import pandas as pd, benostreamdb as bsdb
+          import pandas as pd, benodb as bsdb
           t = bsdb.Table("/tmp/benostream_compat_tests/trino_test_table")
           t.write_pandas(pd.DataFrame({
               "user_id": range(500),
@@ -228,7 +228,7 @@ jobs:
           done
           curl -fsS http://localhost:8080/v1/info || (docker logs trino && exit 1)
 
-      - name: Trino reads the BenoStreamDB table
+      - name: Trino reads the BenoDB table
         env:
           TRINO_HOST: 127.0.0.1
           TRINO_PORT: "8080"

@@ -12,21 +12,21 @@ use anyhow::Result;
 use arrow::array::{Array, Date32Array, FixedSizeListArray, Int32Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::compaction::Compactor;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::{
+use benodb::core::compaction::Compactor;
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::{
     IndexAlgorithm, Manifest, ManifestEntry, ManifestManager, PartitionField, PartitionSpec,
 };
-use benostreamdb::core::planner::FilterExpr;
-use benostreamdb::core::puffin::{
+use benodb::core::planner::FilterExpr;
+use benodb::core::puffin::{
     PuffinReader, PUFFIN_BLOB_GRAPH_CSR_DICT, PUFFIN_BLOB_GRAPH_CSR_EDGES,
     PUFFIN_BLOB_GRAPH_CSR_OFFSETS, PUFFIN_BLOB_HNSW_IVF_CENTROIDS, PUFFIN_BLOB_JSON_PATH,
     PUFFIN_BLOB_LEXICAL_BM25, PUFFIN_BLOB_LEXICAL_DOCLEN, PUFFIN_BLOB_VECTOR_HNSW_GRAPH,
 };
-use benostreamdb::core::search::KeywordSearchParams;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::storage::create_object_store;
-use benostreamdb::core::table::{MergeMode, PreloadOptions, Table, VectorSearchParams};
+use benodb::core::search::KeywordSearchParams;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::storage::create_object_store;
+use benodb::core::table::{MergeMode, PreloadOptions, Table, VectorSearchParams};
 use tempfile::tempdir;
 use tokio::sync::Mutex;
 

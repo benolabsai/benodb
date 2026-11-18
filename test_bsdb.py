@@ -1,4 +1,4 @@
-import benostreamdb as bsdb
+import benodb as bsdb
 import h5py
 import numpy as np
 import pandas as pd

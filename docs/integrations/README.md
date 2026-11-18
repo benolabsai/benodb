@@ -11,7 +11,7 @@ BenoDB provides native connectors, API bindings, and network gateways across the
 | **Python Bindings** | In-Process Library | Data science, PyArrow/Pandas pipelines, interactive notebooks, and embedding workflows | [Python Guide](PYTHON.md) |
 | **Apache Spark** | DataSource V2 Plugin | Large-scale batch ETL, structured streaming, catalog procedures, and distributed vector scoring | [Spark Guide](SPARK.md) |
 | **Trino** | Trino SPI Plugin | Interactive distributed SQL analytics, index-accelerated predicate pushdown, and graph traversal | [Trino Guide](TRINO.md) |
-| **dbt Adapter** | dbt Plugin (`dbt-benostreamdb`) | Analytics engineering, transformation pipelines, and incremental Iceberg model materializations | [dbt Guide](DBT.md) |
+| **dbt Adapter** | dbt Plugin (`dbt-benodb`) | Analytics engineering, transformation pipelines, and incremental Iceberg model materializations | [dbt Guide](DBT.md) |
 | **Arrow Flight SQL** | gRPC Network Gateway | Standard database endpoint for polyglot clients (Go, C++, JDBC/ODBC), DBeaver, and BI tools | [Flight SQL Guide](FLIGHT_SQL.md) |
 | **Search Gateway** | HTTP REST Gateway | Drop-in REST compatibility for OpenSearch / ES 7.10 (port 9200) and Qdrant v1.x (port 6333) | [Search Gateway Guide](SEARCH_GATEWAY.md) |
 | **Model Context Protocol** | AI Agent Tool Server | JSON-RPC tool server for LLMs and autonomous agents (Claude Desktop, Cursor, Antigravity) | [MCP Guide](MCP.md) |

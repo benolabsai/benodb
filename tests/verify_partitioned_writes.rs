@@ -3,8 +3,8 @@
 use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::{PartitionField, PartitionSpec};
-use benostreamdb::core::table::Table;
+use benodb::core::manifest::{PartitionField, PartitionSpec};
+use benodb::core::table::Table;
 use futures::StreamExt;
 use std::sync::Arc;
 

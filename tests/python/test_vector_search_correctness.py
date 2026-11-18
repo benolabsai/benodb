@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics.pairwise import cosine_similarity
-import benostreamdb as bsdb
+import benodb as bsdb
 
 @pytest.fixture
 def test_data():
@@ -54,7 +54,7 @@ def test_recall_vs_sklearn_l2(test_data, tmpdir):
     sk_distances, sk_indices = nn.kneighbors([query])
     sk_indices = sk_indices[0].tolist()
     # sklearn euclidean is sqrt(sum((x-y)^2))
-    # Let's check what benostreamdb returns. Usually vector search returns exact L2 squared distance.
+    # Let's check what benodb returns. Usually vector search returns exact L2 squared distance.
     # L2 distance squared
     sk_sq_distances = (sk_distances[0] ** 2).tolist()
     
@@ -97,7 +97,7 @@ def test_recall_vs_sklearn_cosine(test_data, tmpdir):
     ])
     
     table = bsdb.Table.create(uri, schema)
-    # In benostreamdb, we can pass metric directly to search
+    # In benodb, we can pass metric directly to search
     table.write(df)
     table.commit()
     

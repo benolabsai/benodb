@@ -3,7 +3,7 @@ import shutil
 import pandas as pd
 import numpy as np
 import requests
-import benostreamdb as bsdb
+import benodb as bsdb
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI

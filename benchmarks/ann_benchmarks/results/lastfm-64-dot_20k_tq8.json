@@ -1,5 +1,5 @@
 {
-  "engine": "benostreamdb",
+  "engine": "benodb",
   "index_type": "hnsw_tq8",
   "dataset": "lastfm-64-dot",
   "workload": "vector_ann",

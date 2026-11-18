@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Entity-level Vector Graph RAG benchmark for MuSiQue, running on BenoStreamDB.
+"""Entity-level Vector Graph RAG benchmark for MuSiQue, running on BenoDB.
 
 Implements the three-collection architecture described in the "Vector Graph RAG"
-design (entities, relations, passages) *inside BenoStreamDB*:
+design (entities, relations, passages) *inside BenoDB*:
 
     1. Passages  - deduplicated MuSiQue corpus as a native Iceberg table with an
                    HNSW embedding index
@@ -530,7 +530,7 @@ def save_report(results, top_k, out_dir, *, seed_k, hops, entity_cap, candidates
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "entity_rag_results.json")
     payload = {
-        "description": "Entity-level Vector Graph RAG on BenoStreamDB "
+        "description": "Entity-level Vector Graph RAG on BenoDB "
                        "(Passages + Entities + Relations + Mentions tables)",
         "top_k": top_k,
         "seed_k": seed_k,
@@ -609,7 +609,7 @@ def main():
                                     dtype="auto", max_seq_length=0)
     print(f"[entity_rag] Retrieval embedder: {backend.describe()}", flush=True)
 
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     dataset_path = m.ensure_dataset(args.data_dir)
     records = m.load_musique_records(dataset_path, args.max_questions)

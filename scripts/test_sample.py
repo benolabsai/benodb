@@ -3,13 +3,13 @@ import os
 import polars as pl
 import pyarrow.parquet as pq
 
-# Ensure benostreamdb is in path
+# Ensure benodb is in path
 sys.path.insert(0, os.path.abspath("python"))
-import benostreamdb as bsdb
+import benodb as bsdb
 
 def main():
     candidates = [
-        os.path.expanduser("~/data/benostreamdb/three_tier/section_embeddings_parts/part_0000.parquet"),
+        os.path.expanduser("~/data/benodb/three_tier/section_embeddings_parts/part_0000.parquet"),
         "data/three_tier/section_embeddings_parts/part_0000.parquet",
     ]
     part_path = next((p for p in candidates if os.path.exists(p)), None)

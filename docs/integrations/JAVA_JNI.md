@@ -19,8 +19,8 @@ The JNI layer acts as a bridge between the JVM and the Rust core. It avoids the 
 ## Shared Library
 
 The core logic is compiled into a dynamic library:
-*   `libbenostreamdb.so` (Linux, WSL2)
-*   `libbenostreamdb.dylib` (macOS)
+*   `libbenodb.so` (Linux, WSL2)
+*   `libbenodb.dylib` (macOS)
 
 Note: Native Windows `.dll` builds are no longer supported. Windows users should use WSL2.
 

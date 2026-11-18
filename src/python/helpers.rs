@@ -417,7 +417,7 @@ pub fn parse_index_algorithm(val: Bound<'_, PyAny>) -> PyResult<IndexAlgorithm> 
 pub fn init_logging(level: &str) -> PyResult<()> {
     crate::telemetry::tracing::update_log_level(level)
         .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
-    let guard = crate::telemetry::tracing::init_tracing("benostreamdb")
+    let guard = crate::telemetry::tracing::init_tracing("benodb")
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Box::leak(Box::new(guard));
     Ok(())
@@ -723,7 +723,7 @@ pub fn extract_schema(schema_obj: Bound<'_, PyAny>) -> PyResult<arrow::datatypes
     }
 
     Err(pyo3::exceptions::PyTypeError::new_err(
-        "Expected benostreamdb.Schema or pyarrow.Schema object",
+        "Expected benodb.Schema or pyarrow.Schema object",
     ))
 }
 

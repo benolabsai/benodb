@@ -2,9 +2,9 @@
 
 use arrow::array::{Int32Array, StringArray};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::iceberg::iceberg_delete::IcebergDeleteWriter;
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::table::Table;
+use benodb::core::iceberg::iceberg_delete::IcebergDeleteWriter;
+use benodb::core::manifest::ManifestManager;
+use benodb::core::table::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -49,10 +49,10 @@ async fn test_mor_mixed_deletes_avro() -> anyhow::Result<()> {
         vec![Arc::new(Int32Array::from(vec![3]))],
     )?;
 
-    let table_schema_manifest = benostreamdb::core::manifest::Schema {
+    let table_schema_manifest = benodb::core::manifest::Schema {
         schema_id: 0,
         fields: vec![
-            benostreamdb::core::manifest::SchemaField {
+            benodb::core::manifest::SchemaField {
                 id: 1,
                 name: "id".to_string(),
                 type_str: "int".to_string(),
@@ -62,7 +62,7 @@ async fn test_mor_mixed_deletes_avro() -> anyhow::Result<()> {
                 write_default: None,
                 indexes: vec![],
             },
-            benostreamdb::core::manifest::SchemaField {
+            benodb::core::manifest::SchemaField {
                 id: 2,
                 name: "name".to_string(),
                 type_str: "string".to_string(),
@@ -92,7 +92,7 @@ async fn test_mor_mixed_deletes_avro() -> anyhow::Result<()> {
         .commit(
             &[updated_entry],
             std::slice::from_ref(&entry.file_path),
-            benostreamdb::core::manifest::CommitMetadata::default(),
+            benodb::core::manifest::CommitMetadata::default(),
         )
         .await?;
 

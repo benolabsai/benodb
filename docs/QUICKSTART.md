@@ -11,7 +11,7 @@ BenoDB is an embedded, serverless index-overlay engine for Apache Iceberg. You r
 Install the official Python package from PyPI (precompiled wheels with PyArrow, DataFusion, and CPU/GPU support):
 
 ```bash
-pip install benostreamdb
+pip install benodb
 ```
 
 *Prefer a network endpoint or an existing query engine? Jump to [Core Connectors](#-core-connectors-flight-sql-trino-spark--dbt).*
@@ -23,7 +23,7 @@ pip install benostreamdb
 Run this Python script to create an Iceberg table, attach secondary index overlays (HNSW vector, BM25 full-text, and bitmap scalar), insert records, and query:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # 1. Open (or create) an Iceberg table on local disk or object storage
 table = bsdb.Table("file:///tmp/my_quickstart_table")
@@ -119,7 +119,7 @@ print(hybrid_results[["id", "title", "distance", "rrf_score"]])
 BenoDB provides a full Apache DataFusion SQL engine with native support for standard **PostgreSQL pgvector operators** (`<->` L2 distance, `<=>` Cosine distance, `<#>` Inner product). SQL queries transparently benefit from the attached secondary index overlays:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("file:///tmp/my_quickstart_table")
 
@@ -183,7 +183,7 @@ The network endpoint for JDBC/ODBC/ADBC clients, DuckDB, and BI tools:
 
 ```bash
 # Build and run the server (binds 127.0.0.1:50051 by default)
-cargo run --release -p benostreamdb-flight
+cargo run --release -p benodb-flight
 ```
 
 ```sql
@@ -198,18 +198,18 @@ SELECT * FROM flight_sql_query('grpc://127.0.0.1:50051', 'SELECT * FROM document
 Build the JNI-backed connector and drop the plugin into every Trino node:
 
 ```bash
-cd trino-benostreamdb
+cd trino-benodb
 mvn clean install -DskipTests
 ```
 
 ```properties
-# etc/catalog/benostreamdb.properties
-connector.name=benostreamdb
+# etc/catalog/benodb.properties
+connector.name=benodb
 benostream.base-uri=s3://my-bucket/
 ```
 
 ```sql
-SELECT * FROM benostreamdb.default.logs WHERE severity = 'ERROR';
+SELECT * FROM benodb.default.logs WHERE severity = 'ERROR';
 ```
 
 ### Apache Spark
@@ -217,13 +217,13 @@ SELECT * FROM benostreamdb.default.logs WHERE severity = 'ERROR';
 A fully native Spark DataSource V2 connector — reads, writes, DDL, row-level operations, and vector UDFs run in-process through JNI:
 
 ```bash
-cd spark-benostreamdb
+cd spark-benodb
 mvn clean package -Pspark-4.0     # or -Pspark-3.5 / -Pspark-4.1 / -Pspark-4.2
 ```
 
 ```scala
 val spark = SparkSession.builder()
-  .config("spark.sql.catalog.benostream", "com.benostreamdb.spark.BenoStreamProcedureCatalog")
+  .config("spark.sql.catalog.benostream", "com.benodb.spark.BenoDBProcedureCatalog")
   .config("spark.sql.catalog.benostream.warehouse", "s3://my-lakehouse/warehouse")
   .getOrCreate()
 ```
@@ -231,20 +231,20 @@ val spark = SparkSession.builder()
 ### dbt
 
 ```bash
-pip install dbt-benostreamdb
+pip install dbt-benodb
 ```
 
 ```yaml
 # ~/.dbt/profiles.yml
-benostreamdb_profile:
+benodb_profile:
   target: dev
   outputs:
     dev:
-      type: benostreamdb
+      type: benodb
       database: default
       schema: public
       threads: 4
-      uri: "file:///path/to/benostreamdb/warehouse"
+      uri: "file:///path/to/benodb/warehouse"
 ```
 
 ---
@@ -253,10 +253,10 @@ benostreamdb_profile:
 
 Now that you've run your first query:
 
-* **[Arrow Flight SQL Connector](https://www.benostreamdb.org/integrations/flight_sql.html)** — Configuration, authentication, and client examples for JDBC/ODBC/ADBC.
-* **[Trino Connector](https://www.benostreamdb.org/integrations/trino.html)** — Distributed SQL, predicate pushdown, graph table functions, and GPU device selection.
-* **[Apache Spark Connector](https://www.benostreamdb.org/integrations/spark.html)** — DataSource V2 reads/writes, row-level operations, vector functions, and streaming.
-* **[dbt Adapter](https://www.benostreamdb.org/integrations/dbt.html)** — Models, incremental materializations, vector/hybrid-search macros, and lineage.
+* **[Arrow Flight SQL Connector](https://benolabsai.com/docs/integrations/flight_sql.html)** — Configuration, authentication, and client examples for JDBC/ODBC/ADBC.
+* **[Trino Connector](https://benolabsai.com/docs/integrations/trino.html)** — Distributed SQL, predicate pushdown, graph table functions, and GPU device selection.
+* **[Apache Spark Connector](https://benolabsai.com/docs/integrations/spark.html)** — DataSource V2 reads/writes, row-level operations, vector functions, and streaming.
+* **[dbt Adapter](https://benolabsai.com/docs/integrations/dbt.html)** — Models, incremental materializations, vector/hybrid-search macros, and lineage.
 * **[Installation Guide](INSTALLATION.md)** — Hardware acceleration (CUDA, Metal, ROCm), package variants, and security guidelines.
 * **[pgvector SQL Reference](PGVECTOR_SQL_GUIDE.md)** — Complete reference for operators (`<->`, `<=>`, `<#>`, `<~>`), sparse vectors, and index acceleration.
 * **[Graph RAG on Iceberg](GRAPH_RAG_EDGE_TABLES.md)** — Traverse edge tables natively with SQL UDFs (`graph_neighbors`, PageRank).

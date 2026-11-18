@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbt-benodb"
+# dbt adapters version as `<dbt-core-major>.<minor>.<patch>` (see __version__.py),
+# independent of the BenoDB engine version.
+dynamic = ["version"]
+description = "The BenoDB adapter plugin for dbt"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Richard Albright", email = "rla3rd@gmail.com" }]
+keywords = ["dbt", "benodb", "iceberg", "vector-search", "analytics"]
+dependencies = [
+    # dbt >= 1.8 decoupled adapters from dbt-core: declare compatibility with
+    # the `dbt-adapters` interface (major range) instead of pinning a dbt-core
+    # minor. The adapter's OWN version is independent (it carries the
+    # BenoDB engine version); the supported dbt-core range is declared in
+    # dbt/include/benodb/dbt_project.yml via require-dbt-version.
+    "dbt-adapters>=1.0,<2.0",
+    "dbt-core>=1.8,<2.0",
+    "benodb>=0.17.0",
+    "pyarrow>=15.0.0",
+    "pandas",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+]
+
+[project.urls]
+Homepage = "https://github.com/benolabsai/benodb"
+Repository = "https://github.com/benolabsai/benodb"
+Documentation = "https://github.com/benolabsai/benodb/blob/main/dbt-benodb/README.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "dbt.adapters.benodb.__version__.version" }
+
+[tool.setuptools.packages.find]
+include = ["dbt", "dbt.*"]
+
+# Ship the dbt macros / project files that live under dbt/include/.
+[tool.setuptools.package-data]
+"dbt.include.benodb" = ["**/*.sql", "**/*.yml"]

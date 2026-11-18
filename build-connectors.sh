@@ -15,7 +15,7 @@ echo "Core version: ${CORE_VERSION}"
 # Parse arguments
 #
 # The JNI entry points in src/core/ffi.rs are behind the `java` Cargo feature.
-# Building without it produces a library that exports ZERO Java_com_benostreamdb_*
+# Building without it produces a library that exports ZERO Java_com_benodb_*
 # symbols, so every connector fails at its first native call. It is therefore
 # not optional here.
 CARGO_FEATURES="java"
@@ -115,21 +115,21 @@ mkdir -p connector-artifacts
 echo "--- Building Native Core ---"
 echo "Cargo features: $CARGO_FEATURES"
 cargo build --release --features "$CARGO_FEATURES"
-LIB_PATH="target/release/libbenostreamdb.so"
+LIB_PATH="target/release/libbenodb.so"
 if [ ! -f "$LIB_PATH" ]; then
     # Fallback for macOS or potential naming
-    LIB_PATH="target/release/libbenostreamdb.dylib"
+    LIB_PATH="target/release/libbenodb.dylib"
 fi
 
 # Hard gate: shipping a JVM connector whose native library lacks the JNI
 # exports is a silent, total failure at runtime (UnsatisfiedLinkError on the
 # first metadata call), so verify the symbols before anything is packaged.
-if ! nm -D --defined-only "$LIB_PATH" 2>/dev/null | grep -q 'Java_com_benostreamdb'; then
+if ! nm -D --defined-only "$LIB_PATH" 2>/dev/null | grep -q 'Java_com_benodb'; then
     echo "ERROR: $LIB_PATH exports no JNI symbols." >&2
     echo "       The 'java' Cargo feature must be enabled (CARGO_FEATURES='$CARGO_FEATURES')." >&2
     exit 1
 fi
-echo "JNI symbol check passed: $(nm -D --defined-only "$LIB_PATH" | grep -c 'Java_com_benostreamdb') exported entry points"
+echo "JNI symbol check passed: $(nm -D --defined-only "$LIB_PATH" | grep -c 'Java_com_benodb') exported entry points"
 
 # Function to prepare resources
 prepare_resources() {
@@ -140,14 +140,14 @@ prepare_resources() {
 
 # --- Spark Connector Matrix ---
 echo "--- Building Spark Connectors ---"
-prepare_resources "spark-benostreamdb"
+prepare_resources "spark-benodb"
 for java_version in "17" "21"; do
     java_home_var="JAVA_${java_version}_HOME"
     java_home="${!java_home_var}"
     
     for spark_version in "3.5" "4.0"; do
-        build_with_java "$java_home" "spark-$spark_version,java-$java_version" "" "spark-benostreamdb"
-        cp spark-benostreamdb/target/spark-benostream-*.jar "connector-artifacts/spark-benostream-spark-${spark_version}-java-${java_version}${ARTIFACT_SUFFIX}.jar"
+        build_with_java "$java_home" "spark-$spark_version,java-$java_version" "" "spark-benodb"
+        cp spark-benodb/target/spark-benostream-*.jar "connector-artifacts/spark-benostream-spark-${spark_version}-java-${java_version}${ARTIFACT_SUFFIX}.jar"
     done
 done
 
@@ -156,7 +156,7 @@ echo "--- Building Trino Connectors ---"
 # NOTE: unlike Spark, the Trino connector does NOT bundle the native lib in the
 # plugin JAR. Trino loads it from `java.library.path` (see Dockerfile.trino),
 # and a host-built lib bundled in the JAR would shadow the manylinux one.
-rm -f trino-benostreamdb/src/main/resources/libbenostreamdb.so
+rm -f trino-benodb/src/main/resources/libbenodb.so
 # Trino publishes no LTS and does not keep the connector SPI source- or
 # binary-compatible between releases, so one artifact is built per supported
 # band (see plans/trino_version_bands.md). Band `e` is current; band `d` is
@@ -168,17 +168,17 @@ for trino_target in "482:d" "484:e"; do
     export JAVA_HOME="$JAVA_TRINO_HOME"
     "$MVN_BIN" clean package -Dmaven.test.skip=true -Drevision="$CORE_VERSION" \
         -Dtrino.version="$trino_version" -Dtrino.band="$trino_band" \
-        -f trino-benostreamdb/pom.xml
+        -f trino-benodb/pom.xml
     # For Trino, the main JAR is in target/ but the ZIP contains all deps.
     # The artifact version tracks the core engine version (`${revision}`).
-    cp "trino-benostreamdb/target/trino-benostream-${CORE_VERSION}.jar" "connector-artifacts/trino-benostream-${trino_version}${ARTIFACT_SUFFIX}.jar"
+    cp "trino-benodb/target/trino-benostream-${CORE_VERSION}.jar" "connector-artifacts/trino-benostream-${trino_version}${ARTIFACT_SUFFIX}.jar"
     # Flatten the plugin ZIP. Trino's plugin loader only scans JARs *directly*
     # in the plugin dir (it does not recurse), but the `trino-plugin` packaging
     # nests them under `trino-benostream-<version>/`, which fails with
     # "No service providers of type io.trino.spi.Plugin in the classpath".
     flat_zip="$(pwd)/connector-artifacts/trino-benostream-${trino_version}${ARTIFACT_SUFFIX}.zip"
     tmp_zip="$(mktemp -d)"
-    unzip -q "trino-benostreamdb/target/trino-benostream-${CORE_VERSION}.zip" -d "$tmp_zip"
+    unzip -q "trino-benodb/target/trino-benostream-${CORE_VERSION}.zip" -d "$tmp_zip"
     ( cd "$tmp_zip/trino-benostream-${CORE_VERSION}" && zip -q -r "$flat_zip" . )
     rm -rf "$tmp_zip"
 done

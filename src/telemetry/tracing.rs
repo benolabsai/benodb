@@ -92,7 +92,7 @@ fn do_init_tracing(service_name: &str) -> Result<(), Box<dyn std::error::Error>>
             ))
             .build();
 
-        let tracer = opentelemetry::trace::TracerProvider::tracer(&provider, "benostreamdb");
+        let tracer = opentelemetry::trace::TracerProvider::tracer(&provider, "benodb");
         let _ = TRACER_PROVIDER.set(provider.clone());
         opentelemetry::global::set_tracer_provider(provider);
 

@@ -10,7 +10,7 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(s) = std::str::from_utf8(data) {
-        let _ = benostreamdb::core::sql::partition_rewriter::strip_partitioned_by(s);
-        let _ = benostreamdb::core::sql::pgvector_rewriter::rewrite_sql_string(s);
+        let _ = benodb::core::sql::partition_rewriter::strip_partitioned_by(s);
+        let _ = benodb::core::sql::pgvector_rewriter::rewrite_sql_string(s);
     }
 });

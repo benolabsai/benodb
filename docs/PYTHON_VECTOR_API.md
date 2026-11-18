@@ -7,7 +7,7 @@ BenoDB provides a high-performance Python API for batch vector distance computat
 > [!NOTE]
 > **Table Vector Search vs. Standalone Kernels:**
 > - For **Table Vector Search via SQL** (using standard PostgreSQL pgvector operators `<=>`, `<->`, `<#>` in DataFusion), see the [pgvector SQL Guide](PGVECTOR_SQL_GUIDE.md).
-> - For **Table Vector Search via Python** (`table.vector_search()`, `table.hybrid_search()`), see the [2-Minute Quickstart](QUICKSTART.md) and [Python Client Guide](https://www.benostreamdb.org/integrations/python.html).
+> - For **Table Vector Search via Python** (`table.vector_search()`, `table.hybrid_search()`), see the [2-Minute Quickstart](QUICKSTART.md) and [Python Client Guide](https://benolabsai.com/docs/integrations/python.html).
 > - For **Index Configuration & Quantizers** (HNSW, TurboQuant TQ8/TQ4, SQ8, IVF), see [Configuration Reference](CONFIGURATION.md).
 > - This document specifically details the **standalone, in-memory batch vector distance kernels** on CPU/GPU.
 
@@ -59,7 +59,7 @@ When using `ComputeContext.auto_detect()`, backends are selected in this priorit
 ### Basic Installation
 
 ```bash
-pip install benostreamdb
+pip install benodb
 ```
 
 ### GPU Backend Requirements
@@ -122,7 +122,7 @@ rocm-smi
 
 **Verification:**
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 ctx = bsdb.ComputeContext.auto_detect()
 print(ctx.backend)  # Should show "mps" on Apple Silicon
 ```
@@ -144,7 +144,7 @@ vulkaninfo | grep vendor
 ### Basic Distance Computation
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Create two 1-D float32 vectors (the kernel requires float32)
@@ -163,7 +163,7 @@ print(f"Cosine distance: {distance}")
 ### GPU-Accelerated Batch Operations
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Create GPU context (auto-detect best backend)
@@ -191,7 +191,7 @@ for idx, dist in zip(top_k_indices, top_k_distances):
 ### Sparse Vector Operations
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Create sparse vectors (only store non-zero elements)
@@ -219,7 +219,7 @@ dense1 = sparse1.to_dense()
 ### Binary Vector Operations
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Binary vectors for efficient similarity search
@@ -512,7 +512,7 @@ query = np.array(data, dtype=np.float64)  # Slower and uses more memory
 Set the process-wide compute device once; subsequent operations (including SQL) use it:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Pin the process to an auto-detected GPU ("auto" also accepts "cpu", "cuda:0", ...)
 bsdb.set_gpu_device("auto")
@@ -585,7 +585,7 @@ assert vec1.shape == vec2.shape
 
 ## Examples
 
-See [examples/python_distance_api_examples.py](https://github.com/benolabsai/benostreamdb/blob/main/examples/python_distance_api_examples.py) for complete working examples.
+See [examples/python_distance_api_examples.py](https://github.com/benolabsai/benodb/blob/main/examples/python_distance_api_examples.py) for complete working examples.
 
 ## See Also
 
@@ -608,7 +608,7 @@ This page provides an overview of BenoDB APIs across different languages and int
 ### Table Operations
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create/open table
 table = bsdb.Table("s3://bucket/my-table")
@@ -710,7 +710,7 @@ table.vacuum(retention_versions=10)
 See [Python Vector API Documentation](PYTHON_VECTOR_API.md) for complete reference.
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 # Single-pair distance
@@ -747,7 +747,7 @@ distance = bsdb.hamming_packed(binary1, binary2)
 ### SQL API
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create session
 session = bsdb.Session()
@@ -772,7 +772,7 @@ See [pgvector SQL Guide](PGVECTOR_SQL_GUIDE.md) for SQL syntax reference.
 ### Iceberg V2/V3 API
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/table")
 
@@ -840,13 +840,13 @@ finish before retention removes what it resolves.
 ```scala
 // Read
 val df = spark.read
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   .load()
 
 // Write
 df.write
-  .format("benostream")
+  .format("benodb")
   .option("path", "s3://bucket/table")
   .save()
 
@@ -884,7 +884,7 @@ LIMIT 10;
 BenoDB supports GPU acceleration across NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), and Intel XPU. You can configure execution devices using PyTorch-style strings (`"cuda:0"`) or the explicit `index=` parameter.
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # 1. Auto-detect best available GPU backend
 device = bsdb.Device("auto")
@@ -926,7 +926,7 @@ See [GPU Setup Guide](GPU_SETUP_GUIDE.md) for full driver prerequisites and kern
 ### Vector Index Configuration
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/table")
 
@@ -951,13 +951,13 @@ IVF index clustering uses a deterministic default seed (`0x00C0_FFEE_1337`). You
 
 See [Vector Configuration Guide](CONFIGURATION.md) for tuning parameters.
 
-## REST Search APIs (`benostreamdb-search`)
+## REST Search APIs (`benodb-search`)
 
 BenoDB provides a dual-protocol HTTP gateway exposing OpenSearch / Elasticsearch 7.10 compatibility alongside the Qdrant Vector API from a single server:
 
 ### Starting the Server
 ```bash
-cargo run -p benostreamdb-search --bin bsdb-search
+cargo run -p benodb-search --bin bsdb-search
 ```
 
 ### OpenSearch / Elasticsearch 7.10 Endpoints (Port 9200)
@@ -1012,7 +1012,7 @@ cargo run -p benostreamdb-search --bin bsdb-search
 | `GET`/`POST` | `/collections/aliases` | List / create / delete / rename aliases. |
 
 > [!NOTE]
-> See [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/docs/QDRANT_COMPATIBILITY.md) for the full support
+> See [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md) for the full support
 > matrix, score semantics, and known approximations.
 
 ## Error Handling
@@ -1020,7 +1020,7 @@ cargo run -p benostreamdb-search --bin bsdb-search
 ### Python Exceptions
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 try:
     distance = bsdb.l2(vec1, vec2)
@@ -1041,7 +1041,7 @@ except MemoryError as e:
 ### GPU Fallback
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # GPU operations automatically fall back to CPU on error
 ctx = bsdb.ComputeContext.auto_detect()

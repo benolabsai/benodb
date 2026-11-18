@@ -1,4 +1,4 @@
-import benostreamdb as hs
+import benodb as hs
 import numpy as np
 import pandas as pd
 import shutil

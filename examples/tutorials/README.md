@@ -14,7 +14,7 @@ markdown pages under [`docs/tutorials/`](../../docs/tutorials/).
 
 ```bash
 pip install jupyterlab pyarrow
-pip install benostreamdb            # or: maturin develop --release
+pip install benodb            # or: maturin develop --release
 jupyter lab examples/tutorials
 ```
 
@@ -23,10 +23,10 @@ writes to `/tmp/bsdb_tutorial*`.
 
 ## Kernels
 
-- **Python** — first-class: the `benostreamdb` extension is a normal Python
+- **Python** — first-class: the `benodb` extension is a normal Python
   module, so the standard IPython kernel works.
 - **Rust** — use the community [`evcxr_jupyter`](https://github.com/evcxr/evcxr)
-  kernel and `:dep benostreamdb` to drive the core API.
+  kernel and `:dep benodb` to drive the core API.
 - **Scala** — use the [Almond](https://almond.sh/) kernel with the Spark
   connector on the classpath.
 

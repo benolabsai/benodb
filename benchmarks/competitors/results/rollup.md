@@ -4,9 +4,9 @@ Hardware profile: cpus=8 mem=16g — see hardware_profile.txt
 
 | Engine | Device | Dataset | Recall@k | QPS | p50 (ms) | p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|
-| benostreamdb | cpu | gist-960-euclidean | 0.9776 | 703.6 | 1.395 | 1.986 | 3.625 | 237.25 |
-| benostreamdb_sq | cpu | gist-960-euclidean | 0.968 | 515.1 | 1.922 | 2.5 | 6.33 | 179.67 |
-| benostreamdb_tq8 | cpu | gist-960-euclidean | 0.9558 | 472.8 | 2.089 | 2.891 | 3.547 | 180.93 |
+| benodb | cpu | gist-960-euclidean | 0.9776 | 703.6 | 1.395 | 1.986 | 3.625 | 237.25 |
+| benodb_sq | cpu | gist-960-euclidean | 0.968 | 515.1 | 1.922 | 2.5 | 6.33 | 179.67 |
+| benodb_tq8 | cpu | gist-960-euclidean | 0.9558 | 472.8 | 2.089 | 2.891 | 3.547 | 180.93 |
 | faiss | cpu | gist-960-euclidean | 0.9916 | 2461.2 | 0.405 | 0.654 | 1.432 | 79.68 |
 | faiss_sq | cpu | gist-960-euclidean | 0.9812 | 3261.6 | 0.313 | 0.431 | 0.871 | 22.09 |
 | hnswlib | cpu | gist-960-euclidean | 0.991 | 2148.3 | 0.475 | 0.729 | 3.215 | 79.77 |

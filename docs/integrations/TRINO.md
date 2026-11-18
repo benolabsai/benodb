@@ -27,20 +27,20 @@ Prerequisites:
   JDK 21 compiler cannot read it.
 - **The native library, built with the `java` Cargo feature.** The JNI entry
   points are feature-gated, so a plain `cargo build` produces a library with
-  zero `Java_com_benostreamdb_*` symbols and every query fails with
+  zero `Java_com_benodb_*` symbols and every query fails with
   `UnsatisfiedLinkError`.
 
 ```bash
 cargo build --release --features java
 
-cd trino-benostreamdb
+cd trino-benodb
 # Band e (484+), the default
 mvn clean package -DskipTests
 # Band d (482-483)
 mvn clean package -DskipTests -Dtrino.version=482 -Dtrino.band=d
 ```
 
-Each build produces a plugin ZIP in `trino-benostreamdb/target/` plus the main
+Each build produces a plugin ZIP in `trino-benodb/target/` plus the main
 JAR.
 
 ## Installation
@@ -50,14 +50,14 @@ it does not recurse. The `trino-plugin` packaging nests everything under a
 versioned folder, so flatten it before installing:
 
 ```bash
-mkdir -p /usr/lib/trino/plugin/benostream
-unzip -q trino-benostream-<version>.zip -d /tmp/bsdb-plugin
-cp /tmp/bsdb-plugin/trino-benostream-<version>/*.jar /usr/lib/trino/plugin/benostream/
+mkdir -p /usr/lib/trino/plugin/benodb
+unzip -q trino-benodb-<version>.zip -d /tmp/bsdb-plugin
+cp /tmp/bsdb-plugin/trino-benodb-<version>/*.jar /usr/lib/trino/plugin/benodb/
 ```
 
 The native library is **not** bundled in the plugin JAR: Trino loads it from
 `java.library.path`. Point it at a host or manylinux build of
-`libbenostreamdb.so`.
+`libbenodb.so`.
 
 ### Required JVM flags
 
@@ -71,15 +71,15 @@ adds it, but any embedder must match:
 ```
 --add-modules=jdk.incubator.vector
 --add-opens=java.base/java.nio=ALL-UNNAMED     # Arrow Java memory access
--Djava.library.path=/path/to/libbenostreamdb
+-Djava.library.path=/path/to/libbenodb
 ```
 
 ## Configuration
 
-`etc/catalog/benostreamdb.properties`:
+`etc/catalog/benodb.properties`:
 
 ```properties
-connector.name=benostreamdb
+connector.name=benodb
 # Warehouse root: a local path or an object-store URI.
 benostream.warehouse=s3://my-bucket/
 # auto | cpu | cuda[:N] | mps | intel | rocm; comma-separated for a device pool.
@@ -89,7 +89,7 @@ benostream.gpu-device=auto
 ## Querying tables
 
 ```sql
-SELECT * FROM benostreamdb.default.logs
+SELECT * FROM benodb.default.logs
 WHERE severity = 'ERROR' AND ts > NOW() - INTERVAL '1' DAY
 ```
 
@@ -116,12 +116,12 @@ are engine-side operations, not Trino DDL.
 | `drop_primary_key` | `TABLE`, `COLUMNS` (comma-separated) | Remove key columns |
 
 ```sql
-CALL benostreamdb.system.add_index('default.docs', 'embedding', 'hnsw');
-CALL benostreamdb.system.build_index('default.docs');
-CALL benostreamdb.system.rebuild_cluster_index('default.docs', 'embedding', '1024', '16', '200', '512');
-CALL benostreamdb.system.warmup('default.docs', '500', '8.0');
-CALL benostreamdb.system.set_primary_key('default.docs', 'id');
-CALL benostreamdb.system.compact('default.docs');
+CALL benodb.system.add_index('default.docs', 'embedding', 'hnsw');
+CALL benodb.system.build_index('default.docs');
+CALL benodb.system.rebuild_cluster_index('default.docs', 'embedding', '1024', '16', '200', '512');
+CALL benodb.system.warmup('default.docs', '500', '8.0');
+CALL benodb.system.set_primary_key('default.docs', 'id');
+CALL benodb.system.compact('default.docs');
 ```
 
 ## Table functions
@@ -307,7 +307,7 @@ table-wide query:
 
 ```properties
 # etc/catalog/benostream.properties
-connector.name=benostream
+connector.name=benodb
 benostream.warehouse=/data/warehouse
 benostream.split.file-granularity=true
 ```
@@ -379,7 +379,7 @@ matching the Spark connector's UDFs:
 SELECT l2_distance(embedding, CAST(ARRAY[1.0, 0.0, 0.0] AS array(double))) AS d,
        vector_distance(embedding, CAST(ARRAY[1.0, 0.0, 0.0] AS array(double)), 'dot') AS dot_d,
        reciprocal_rank_fusion(CAST(ARRAY[1, 3] AS array(integer)), 60) AS rrf
-FROM benostreamdb.default.docs;
+FROM benodb.default.docs;
 ```
 
 `vector_distance` accepts `cosine`, `l2`/`euclidean`, and `dot`; `dot` is

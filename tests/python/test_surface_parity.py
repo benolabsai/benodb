@@ -5,9 +5,9 @@
 the connector surfaces (Python, dbt, Spark, Trino, Flight SQL).
 
 The Rust core is the source of truth:
-  * `benostreamdb.registered_index_algorithms()` — `IndexAlgorithm::all_names()`
-  * `benostreamdb.registered_ddl_statements()` — `catalog_ddl::handled_ddl_statements()`
-  * `benostreamdb.registered_table_actions()` — `catalog_ddl::table_action_names()`
+  * `benodb.registered_index_algorithms()` — `IndexAlgorithm::all_names()`
+  * `benodb.registered_ddl_statements()` — `catalog_ddl::handled_ddl_statements()`
+  * `benodb.registered_table_actions()` — `catalog_ddl::table_action_names()`
 
 Adding an index algorithm / DDL statement / action to the core without exposing
 it in the other surfaces fails here, so the surfaces cannot silently drift.
@@ -19,43 +19,43 @@ import re
 import pyarrow as pa
 import pytest
 
-import benostreamdb
+import benodb
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-MACROS_DIR = ROOT / "dbt-benostreamdb" / "dbt" / "include" / "benostreamdb" / "macros"
+MACROS_DIR = ROOT / "dbt-benodb" / "dbt" / "include" / "benodb" / "macros"
 SPARK_DOC = ROOT / "docs" / "integrations" / "spark.md"
 # Spark 4.x exposes stored procedures via the native DSv2 ProcedureCatalog;
 # Spark 3.5 uses the Iceberg shim instead. Both live in per-minor source roots.
 SPARK_PROCEDURE_CATALOG = (
     ROOT
-    / "spark-benostreamdb"
+    / "spark-benodb"
     / "src"
     / "main"
     / "spark-4"
     / "com"
-    / "benostreamdb"
+    / "benodb"
     / "spark"
     / "BenoStreamCatalog.scala"
 )
 SPARK_PROCEDURE_TEST = (
     ROOT
-    / "spark-benostreamdb"
+    / "spark-benodb"
     / "src"
     / "test"
     / "scala"
     / "com"
-    / "benostreamdb"
+    / "benodb"
     / "spark"
     / "SparkProcedureCatalogTest.scala"
 )
 TRINO_PAGE_SOURCE = (
     ROOT
-    / "trino-benostreamdb"
+    / "trino-benodb"
     / "src"
     / "main"
     / "java"
     / "com"
-    / "benostreamdb"
+    / "benodb"
     / "trino"
     / "BenoStreamDBPageSource.java"
 )
@@ -115,7 +115,7 @@ def dbt_macros():
             r"^\{%-?\s*macro\s+([a-z_][a-z0-9_]*)\s*\(", path.read_text(), re.M
         ):
             name = match.group(1)
-            if name.startswith(("default__", "benostreamdb__", "_")):
+            if name.startswith(("default__", "benodb__", "_")):
                 continue
             names.add(name)
     return names
@@ -127,13 +127,13 @@ def dbt_macros():
 
 
 def test_index_algorithms_registered():
-    assert set(benostreamdb.registered_index_algorithms()) == INDEX_ALGORITHMS
+    assert set(benodb.registered_index_algorithms()) == INDEX_ALGORITHMS
 
 
 def test_python_accepts_every_index_algorithm(tmp_path):
     """Every engine index algorithm must be accepted by the Python parser
     (a string name or a dict config)."""
-    table = benostreamdb.Table.from_arrow(
+    table = benodb.Table.from_arrow(
         f"file://{tmp_path}/idx",
         pa.table(
             {
@@ -184,7 +184,7 @@ def test_dbt_exposes_index_creation():
 
 
 def test_ddl_statements_registered():
-    assert set(benostreamdb.registered_ddl_statements()) == DDL_STATEMENTS
+    assert set(benodb.registered_ddl_statements()) == DDL_STATEMENTS
 
 
 def test_ddl_reachable_from_each_sql_surface():
@@ -193,12 +193,12 @@ def test_ddl_reachable_from_each_sql_surface():
     # Spark: the pass-through reader runs engine SQL via openQuery.
     spark_query = (
         ROOT
-        / "spark-benostreamdb"
+        / "spark-benodb"
         / "src"
         / "main"
         / "scala"
         / "com"
-        / "benostreamdb"
+        / "benodb"
         / "spark"
         / "BenoStreamQueryTable.scala"
     )
@@ -209,7 +209,7 @@ def test_ddl_reachable_from_each_sql_surface():
     assert "BenoStreamSession" in FLIGHT_SERVER.read_text()
     # dbt: the adapter executes through the embedded session.
     connections = (
-        ROOT / "dbt-benostreamdb" / "dbt" / "adapters" / "benostreamdb" / "connections.py"
+        ROOT / "dbt-benodb" / "dbt" / "adapters" / "benodb" / "connections.py"
     )
     assert "session.sql(" in connections.read_text()
 
@@ -220,16 +220,16 @@ def test_ddl_reachable_from_each_sql_surface():
 
 
 def test_table_actions_registered():
-    assert set(benostreamdb.registered_table_actions()) == TABLE_ACTIONS
+    assert set(benodb.registered_table_actions()) == TABLE_ACTIONS
 
 
 def test_table_actions_reachable_via_execute(tmp_path):
     """`ALTER TABLE ... EXECUTE <action>` is the engine's procedure surface and
     must be callable from the embedded session."""
-    table = benostreamdb.Table.from_arrow(
+    table = benodb.Table.from_arrow(
         f"file://{tmp_path}/t", pa.table({"id": [1, 2, 3]})
     )
-    session = benostreamdb.Session()
+    session = benodb.Session()
     session.register("t", table)
     # A harmless, side-effect-free action.
     session.sql("ALTER TABLE t EXECUTE checkpoint")
@@ -264,12 +264,12 @@ def test_spark_exposes_procedures():
     # The Spark 3.5 variant must resolve the Iceberg shim (no native API pre-4.0).
     spark3 = (
         ROOT
-        / "spark-benostreamdb"
+        / "spark-benodb"
         / "src"
         / "main"
         / "spark-3"
         / "com"
-        / "benostreamdb"
+        / "benodb"
         / "spark"
         / "BenoStreamCatalog.scala"
     ).read_text()
@@ -310,10 +310,10 @@ def test_subscribe_reachable_from_all_surfaces():
     assert "PySubscription" in (ROOT / "src" / "python" / "subscribe.rs").read_text()
     # MCP tool.
     assert "subscribe_events" in (
-        ROOT / "contrib" / "benostreamdb-mcp" / "src" / "server.rs"
+        ROOT / "contrib" / "benodb-mcp" / "src" / "server.rs"
     ).read_text()
     # Flight SQL streaming ticket.
-    assert "benostreamdb.Subscribe" in (
+    assert "benodb.Subscribe" in (
         ROOT / "server" / "flight_sql" / "src" / "server.rs"
     ).read_text()
 
@@ -329,11 +329,11 @@ def test_gpu_context_wired_in_all_surfaces():
         ROOT / "server" / "flight_sql" / "src" / "main.rs"
     ).read_text()
     assert "apply_gpu_context_from_env" in (
-        ROOT / "contrib" / "benostreamdb-mcp" / "src" / "server.rs"
+        ROOT / "contrib" / "benodb-mcp" / "src" / "server.rs"
     ).read_text()
     # dbt adapter applies the profile `gpu_device`.
     assert "set_gpu_device" in (
-        ROOT / "dbt-benostreamdb" / "dbt" / "adapters" / "benostreamdb" / "connections.py"
+        ROOT / "dbt-benodb" / "dbt" / "adapters" / "benodb" / "connections.py"
     ).read_text()
     # Spark + Trino JNI bridges use the shared mapping.
     assert "context_from_device_str" in (ROOT / "src" / "core" / "ffi.rs").read_text()

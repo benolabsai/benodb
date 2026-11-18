@@ -4,7 +4,7 @@
 import os
 import shutil
 import tempfile
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 def test_vector_search_with_string_columns_no_offset_corruption():

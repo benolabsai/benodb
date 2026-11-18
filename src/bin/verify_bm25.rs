@@ -2,8 +2,8 @@
 
 //! Diagnostic: run a BM25 keyword search against a table's inverted index.
 
-use benostreamdb::core::search::KeywordSearchParams;
-use benostreamdb::Table;
+use benodb::core::search::KeywordSearchParams;
+use benodb::Table;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

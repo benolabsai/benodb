@@ -2,7 +2,7 @@ import os
 import shutil
 import pandas as pd
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 
 DB_PATH = "test_unified_verify_db"
 if os.path.exists(DB_PATH):

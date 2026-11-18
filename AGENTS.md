@@ -56,14 +56,14 @@ version = "X.Y.Z"
 When bumping versions for any release:
 1. Update `[workspace.package].version` in `Cargo.toml`.
 2. Update inter-crate dependency pins in:
-   - `server/flight_sql/Cargo.toml` (`benostreamdb = { version = "X.Y.Z", ... }`)
-   - `contrib/benostreamdb-search/Cargo.toml` (`benostreamdb = { version = "X.Y.Z", ... }`)
+   - `server/flight_sql/Cargo.toml` (`benodb = { version = "X.Y.Z", ... }`)
+   - `contrib/benodb-search/Cargo.toml` (`benodb = { version = "X.Y.Z", ... }`)
 3. Update connector metadata:
-   - `spark-benostreamdb/pom.xml` (`<revision>X.Y.Z</revision>`)
-   - `trino-benostreamdb/pom.xml` (`<revision>X.Y.Z</revision>`)
-   - `dbt-benostreamdb/pyproject.toml` (`benostreamdb>=X.Y.Z`)
-   - `dbt-benostreamdb/dbt/include/benostreamdb/dbt_project.yml` (`version: X.Y.Z`)
-4. Verify dynamic versioning in all Python packages (`pyproject.toml`, `server/flight_sql/pyproject.toml`, `contrib/benostreamdb-search/pyproject.toml`, `contrib/benostreamdb-mcp/pyproject.toml`).
+   - `spark-benodb/pom.xml` (`<revision>X.Y.Z</revision>`)
+   - `trino-benodb/pom.xml` (`<revision>X.Y.Z</revision>`)
+   - `dbt-benodb/pyproject.toml` (`benodb>=X.Y.Z`)
+   - `dbt-benodb/dbt/include/benodb/dbt_project.yml` (`version: X.Y.Z`)
+4. Verify dynamic versioning in all Python packages (`pyproject.toml`, `server/flight_sql/pyproject.toml`, `contrib/benodb-search/pyproject.toml`, `contrib/benodb-mcp/pyproject.toml`).
 5. Run `./scripts/pre_release_check.sh` to assert full synchronization.
 
 ---
@@ -105,7 +105,7 @@ Every word of prose committed to this repository follows the authorial voice of 
 
 | Avoid | Use |
 |---|---|
-| "seamless", "effortless", "magical" | Zero copy Arrow record batching; `pip install benostreamdb` with no external service |
+| "seamless", "effortless", "magical" | Zero copy Arrow record batching; `pip install benodb` with no external service |
 | "blazing fast", "revolutionary", "game changing" | Sub millisecond retrieval; AVX2 SIMD distance kernels at 1,700 QPS on eight cores |
 | "massive I/O reduction" | 32 KB Parquet pages with Arrow `RowSelection` cutting rerank I/O from 512 MB to 1.3 MB |
 | "next generation database" | Vector and graph engine over Apache Iceberg Puffin sidecars |

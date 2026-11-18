@@ -166,7 +166,7 @@ def fmt_ms_as_sec(ms: float | None) -> str:
 # Reference configuration for every participant, so the numbers in this report
 # can be read against HOW each engine was set up and WHERE it was measured.
 COMPETITOR_CONFIG = [
-    ("vector", "benostreamdb",
+    ("vector", "benodb",
      "Native HNSW (uncompressed f32); scalar quantization (`sq`, uniform 8-bit); "
      "TurboQuant (`tq8`, 8-bit polar lattice, power-of-two widths only — no padding)",
      "embedded (in-process Rust)"),
@@ -197,7 +197,7 @@ COMPETITOR_CONFIG = [
      "ef = ef_search, metric_type IP/COSINE/L2. Not IVF_SQ8: IVF partitions on L2 centroids, which "
      "routed badly under a dot-product metric and reported 0.8608 where HNSW_SQ reports 0.9854 on lastfm",
      "client → server (Milvus)"),
-    ("graph", "benostreamdb",
+    ("graph", "benodb",
      "CSR graph, in-process Rust (PageRank 30 iters / connected components / shortest path)",
      "embedded (in-process Rust)"),
     ("graph", "networkx",
@@ -217,7 +217,7 @@ COMPETITOR_CONFIG = [
     ("graph", "cugraph",
      "cuGraph on GPU (RMM managed memory, renumber=True)",
      "embedded (in-process GPU)"),
-    ("sql", "benostreamdb",
+    ("sql", "benodb",
      "in-process SQL (DataFusion-backed)",
      "embedded (in-process Rust)"),
     ("sql", "duckdb",
@@ -240,7 +240,7 @@ def _record_refine(record: dict) -> int:
 
     One field, one location: top-level `refine_factor`, written by both harnesses
     (`run_competitor.py` and `ann_benchmarks/run.py`). The library config also
-    carries it for BenoStreamDB, but the report never reads that copy — accepting
+    carries it for BenoDB, but the report never reads that copy — accepting
     two locations is what let the producers drift apart and turned refined rows
     into silent duplicates of their unrefined siblings.
     """
@@ -252,11 +252,11 @@ def _record_refine(record: dict) -> int:
 
 
 def _eng_label(engine) -> str:
-    """Bold BenoStreamDB rows so they stand out in every table.
+    """Bold BenoDB rows so they stand out in every table.
 
     The vector quantization suffix (`_tq8`/`_pq`/`_sq`) is dropped from the
     engine name because the Index Precision column already carries it, so the
-    quantized variants read as plain `benostreamdb` and `lancedb`.
+    quantized variants read as plain `benodb` and `lancedb`.
 
     The refinement factor is deliberately *not* part of the label. It is already
     the next column over; repeating it in the engine name said the same thing
@@ -268,7 +268,7 @@ def _eng_label(engine) -> str:
         if name.endswith(suffix):
             name = name[: -len(suffix)]
             break
-    return f"**{name}**" if name.startswith("benostreamdb") else name
+    return f"**{name}**" if name.startswith("benodb") else name
 
 
 def _quant_label(idx, default: str = "-") -> str:
@@ -468,7 +468,7 @@ def _index_p50(record: dict) -> float | str:
     pure = record.get("pure_p50_ms")
     if isinstance(pure, (int, float)):
         return pure
-    if not str(record.get("engine", "")).startswith("benostreamdb"):
+    if not str(record.get("engine", "")).startswith("benodb"):
         val = record.get("p50_ms")
         return val if isinstance(val, (int, float)) else "-"
     return "-"
@@ -479,7 +479,7 @@ def _index_p99(record: dict) -> float | str:
     pure = record.get("pure_p99_ms")
     if isinstance(pure, (int, float)):
         return pure
-    if not str(record.get("engine", "")).startswith("benostreamdb"):
+    if not str(record.get("engine", "")).startswith("benodb"):
         val = record.get("p99_ms")
         return val if isinstance(val, (int, float)) else "-"
     return "-"
@@ -490,7 +490,7 @@ def _row_qps(record: dict) -> float | str:
     if "full_row_qps" in record:
         val = record["full_row_qps"]
         return val if isinstance(val, (int, float)) else "-"
-    if str(record.get("engine", "")).startswith("benostreamdb") and record.get("pure_index_qps"):
+    if str(record.get("engine", "")).startswith("benodb") and record.get("pure_index_qps"):
         val = record.get("qps")
         return val if isinstance(val, (int, float)) else "-"
     return "-"
@@ -501,7 +501,7 @@ def _row_p50(record: dict) -> float | str:
     if "full_p50_ms" in record:
         val = record["full_p50_ms"]
         return val if isinstance(val, (int, float)) else "-"
-    if str(record.get("engine", "")).startswith("benostreamdb") and record.get("pure_p50_ms"):
+    if str(record.get("engine", "")).startswith("benodb") and record.get("pure_p50_ms"):
         val = record.get("p50_ms")
         return val if isinstance(val, (int, float)) else "-"
     return "-"
@@ -512,7 +512,7 @@ def _row_p99(record: dict) -> float | str:
     if "full_p99_ms" in record:
         val = record["full_p99_ms"]
         return val if isinstance(val, (int, float)) else "-"
-    if str(record.get("engine", "")).startswith("benostreamdb") and record.get("pure_p99_ms"):
+    if str(record.get("engine", "")).startswith("benodb") and record.get("pure_p99_ms"):
         val = record.get("p99_ms")
         return val if isinstance(val, (int, float)) else "-"
     return "-"
@@ -551,7 +551,7 @@ def generate_summary(
     ) or session_provenance._engine_version()
 
     sections = [
-        "# BenoStreamDB Comprehensive Benchmark Report",
+        "# BenoDB Comprehensive Benchmark Report",
         "",
         f"- **Generated At**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}",
         f"- **Engine version**: {engine_version or 'unknown'}",
@@ -586,10 +586,10 @@ def generate_summary(
         "  **500k edges**.",
         "- The endurance soak is **60 seconds**; it validates invariants, not",
         "  multi-hour stability.",
-        "- Competitor rows are CPU-only. BenoStreamDB vector rows are backend-pinned",
+        "- Competitor rows are CPU-only. BenoDB vector rows are backend-pinned",
         "  (`cpu` = scalar CPU, `cuda` = CUDA device 0).",
         "- Latency and QPS in §9 are measured single-query and per-call: embedded engines",
-        "  (BenoStreamDB, FAISS, hnswlib, LanceDB) run in-process, while client-server",
+        "  (BenoDB, FAISS, hnswlib, LanceDB) run in-process, while client-server",
         "  engines (Milvus, Qdrant, Weaviate, OpenSearch, pgvector) include a per-query",
         "  RPC round-trip that is not index-search cost.",
         "- The GPU kernel numbers in §1b are a microbenchmark of `bsdb.cdist`; they",
@@ -602,14 +602,14 @@ def generate_summary(
 
     # 1. Vector ANN Benchmarks
     #
-    # These are BenoStreamDB's *own* index variants (HNSW / TurboQuant TQ8 /
+    # These are BenoDB's *own* index variants (HNSW / TurboQuant TQ8 /
     # PQ) with no competitor, so they are not a head-to-head comparison — the
     # competitor matrix is §9. Keep only a pointer so the comparison report does
     # not duplicate raw self-benchmarks.
-    sections.append("## 1. Vector ANN Performance (BenoStreamDB internal characterization)")
+    sections.append("## 1. Vector ANN Performance (BenoDB internal characterization)")
     sections.append("")
     sections.append(
-        "Index-variant characterization for BenoStreamDB itself (HNSW and "
+        "Index-variant characterization for BenoDB itself (HNSW and "
         "TurboQuant `hnsw_tq8`) with **no competitor**. Head-to-head vector "
         "comparison is in **§9**; raw results are under "
         "`benchmarks/competitors/results/`."
@@ -644,7 +644,7 @@ def generate_summary(
         "payload where exactness matters.\n"
         "- **Default.** Full-precision `hnsw` is the default; `hnsw_tq8` is opt-in "
         "for workloads that will trade recall for size/latency. §9 reports the "
-        "`benostreamdb` engine once per precision, with the **Index Precision** "
+        "`benodb` engine once per precision, with the **Index Precision** "
         "column (`f32`/`tq8`) making the trade-off explicit; holding several "
         "precisions on one column and selecting per query is on the roadmap "
         "(Theme 6)."
@@ -654,7 +654,7 @@ def generate_summary(
     sections.append("### GPU Acceleration on Large Batch Workloads")
     sections.append("")
     sections.append(
-        "BenoStreamDB provides native GPU acceleration (`bsdb.cdist`, CUDA/Triton) "
+        "BenoDB provides native GPU acceleration (`bsdb.cdist`, CUDA/Triton) "
         "for high-throughput batching, brute-force k-NN reranking, and centroid clustering (k-means) "
         "across large vector datasets. While index beam traversals (HNSW) in this report are measured "
         "on a standardized CPU container envelope (8 cores, 16 GB RAM) for strict hardware parity with "
@@ -670,7 +670,7 @@ def generate_summary(
     # measured: Neo4j/Memgraph run the algorithm server-side in a native engine
     # (timing `.stream` from Python measured Bolt/Python marshalling, not the
     # algorithm), while the others are in-process libraries.
-    sections.append("## 2. Graph Analytics Performance (BenoStreamDB vs NetworkX vs Neo4j + GDS)")
+    sections.append("## 2. Graph Analytics Performance (BenoDB vs NetworkX vs Neo4j + GDS)")
     sections.append("")
     narrative = os.path.join(BASE_DIR, "graph", "results", "graph_competitors.md")
     if os.path.exists(narrative):
@@ -735,14 +735,14 @@ def generate_summary(
         def peek(table: dict, algo: str, engine: str) -> dict:
             return (table.get(algo) or {}).get(engine) or {}
 
-        sp_bench, sp_neo = peek(synth, "pagerank", "benostreamdb"), peek(synth, "pagerank", "neo4j")
+        sp_bench, sp_neo = peek(synth, "pagerank", "benodb"), peek(synth, "pagerank", "neo4j")
         scope = (
             "**Scale Benchmarks (Stanford SNAP 5M+ Edges) & Neo4j/cuGraph Scope:** Neo4j GDS is measured "
-            "alongside BenoStreamDB and NetworkX"
+            "alongside BenoDB and NetworkX"
         )
         if sp_bench.get("ms") and sp_neo.get("ms"):
             scope += (
-                f" on the synthetic graph (§2.1), where BenoStreamDB is "
+                f" on the synthetic graph (§2.1), where BenoDB is "
                 f"**{sp_neo['ms'] / sp_bench['ms']:.1f}× faster at PageRank execution**"
             )
             if sp_bench.get("build_s") and sp_neo.get("build_s"):
@@ -758,7 +758,7 @@ def generate_summary(
 
         pairs = []
         for ds in sorted(snap):
-            b, n = peek(snap[ds], "pagerank", "benostreamdb"), peek(snap[ds], "pagerank", "neo4j")
+            b, n = peek(snap[ds], "pagerank", "benodb"), peek(snap[ds], "pagerank", "neo4j")
             if not (b.get("build_s") and n.get("build_s") and n.get("ok")):
                 continue
             pairs.append(
@@ -769,7 +769,7 @@ def generate_summary(
             sections.append(
                 "The Neo4j column is a JVM server ingesting the edge list over Bolt with batched "
                 "`UNWIND ... MERGE` into a store carrying a uniqueness constraint on `:Node(id)`, then projecting "
-                "once per dataset into GDS (BenoStreamDB vs Neo4j: " + "; ".join(pairs) + "). These numbers reflect "
+                "once per dataset into GDS (BenoDB vs Neo4j: " + "; ".join(pairs) + "). These numbers reflect "
                 "that ingestion path and configuration and should not be interpreted as representative of Neo4j's "
                 "dedicated bulk-import tooling (`neo4j-admin database import`) or all deployment configurations."
             )
@@ -792,7 +792,7 @@ def generate_summary(
         sections.append(
             "`shortest_path` is measured on the same directed graph for every embedded engine: PageRank and "
             "`shortest_path` follow edge direction, while `connected_components` is weakly connected. "
-            "BenoStreamDB and NetworkX both run a bidirectional breadth-first search that stops when the two "
+            "BenoDB and NetworkX both run a bidirectional breadth-first search that stops when the two "
             "frontiers meet; Neo4j issues one GDS Dijkstra call and reports a single path row, so its result "
             "size is not comparable with the node-id lists the other two return."
         )
@@ -818,11 +818,11 @@ def generate_summary(
             )
             sections.append("")
 
-        bench_builds = [peek(t, "pagerank", "benostreamdb").get("build_s") for t in snap.values()]
+        bench_builds = [peek(t, "pagerank", "benodb").get("build_s") for t in snap.values()]
         bench_builds = [b for b in bench_builds if b]
         if bench_builds:
             sections.append(
-                "BenoStreamDB's embedded Rust engine parses the raw edge lists and builds an in-memory Compressed "
+                "BenoDB's embedded Rust engine parses the raw edge lists and builds an in-memory Compressed "
                 f"Sparse Row (CSR) graph in **{fmt_sec_range(min(bench_builds), max(bench_builds))}** across "
                 "these datasets, with no external database server or JVM in the query path. These results "
                 "demonstrate performance on the tested SNAP workloads rather than a universal ranking across graph "
@@ -861,7 +861,7 @@ def generate_summary(
                 "| Algorithm | Engine | Status | Build (s) | Execution (ms) | Result size | Speedup vs NetworkX |"
             )
             sections.append("|---|---|---|---|---|---|---|")
-            preferred = ["benostreamdb", "networkx", "neo4j", "cugraph"]
+            preferred = ["benodb", "networkx", "neo4j", "cugraph"]
             for algo in sorted(a for a in table if a != "__meta__"):
                 engines = table[algo]
                 nx_ms = (engines.get("networkx") or {}).get("ms")
@@ -894,7 +894,7 @@ def generate_summary(
     sections.append("")
 
     # 3. SQL OLAP Benchmarks
-    sections.append("## 3. SQL OLAP Performance (ClickBench Q0–Q9: BenoStreamDB vs DuckDB vs DataFusion)")
+    sections.append("## 3. SQL OLAP Performance (ClickBench Q0–Q9: BenoDB vs DuckDB vs DataFusion)")
     sections.append("")
     sql_files = glob.glob(os.path.join(BASE_DIR, "sql", "results", "*.md"))
     if sql_files:
@@ -1037,14 +1037,14 @@ def generate_summary(
     sections.append("")
     sections.append(
         "All vector index traversals are evaluated under a standardized 8-core CPU envelope "
-        "for strict hardware parity. BenoStreamDB provides native GPU acceleration (`bsdb.cdist`) "
+        "for strict hardware parity. BenoDB provides native GPU acceleration (`bsdb.cdist`) "
         "for high-throughput batching, matrix multiplication, and clustering across large vector datasets."
     )
     sections.append("")
     sections.append(
         "**What each QPS column pays.** `Index QPS` times the index query alone: every "
         "engine returns identifiers and scores — `segment_id`/`row_id`/`score` for "
-        "BenoStreamDB, ids plus distances for the competitors — and reads no payload. "
+        "BenoDB, ids plus distances for the competitors — and reads no payload. "
         "`Row QPS` times the same query followed by payload hydration, and the "
         "projection is the same on both sides: `id` and the vector column. A "
         "competitor's row is therefore a 784-float embedding and so is ours, rather "
@@ -1085,7 +1085,7 @@ def generate_summary(
     )
     sections.append("")
     sections.append(
-        "**Recall comparability.** All engines (BenoStreamDB and external competitors) "
+        "**Recall comparability.** All engines (BenoDB and external competitors) "
         "are evaluated against metric-correct ground truth computed via brute force using the "
         "dataset's declared metric (cosine distance for `glove-*` and `nytimes-256`, Euclidean L2 "
         "for `sift` and `mnist`, and inner product for `lastfm`), ensuring fair, direct "
@@ -1094,7 +1094,7 @@ def generate_summary(
     sections.append("")
     sections.append(
         "**Embedded vs. client-server measurement boundary.** The latency and QPS columns measure "
-        "single-query, per-call traversal. Embedded engines (BenoStreamDB, FAISS, hnswlib, LanceDB) "
+        "single-query, per-call traversal. Embedded engines (BenoDB, FAISS, hnswlib, LanceDB) "
         "run the search in-process, so their reported latency is pure index traversal. Client-server "
         "engines (Milvus, Qdrant, Weaviate, OpenSearch, pgvector) add a per-query RPC round-trip "
         "(gRPC/HTTP plus request/response serialization) that is included in their latency and QPS and "
@@ -1111,7 +1111,7 @@ def generate_summary(
         "in host RAM. On small synthetic benchmark slices (20k vectors), this global connectivity "
         "yields ~1.0000 recall because beam search traverses the entire dataset with zero boundary cuts. "
         "At production scale (50M+ vectors), however, monolithic graphs require 250–512 GB of expensive "
-        "cloud RAM to prevent out-of-memory crashes. In contrast, BenoStreamDB is architected as an "
+        "cloud RAM to prevent out-of-memory crashes. In contrast, BenoDB is architected as an "
         "out-of-core streaming lakehouse engine: vectors are committed to immutable Apache Iceberg "
         "Parquet files, partitioned into Voronoi cells via IVF centroids, and indexed into modular "
         "Puffin sidecar sub-graphs compressed 4× with TurboQuant (TQ8). Coarse centroids page only "
@@ -1127,7 +1127,7 @@ def generate_summary(
         "The tables below disaggregate performance into two distinct query stages: **Index Traversal** "
         "(pure graph beam-search returning candidate vector IDs: `Index QPS`, `Index p50`, `Index p99`) and "
         "**Row Retrieval** (end-to-end vector search plus columnar payload deserialization: `Row QPS`, `Row p50`, `Row p99`). "
-        "For in-process engines like BenoStreamDB, full-row retrieval hydrates directly into zero-copy PyArrow RecordBatches "
+        "For in-process engines like BenoDB, full-row retrieval hydrates directly into zero-copy PyArrow RecordBatches "
         "from Apache Iceberg Parquet files. Each dataset table is grouped by **Index Precision "
         "(`f32` first, compressed second)** and ordered within each precision by "
         "**Row QPS descending** — the full retrieval path, which is what an application actually gets."
@@ -1138,12 +1138,12 @@ def generate_summary(
         "data representation stored *inside the index graph nodes* during beam-search distance computation, "
         "which is distinct from the raw ingested dataset format (which is 100% `float32` across all engines):\n"
         "- `f32`: Uncompressed 32-bit IEEE float (4 bytes per dimension). Used by FAISS (`IndexHNSWFlat`), HNSWlib, "
-        "pgvector, Weaviate, OpenSearch, LanceDB (`HnswFlat`), and BenoStreamDB (`hnsw`). Distance evaluations "
+        "pgvector, Weaviate, OpenSearch, LanceDB (`HnswFlat`), and BenoDB (`hnsw`). Distance evaluations "
         "execute exact floating-point arithmetic. HNSWlib is Malkov's reference C++ implementation and exclusively "
         "evaluates uncompressed `float32` (it contains no vector compression or quantization features).\n"
         "- `sq`: 8-bit linear scalar quantization (1 byte per dimension, 4× compression). Used by LanceDB (`HnswSq`), "
         "mapping float32 coordinates uniformly into 8-bit integer buckets $[min, max] \\to [0, 255]$ with SIMD integer distance kernels.\n"
-        "- `tq8`: 8-bit TurboQuant polar/orthogonal lattice quantization (1 byte per dimension, 4× compression). Used by BenoStreamDB (`hnsw_tq8`), "
+        "- `tq8`: 8-bit TurboQuant polar/orthogonal lattice quantization (1 byte per dimension, 4× compression). Used by BenoDB (`hnsw_tq8`), "
         "applying randomized Hadamard coordinate rotations prior to 8-bit quantization to decorrelate dimensions, equalize variance, "
         "and prevent outlier coordinates from degrading recall on anisotropic embeddings.\n\n"
         "Full-row retrieval hydrates the uncompressed `float32` payload directly from storage (or zero-copy Apache Iceberg Parquet files) "
@@ -1222,7 +1222,7 @@ def generate_summary(
             "with f32 rows, and the quantized tables are where `Index (MB)` and `Build (s)` "
             "show what the compression buys.\n"
             ">\n"
-            "> **BenoStreamDB is quantized once per dataset, by width.** TurboQuant's polar "
+            "> **BenoDB is quantized once per dataset, by width.** TurboQuant's polar "
             "lattice needs a power-of-two dimension and the engine does not pad, so `tq8` is "
             "measured on the datasets whose width permits it (128, 256) and scalar "
             "quantization on the rest (65, 100, 200, 784, 960). Measured out of domain, "
@@ -1334,10 +1334,10 @@ def generate_summary(
                         r.get("build_s"),
                         r.get("index_mb"),
                     ]
-                    # Bold the entire BenoStreamDB row, not just the engine cell: the
+                    # Bold the entire BenoDB row, not just the engine cell: the
                     # numbers are what the reader compares against the competitors, and
                     # bolding only the name left them visually detached from it.
-                    if str(eng).startswith("benostreamdb"):
+                    if str(eng).startswith("benodb"):
                         cells = [
                             f"**{str(c).strip('*')}**" if i == 0 else f"**{c}**"
                             for i, c in enumerate(cells)

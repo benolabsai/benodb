@@ -11,7 +11,7 @@ There is **no Iceberg runtime dependency** for Spark 4.x builds. (Spark 3.5 pred
 * **Apache Spark**: 3.5.x, 4.0.x, 4.1.x, or 4.2.x
 * **Java**: 17 (required for Spark 3.5; supported on 4.x)
 * **Scala**: 2.12 (Spark 3.5) / 2.13 (Spark 4.x) — one artifact per Scala binary covers every Spark minor in that line
-* **BenoDB Native Library**: `libbenostreamdb.so` (bundled in the JAR resources, or on `java.library.path`)
+* **BenoDB Native Library**: `libbenodb.so` (bundled in the JAR resources, or on `java.library.path`)
 
 ---
 
@@ -23,10 +23,10 @@ There is **no Iceberg runtime dependency** for Spark 4.x builds. (Spark 3.5 pred
 
 ## Building the Connector
 
-The connector source resides in `spark-benostreamdb`. Use Maven to build the profile corresponding to your Spark version:
+The connector source resides in `spark-benodb`. Use Maven to build the profile corresponding to your Spark version:
 
 ```bash
-cd spark-benostreamdb
+cd spark-benodb
 
 # Default (Spark 4.0)
 mvn clean package -Pspark-4.0
@@ -45,19 +45,19 @@ mvn clean package -Pspark-4.2
 
 ## Configuration & Catalog Setup
 
-Configure SparkSession with the native catalog. On Spark 4.x use `BenoStreamProcedureCatalog` (the native table catalog **plus** `system.*` stored procedures); on Spark 3.5 use `BenoStreamCatalog` for tables/DDL:
+Configure SparkSession with the native catalog. On Spark 4.x use `BenoDBProcedureCatalog` (the native table catalog **plus** `system.*` stored procedures); on Spark 3.5 use `BenoDBCatalog` for tables/DDL:
 
 ```scala
 val spark = SparkSession.builder()
-  .appName("BenoStreamSparkApp")
+  .appName("BenoDBSparkApp")
   // Spark 4.x: tables + namespaces + CALL in one catalog
-  .config("spark.sql.catalog.benostream", "com.benostreamdb.spark.BenoStreamProcedureCatalog")
+  .config("spark.sql.catalog.benostream", "com.benodb.spark.BenoDBProcedureCatalog")
   .config("spark.sql.catalog.benostream.warehouse", "s3://my-lakehouse/warehouse")
   .getOrCreate()
 
 // Register BenoDB vector search and similarity UDFs
-import com.benostreamdb.spark.functions.BenoStreamFunctions
-BenoStreamFunctions.register(spark)
+import com.benodb.spark.functions.BenoDBFunctions
+BenoDBFunctions.register(spark)
 ```
 
 Writes are chunked by `spark.benostream.write.batchSize` (default `10000`; also
@@ -94,7 +94,7 @@ ORDER BY dist ASC
 LIMIT 10;
 ```
 
-Registering the session-level aliases (`BenoStreamFunctions.register(spark)`, shown below) lets you use the unqualified names. Note that pgvector operators (`<->`) are intentionally **not** part of Spark SQL — Spark's grammar rejects them and they would be inconsistent with other catalogs in the same session; use these function names instead (identical to the Trino/DataFusion spellings).
+Registering the session-level aliases (`BenoDBFunctions.register(spark)`, shown below) lets you use the unqualified names. Note that pgvector operators (`<->`) are intentionally **not** part of Spark SQL — Spark's grammar rejects them and they would be inconsistent with other catalogs in the same session; use these function names instead (identical to the Trino/DataFusion spellings).
 
 #### Spark SQL Functions
 
@@ -121,7 +121,7 @@ FROM spark_catalog.default.documents;
 #### Fluent DataFrame API
 
 ```scala
-import com.benostreamdb.spark.implicits._
+import com.benodb.spark.implicits._
 
 val query = Array(0.12, 0.45, -0.23)
 
@@ -173,7 +173,7 @@ table functions, reached through the pass-through reader
 `cached`). The pass-through reader registers the table as `t`:
 
 ```scala
-spark.read.format("benostream")
+spark.read.format("benodb")
   .option("path", "s3://my-lakehouse/tables/edges")
   .option("query", "SELECT * FROM graph_neighbors('t', '101', 2, 'auto')")
   .load()
@@ -221,14 +221,14 @@ JVM. For cross-process streaming use the Flight SQL subscription ticket.
 
 ### 3. Secondary & Bitmap Index Filter Pushdown
 
-`BenoStreamScanBuilder` implements `SupportsPushDownFilters` and `SupportsPushDownRequiredColumns`.
+`BenoDBScanBuilder` implements `SupportsPushDownFilters` and `SupportsPushDownRequiredColumns`.
 
 Supported predicates (`=`, `<`, `<=`, `>`, `>=`, `IN (...)`, `IS [NOT] NULL`, `LIKE 'prefix%'`, `AND`/`OR`/`NOT`) are translated to SQL and pushed into the engine's DataFusion planner through `openQuery`, which applies the scalar/Bitmap, Bloom, and lexical indexes during planning — pruning data files and row splits before any Parquet is decoded by Spark executors:
 
 ```scala
 // Prunes unindexed Parquet splits using BenoDB bitmap indexes
 val activeUsers = spark.read
-  .format("benostream")
+  .format("benodb")
   .load("s3://my-lakehouse/tables/users")
   .filter("user_id IN (1001, 1002, 1003)")
 ```
@@ -282,7 +282,7 @@ well as 3.5 (Spark 4's `BoundProcedure.call` hands back a `Scan`, which the
 connector fills from the already-computed JNI result).
 
 **Table argument resolution.** Every procedure resolves its `table` argument
-through `BenoStreamTableResolver`, so namespaces are preserved instead of being
+through `BenoDBTableResolver`, so namespaces are preserved instead of being
 dropped:
 
 | Argument | Resolved URI |
@@ -303,7 +303,7 @@ On Spark 3.5 the same procedures are reachable through the Iceberg `ProcedureCat
 
 ### 5. Row-Level Operations: DELETE / UPDATE / MERGE
 
-The connector implements `SupportsRowLevelOperations` natively (`BenoStreamRowLevelOperation` extends `SupportsDelta`). Row identity is the table's **primary key** columns (`rowId()` / `requiredMetadataAttributes()`), which are ordinary table columns — so Spark resolves them against the target relation without metadata-column plumbing.
+The connector implements `SupportsRowLevelOperations` natively (`BenoDBRowLevelOperation` extends `SupportsDelta`). Row identity is the table's **primary key** columns (`rowId()` / `requiredMetadataAttributes()`), which are ordinary table columns — so Spark resolves them against the target relation without metadata-column plumbing.
 
 Execution maps directly onto the engine's primitives:
 
@@ -333,7 +333,7 @@ the write is split the way Iceberg's driver splits it:
 
 1. **Task** — writes its rows as *data files* (with their indexes, built in the
    task) and returns the manifest entries as JSON:
-   `BenoStreamFileCommitMessage` → `stageDataFiles` → `(Table::stage_data_files_async)`
+   `BenoDBFileCommitMessage` → `stageDataFiles` → `(Table::stage_data_files_async)`
    in `src/core/table/stage.rs`. The task never commits; the files are invisible.
 2. **Driver** — commits only that metadata, in one snapshot:
    `commitStagedEntries` → `Table::commit_staged_entries_async`, which is a single
@@ -348,7 +348,7 @@ the write is split the way Iceberg's driver splits it:
 `format_version = 3` tables fall back to the buffered path (`writeMode` returns
 `buffered`): `_row_id` is assigned from the manifest head, so two tasks staging
 concurrently would hand out overlapping ids. On those tables the task encodes rows
-as Arrow IPC (`BenoStreamCommitMessage`), the driver stages them in the engine and
+as Arrow IPC (`BenoDBCommitMessage`), the driver stages them in the engine and
 commits once — still exactly-once and still one snapshot, but the rows cross the
 driver.
 
@@ -361,12 +361,12 @@ the 1.11.0 jar:
 
 | Contract | Iceberg | This connector |
 | --- | --- | --- |
-| `BatchWrite.createBatchWriterFactory` | `SparkWrite$BaseBatchWrite` | `BenoStreamBatchWrite` |
+| `BatchWrite.createBatchWriterFactory` | `SparkWrite$BaseBatchWrite` | `BenoDBBatchWrite` |
 | `DataWriter` writes into the engine | no — writes Parquet data files | no — writes Parquet data files (`stage_data_files`) |
-| `WriterCommitMessage` payload | `SparkWrite$TaskCommit` → `DataFile[] files()` | `BenoStreamFileCommitMessage` → manifest entries (JSON) |
+| `WriterCommitMessage` payload | `SparkWrite$TaskCommit` → `DataFile[] files()` | `BenoDBFileCommitMessage` → manifest entries (JSON) |
 | `BatchWrite.commit(messages)` | `SparkWrite$BatchAppend`: one metadata snapshot | one metadata snapshot (`commit_staged_entries`) |
 | `BatchWrite.abort(messages)` | staged files become orphans | staged files become orphans (`remove_orphan_files`) |
-| Row-level (`SupportsDelta`) | `SparkPositionDeltaWrite$DeltaTaskCommit` → `dataFiles()`, `deleteFiles()`, … | `BenoStreamDeltaCommitMessage` → predicates + encoded rows (buffered) |
+| Row-level (`SupportsDelta`) | `SparkPositionDeltaWrite$DeltaTaskCommit` → `dataFiles()`, `deleteFiles()`, … | `BenoDBDeltaCommitMessage` → predicates + encoded rows (buffered) |
 | Retry safety | unique file names per attempt | unique file names per attempt; commit token is idempotent |
 
 Index building moved into the task as a consequence: the driver commits only

@@ -51,7 +51,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install maturin pyarrow pandas numpy duckdb datafusion networkx tantivy
 
-      - name: Build BenoStreamDB (Release)
+      - name: Build BenoDB (Release)
         run: |
           maturin develop --release
 
@@ -68,17 +68,17 @@ jobs:
           python benchmarks/graph/run.py \
             --nodes 10000 \
             --edges 50000 \
-            --engines benostreamdb,networkx \
+            --engines benodb,networkx \
             --out benchmarks/graph/results/graph_ci.md
 
       - name: Run SQL Benchmark
         run: |
           python benchmarks/sql/run.py \
             --rows 100000 \
-            --engines benostreamdb,duckdb,datafusion \
+            --engines benodb,duckdb,datafusion \
             --out benchmarks/sql/results/sql_ci.md
 
-      # BEIR lexical baseline (BenoStreamDB vs Tantivy). The CI runner is a
+      # BEIR lexical baseline (BenoDB vs Tantivy). The CI runner is a
       # single machine, so every engine is inherently measured under the same
       # envelope; the canonical envelope-controlled run is the Docker matrix
       # (`benchmarks/competitors/docker_bench.sh --workload beir`).
@@ -86,7 +86,7 @@ jobs:
         run: |
           python benchmarks/beir/run.py \
             --dataset scifact \
-            --engines benostreamdb,tantivy \
+            --engines benodb,tantivy \
             --out benchmarks/beir/results/scifact_bm25_ci.md
 
       - name: Run Pathological Filters & Oracle Benchmark

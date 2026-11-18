@@ -3,7 +3,7 @@ import time
 import pandas as pd
 import numpy as np
 import pytest
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # We will connect to the local Hive Metastore service exposed on port 9083
 HIVE_METASTORE_URL = "thrift://localhost:9083"

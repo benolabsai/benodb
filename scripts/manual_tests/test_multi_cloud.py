@@ -5,7 +5,7 @@ Tests S3 (RustFS), Azure (Azurite), and GCP (fake-gcs-server) storage backends.
 These tests require the respective services to be running via docker-compose.
 """
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import pytest
 import os

@@ -1,6 +1,6 @@
 ---
 name: Feature Request / Architecture Feedback
-about: Suggest an idea or give architectural feedback for the BenoStreamDB Developer Preview
+about: Suggest an idea or give architectural feedback for the BenoDB Developer Preview
 title: "[FEATURE] "
 labels: ["enhancement", "discussion"]
 assignees: ''

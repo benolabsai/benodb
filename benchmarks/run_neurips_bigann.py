@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Official NeurIPS BigANN benchmark runner for BenoStreamDB.
+"""Official NeurIPS BigANN benchmark runner for BenoDB.
 
 The run is split into two stages so that a large dataset is ingested **once**
 and then re-indexed per quantizer, instead of being re-ingested for every mode:
@@ -440,7 +440,7 @@ def clear_evaluation_caches(table=None, paths=None, label: str = ""):
         except Exception:
             pass
     try:
-        import benostreamdb as _bsdb
+        import benodb as _bsdb
         if hasattr(_bsdb, "clear_cache"):
             _bsdb.clear_cache(all=True)
     except Exception:
@@ -776,7 +776,7 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
 
     io_before = io_snapshot()
     try:
-        import benostreamdb as _bsdb
+        import benodb as _bsdb
 
         _bsdb.reset_reader_stats()
     except Exception:
@@ -941,7 +941,7 @@ def render_report(args, records, meta) -> str:
     mem = meta.get("memory", {})
     arts = meta.get("artifacts") or {}
     lines = [
-        f"# BigANN {ds['name']} — BenoStreamDB quantizer ablation",
+        f"# BigANN {ds['name']} — BenoDB quantizer ablation",
         "",
         f"Generated: `{meta['generated_utc']}`  ·  engine `{meta['engine']['version']}` "
         f"(`{meta['engine']['git_rev']}`, dirty={meta['engine']['git_dirty']})",
@@ -1488,7 +1488,7 @@ def parse_grid(spec: str) -> list:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="NeurIPS BigANN benchmark for BenoStreamDB",
+        description="NeurIPS BigANN benchmark for BenoDB",
         epilog="Examples:  run_neurips_bigann.py ingest --dataset 10m --profile d8lds | "
                "run_neurips_bigann.py query --dataset 10m --profile d8lds --modes tq8,sq8 "
                "--grid 256/32,64/4 --repeat 3",
@@ -1691,7 +1691,7 @@ def main():
         )
         sys.exit(2)
 
-    import benostreamdb as bsdb
+    import benodb as bsdb
 
     records = []
 

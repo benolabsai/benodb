@@ -27,9 +27,9 @@ use anyhow::Result;
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::manifest::ManifestManager;
-use benostreamdb::core::table::builder::TableBuilder;
-use benostreamdb::Table;
+use benodb::core::manifest::ManifestManager;
+use benodb::core::table::builder::TableBuilder;
+use benodb::Table;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use object_store::memory::InMemory;
@@ -283,7 +283,7 @@ async fn vacuum_preserves_referenced_files() -> Result<()> {
 /// table appeared empty.
 #[tokio::test]
 async fn partition_spec_update_preserves_data() -> Result<()> {
-    use benostreamdb::core::manifest::PartitionSpec;
+    use benodb::core::manifest::PartitionSpec;
 
     let uri = "memory://ws3-partition";
     let tmp = tempfile::tempdir()?;
@@ -294,7 +294,7 @@ async fn partition_spec_update_preserves_data() -> Result<()> {
         t.commit_async().await?;
     }
 
-    let store = benostreamdb::core::storage::create_object_store(uri)?;
+    let store = benodb::core::storage::create_object_store(uri)?;
     let manager = ManifestManager::new(store, "", uri);
     manager
         .update_partition_spec(PartitionSpec {
@@ -373,7 +373,7 @@ async fn randomized_mixed_workload_is_consistent() -> Result<()> {
     assert!(count >= 1, "final count must include at least the seed row");
 
     // No orphaned-but-referenced artifacts: every manifest file must exist.
-    let store = benostreamdb::core::storage::create_object_store(uri)?;
+    let store = benodb::core::storage::create_object_store(uri)?;
     let manager = ManifestManager::new(store.clone(), "", uri);
     let (_manifest, entries, _) = manager.load_latest_full().await?;
     for entry in &entries {
@@ -641,7 +641,7 @@ async fn multi_writer_soak() -> Result<()> {
     assert!(count >= 1, "final count must include at least the seed row");
 
     // No orphaned-but-referenced artifacts.
-    let store = benostreamdb::core::storage::create_object_store(uri)?;
+    let store = benodb::core::storage::create_object_store(uri)?;
     let manager = ManifestManager::new(store.clone(), "", uri);
     let (_manifest, entries, _) = manager.load_latest_full().await?;
     for entry in &entries {
@@ -704,7 +704,7 @@ async fn transient_store_failure_does_not_corrupt_state() -> Result<()> {
 /// The distributed lock must provide mutual exclusion under contention.
 #[tokio::test]
 async fn distributed_lock_mutual_exclusion() -> Result<()> {
-    use benostreamdb::core::lock::FileBasedLock;
+    use benodb::core::lock::FileBasedLock;
 
     let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
     let path = ObjPath::from("ws3.lock");

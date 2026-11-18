@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
 use anyhow::Result;
-use benostreamdb::core::iceberg::murmur3_32_x86;
+use benodb::core::iceberg::murmur3_32_x86;
 
 #[test]
 fn test_murmur3_hashing_spec_values() {

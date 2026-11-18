@@ -12,14 +12,14 @@ import pytest
 
 pytest.importorskip("dbt")
 
-from dbt.adapters.benostreamdb.impl import BenoStreamDBAdapter  # noqa: E402
+from dbt.adapters.benodb.impl import BenoDBAdapter  # noqa: E402
 
 
 @pytest.fixture(scope="module")
 def adapter():
     # The type converters do not touch instance state, so a bare instance keeps
     # the test free of connection/profile setup.
-    return BenoStreamDBAdapter.__new__(BenoStreamDBAdapter)
+    return BenoDBAdapter.__new__(BenoDBAdapter)
 
 
 def test_datetime_maps_to_timestamp(adapter):

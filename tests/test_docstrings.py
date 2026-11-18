@@ -7,7 +7,7 @@ import os
 # Add the built library to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'target', 'release'))
 
-import benostreamdb as bsdb
+import benodb as bsdb
 import inspect
 
 def check_docstring(func_name, func):

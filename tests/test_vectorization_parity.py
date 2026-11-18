@@ -1,4 +1,4 @@
-import benostreamdb as hs
+import benodb as hs
 import numpy as np
 import pyarrow as pa
 import pytest

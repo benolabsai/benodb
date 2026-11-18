@@ -1,6 +1,6 @@
-# Arrow Flight SQL Gateway (`benostreamdb-flight`)
+# Arrow Flight SQL Gateway (`benodb-flight`)
 
-`benostreamdb-flight` provides a high-performance Apache Arrow Flight and Flight SQL network interface over BenoDB.
+`benodb-flight` provides a high-performance Apache Arrow Flight and Flight SQL network interface over BenoDB.
 
 ---
 
@@ -64,7 +64,7 @@ Configure the server via environment variables:
 Build and start the server:
 
 ```bash
-cargo run --release -p benostreamdb-flight
+cargo run --release -p benodb-flight
 ```
 
 Or run via Docker:
@@ -73,7 +73,7 @@ Or run via Docker:
 docker run -p 50051:50051 -p 9090:9090 \
   -e BSDB_API_KEY="your-secret-key" \
   -e BSDB_WAREHOUSE="s3://my-bucket/warehouse" \
-  benostreamdb-flight:latest
+  benodb-flight:latest
 ```
 
 ---

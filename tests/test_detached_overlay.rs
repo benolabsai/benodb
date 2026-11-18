@@ -7,7 +7,7 @@
 //! the no-op sync path when the upstream snapshot has not advanced.
 
 use arrow::datatypes::{DataType, Field, Schema};
-use benostreamdb::Table;
+use benodb::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 

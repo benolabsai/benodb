@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-use benostreamdb::core::puffin::{PuffinReader, PuffinWriter};
+use benodb::core::puffin::{PuffinReader, PuffinWriter};
 use std::collections::HashMap;
 use std::io::Cursor;
 
@@ -48,7 +48,7 @@ fn test_puffin_write_read() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_puffin_compound_index_writer_reader() -> Result<(), Box<dyn std::error::Error>> {
-    use benostreamdb::core::puffin::{
+    use benodb::core::puffin::{
         PuffinIndexReader, PuffinIndexWriter, PUFFIN_BLOB_INDEX_ROARING, PUFFIN_BLOB_LEXICAL_BM25,
         PUFFIN_BLOB_VECTOR_HNSW_GRAPH,
     };
@@ -165,9 +165,9 @@ async fn test_puffin_hybrid_segment_writer_and_reader() -> Result<(), Box<dyn st
     use arrow::array::{Int32Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
-    use benostreamdb::core::reader::HybridReader;
-    use benostreamdb::core::segment::HybridSegmentWriter;
-    use benostreamdb::SegmentConfig;
+    use benodb::core::reader::HybridReader;
+    use benodb::core::segment::HybridSegmentWriter;
+    use benodb::SegmentConfig;
     use std::sync::Arc;
 
     let tmp_dir = tempfile::tempdir()?;
@@ -186,7 +186,7 @@ async fn test_puffin_hybrid_segment_writer_and_reader() -> Result<(), Box<dyn st
             Arc::new(StringArray::from(vec![
                 "apache iceberg lakehouse",
                 "puffin compound secondary index",
-                "benostreamdb high performance",
+                "benodb high performance",
                 "vector hnsw and bm25 search",
                 "open open lakehouse standard",
             ])),
@@ -198,9 +198,9 @@ async fn test_puffin_hybrid_segment_writer_and_reader() -> Result<(), Box<dyn st
     let mut index_configs = std::collections::HashMap::new();
     index_configs.insert(
         "title".to_string(),
-        benostreamdb::core::table::ColumnIndexConfig {
+        benodb::core::table::ColumnIndexConfig {
             enabled: true,
-            algorithms: vec![benostreamdb::core::manifest::IndexAlgorithm::Bm25 {
+            algorithms: vec![benodb::core::manifest::IndexAlgorithm::Bm25 {
                 k1: 1.2,
                 b: 0.75,
                 tokenizer: "analyzer:english".to_string(),
@@ -271,7 +271,7 @@ async fn test_puffin_hybrid_segment_writer_and_reader() -> Result<(), Box<dyn st
         .with_record_count(manifest_entry.record_count as u64);
 
     let reader = HybridReader::new(reader_config, store, &tmp_dir_path);
-    let params = benostreamdb::core::index::bm25::Bm25Params::default();
+    let params = benodb::core::index::bm25::Bm25Params::default();
     let results = reader
         .keyword_search_index("title", "lakehouse", 10, &params, None, None)
         .await?;
@@ -290,10 +290,10 @@ async fn test_puffin_hybrid_segment_writer_and_reader() -> Result<(), Box<dyn st
 
 #[tokio::test]
 async fn test_puffin_hnsw_ivf_lazy_loading_and_fuzz() -> Result<(), Box<dyn std::error::Error>> {
-    use benostreamdb::core::index::hnsw_ivf::HnswIvfIndex;
-    use benostreamdb::core::index::{VectorMetric, VectorValue};
-    use benostreamdb::core::manifest::IndexAlgorithm;
-    use benostreamdb::core::puffin::{
+    use benodb::core::index::hnsw_ivf::HnswIvfIndex;
+    use benodb::core::index::{VectorMetric, VectorValue};
+    use benodb::core::manifest::IndexAlgorithm;
+    use benodb::core::puffin::{
         PuffinIndexWriter, PUFFIN_BLOB_HNSW_CLUSTER_GRAPH, PUFFIN_BLOB_HNSW_CLUSTER_MAPPING,
         PUFFIN_BLOB_HNSW_IVF_CENTROIDS,
     };

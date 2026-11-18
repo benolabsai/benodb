@@ -7,11 +7,11 @@
 //   BSDB_ORACLE_EXPECT_IDS=1,2 \
 //   cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
 //
-// Nothing here imports `benostreamdb`: the oracle shares no code with the writer,
+// Nothing here imports `benodb`: the oracle shares no code with the writer,
 // which is the point. If the table only makes sense to BenoStreamDB, this fails.
 
 use anyhow::{Context, Result};
-use benostreamdb_iceberg_oracle::{OracleTarget, Suite};
+use benodb_iceberg_oracle::{OracleTarget, Suite};
 use futures::StreamExt;
 use iceberg::io::FileIOBuilder;
 use iceberg::spec::FormatVersion;

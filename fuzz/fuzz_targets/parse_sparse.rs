@@ -12,7 +12,7 @@ fuzz_target!(|data: &[u8]| {
         // Vary the dimension, including the degenerate 0 case, and pin a
         // realistic one so bounds/duplicate checks are exercised.
         let dim = data.first().copied().unwrap_or(0) as usize;
-        let _ = benostreamdb::core::sql::literal::parse_sparse_vector(s, dim);
-        let _ = benostreamdb::core::sql::literal::parse_sparse_vector(s, 1024);
+        let _ = benodb::core::sql::literal::parse_sparse_vector(s, dim);
+        let _ = benodb::core::sql::literal::parse_sparse_vector(s, 1024);
     }
 });

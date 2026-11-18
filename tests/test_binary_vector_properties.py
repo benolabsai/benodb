@@ -7,7 +7,7 @@ Feature: python-vector-api-gpu-acceleration
 import pytest
 import numpy as np
 from hypothesis import given, strategies as st, settings
-import benostreamdb as bsdb
+import benodb as bsdb
 
 
 # ============================================================================

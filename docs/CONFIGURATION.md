@@ -65,7 +65,7 @@ API, the Qdrant API, and the Flight SQL gRPC service.
 
 Keep the secret in a secret manager (Vault, AWS/GCP/Azure Secrets Manager) or a
 `0600` file mounted at `/run/secrets/` (Docker/K8s) or
-`/etc/benostreamdb/secrets/`, loaded via systemd `LoadCredential=` /
+`/etc/benodb/secrets/`, loaded via systemd `LoadCredential=` /
 `EnvironmentFile=` (mode `0600`). Never commit it or place it in a
 world-readable env file.
 
@@ -147,7 +147,7 @@ For massive datasets exceeding RAM (such as 10M–100M+ vectors):
 
 * **`Table.compact_indexes(column: str, target_shard_bytes: int = 536870912)`**: Builds the table level Voronoi artifact at the requested shard size (512 MiB default), reading every vector once and writing shards that hold complete cluster graphs, so a deep query streams whole clusters instead of fanning out across segment sidecars. Returns the shard count, the bytes on disk, and the manifest version the build read. Per segment sidecars are left in place; `retire_covered_vector_indexes` removes them.
 * **`Table.preload_indexes(max_memory_bytes: int, spill_to_disk: bool = False)`**: Preloads Voronoi centroids and top-layer graphs up to an advisory RAM budget, keeping inverted lists on disk.
-* **`benostreamdb.clear_cache(all: bool = False)`**: Programmatically invalidates all engine index, metadata, block, and byte caches.
+* **`benodb.clear_cache(all: bool = False)`**: Programmatically invalidates all engine index, metadata, block, and byte caches.
 
 ### Catalog
 
@@ -163,7 +163,7 @@ For massive datasets exceeding RAM (such as 10M–100M+ vectors):
 See [Catalog Usage](CATALOG_USAGE.md) and `benostream.toml` below for the full
 catalog configuration surface.
 
-### MCP Server (`benostreamdb-mcp`)
+### MCP Server (`benodb-mcp`)
 
 | Variable | Description | Default |
 |:---|:---|:---|
@@ -175,20 +175,20 @@ catalog configuration surface.
 | `BSDB_MCP_CONFIG` | Full JSON configuration string. | None |
 | `BSDB_EMBEDDING_*` | Embedding generator settings (see [Embeddings](#embeddings)). | See above |
 
-See [`contrib/benostreamdb-mcp/README.md`](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-mcp/README.md)
+See [`contrib/benodb-mcp/README.md`](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-mcp/README.md)
 for the full CLI/JSON mapping.
 
-### Search Gateway (`benostreamdb-search`)
+### Search Gateway (`benodb-search`)
 
 The OpenSearch/Qdrant gateway is a separate component with its own
 configuration surface (`BSDB_SEARCH_*`, `BSDB_QDRANT_BIND`, `BSDB_QDRANT_PORT`).
 See the
-[search gateway README](https://github.com/benolabsai/benostreamdb/blob/main/contrib/benostreamdb-search/README.md)
+[search gateway README](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/README.md)
 for the full table.
 
 ### Server binaries
 
-The Flight SQL server (`benostreamdb-flight`) has its own variables:
+The Flight SQL server (`benodb-flight`) has its own variables:
 
 | Variable | Description | Default |
 |:---|:---|:---|
@@ -199,7 +199,7 @@ The Flight SQL server (`benostreamdb-flight`) has its own variables:
 | `BSDB_WAREHOUSE` | Warehouse root for the server. | `./data` |
 | `BSDB_CATALOG_NAME` | Catalog name to expose. | From `benostream.toml` |
 
-See the [Flight SQL README](https://github.com/benolabsai/benostreamdb/blob/main/server/flight_sql/README.md).
+See the [Flight SQL README](https://github.com/benolabsai/benodb/blob/main/server/flight_sql/README.md).
 
 
 ### Cloud Storage & Telemetry
@@ -214,7 +214,7 @@ See the [Flight SQL README](https://github.com/benolabsai/benostreamdb/blob/main
 | `BSDB_OTLP_ENDPOINT` | OTLP/HTTP metrics endpoint (e.g. `http://localhost:4318`). The pusher appends `/v1/metrics` and is disabled when unset. | None |
 | `BSDB_OTLP_HEADERS` | Comma-separated `key=value` headers for the OTLP push (for example an auth token). | None |
 | `BSDB_OTLP_INTERVAL_SECS` | OTLP push period in seconds. | `15` |
-| `BSDB_SERVICE_NAME` | `service.name` resource attribute on exported metrics. | `benostreamdb` |
+| `BSDB_SERVICE_NAME` | `service.name` resource attribute on exported metrics. | `benodb` |
 
 ### Development, Test & Benchmark Variables
 
@@ -232,7 +232,7 @@ packaging workflows in this repository.
 | `BSDB_EMBED_SHARD_ROWS` | `scripts/prepare_demo.py` | Rows per embedding shard. |
 | `BSDB_LOAD_CHUNK_ROWS` | `scripts/prepare_demo.py` | Rows per load chunk. |
 | `BSDB_DEMO_DB` | `examples/web_ui/` | Demo database path for the Streamlit/Dash UIs. |
-| `BSDB_SKIP_GPU_PROBE` | `python/benostreamdb/__init__.py` | Internal guard that stops the GPU-probe child from recursing. |
+| `BSDB_SKIP_GPU_PROBE` | `python/benodb/__init__.py` | Internal guard that stops the GPU-probe child from recursing. |
 | `BSDB_SOAK_RSS_CEILING_GB` | `tests/soak.rs` | RSS ceiling for the soak test (default 8 GiB). |
 | `BSDB_TEST_S3_BUCKET` | S3 multi-writer tests | Bucket used by the concurrency tests. |
 | `BSDB_WORKLOAD_SEED` | randomized workload tests | LCG seed (default `12345`). |
@@ -305,7 +305,7 @@ Query-level options are set via the `QueryConfig` struct (Rust). The Python bind
 ### Python Example
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/my-table")
 
@@ -322,7 +322,7 @@ results = table.sql(
 ### Rust Example
 
 ```rust
-use benostreamdb::{Table, QueryConfig};
+use benodb::{Table, QueryConfig};
 
 let table = Table::new("s3://bucket/my-table")?;
 let config = QueryConfig::default()
@@ -366,7 +366,7 @@ LIMIT 10;
 
 **Python API** (per-query vector filter):
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/documents")
 
@@ -408,7 +408,7 @@ LIMIT 10;
 
 **Python API** (per-query vector filter):
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/documents")
 
@@ -502,7 +502,7 @@ SELECT /*+ INDEX_HINT(ef_search=128, probes=20) */ ...
 ### Measuring Recall
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import numpy as np
 
 table = bsdb.Table("s3://bucket/documents")
@@ -540,7 +540,7 @@ print(f"Recall@100: {recall:.2%}")
 ```python
 import time
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/documents")
 vector_filter = {
@@ -584,7 +584,7 @@ LIMIT 10;
 Index build parameters are set during index creation using the fluent `add_index` method:
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 table = bsdb.Table("s3://bucket/my-table")
 

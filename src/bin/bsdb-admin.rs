@@ -43,7 +43,7 @@ fn parse_size(s: &str) -> Result<u64, String> {
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "benostreamdb-admin")]
+#[command(name = "benodb-admin")]
 #[command(about = "Administrative tooling for BenoStreamDB", version)]
 struct Cli {
     #[command(subcommand)]
@@ -87,8 +87,8 @@ async fn main() -> anyhow::Result<()> {
             target_file_size,
         } => {
             tracing::info!("Starting compaction on table: {}", uri);
-            let table = benostreamdb::Table::new_async(uri.clone()).await?;
-            let opts = benostreamdb::core::compaction::CompactionOptions {
+            let table = benodb::Table::new_async(uri.clone()).await?;
+            let opts = benodb::core::compaction::CompactionOptions {
                 target_file_size_bytes: *target_file_size as i64,
                 ..Default::default()
             };
@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
             retain_versions,
         } => {
             tracing::info!("Starting vacuum on table: {}", uri);
-            let table = benostreamdb::Table::new_async(uri.clone()).await?;
+            let table = benodb::Table::new_async(uri.clone()).await?;
             let deleted = table.vacuum_async(*retain_versions).await?;
             println!(
                 "Vacuum completed for {}. Deleted {} unreferenced files.",

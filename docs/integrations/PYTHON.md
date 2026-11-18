@@ -5,7 +5,7 @@ BenoDB provides high-performance Python bindings using [PyO3](https://github.com
 ## Installation
 
 ```bash
-pip install benostreamdb
+pip install benodb
 ```
 
 *(Note: Ensure you have the Rust toolchain installed if building from source)*
@@ -19,7 +19,7 @@ BenoDB supports multiple catalog backends (Nessie, Hive, REST, Glue, Unity). You
 #### 1. Direct Instantiation
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 
 # Create a Nessie catalog
 catalog = bsdb.create_catalog("nessie", {"url": "http://localhost:19120"})
@@ -67,14 +67,14 @@ branch = "main"
 catalog = bsdb.create_catalog_from_config("/path/to/my_config.toml")
 ```
 
-See [examples/configs/](https://github.com/benolabsai/benostreamdb/tree/main/examples/configs) for example configuration files for each catalog type.
+See [examples/configs/](https://github.com/benolabsai/benodb/tree/main/examples/configs) for example configuration files for each catalog type.
 
 ### Table Operations (Writing and Reading)
 
 BenoDB centers around the `Table` class, which manages underlying Apache Iceberg Parquet files and rebuildable index overlays.
 
 ```python
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import numpy as np
 
@@ -163,7 +163,7 @@ device = bsdb.Device("mps")    # Apple Silicon Metal
 device = bsdb.Device("cpu")    # CPU fallback
 ```
 
-For stand-alone batch vector distance computations outside tables, see the [Python Vector API Guide)](https://www.benostreamdb.org/guides/python_vector_api.html).
+For stand-alone batch vector distance computations outside tables, see the [Python Vector API Guide)](https://benolabsai.com/docs/guides/python_vector_api.html).
 
 ## Architecture
 

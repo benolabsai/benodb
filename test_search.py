@@ -1,4 +1,4 @@
-import benostreamdb as bs
+import benodb as bs
 import numpy as np
 import time
 

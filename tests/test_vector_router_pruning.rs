@@ -7,9 +7,9 @@ use std::sync::Arc;
 use arrow::array::{FixedSizeListArray, Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Float32Type, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::index::VectorValue;
-use benostreamdb::core::manifest::IndexAlgorithm;
-use benostreamdb::core::table::{PreloadOptions, Table, VectorSearchParams};
+use benodb::core::index::VectorValue;
+use benodb::core::manifest::IndexAlgorithm;
+use benodb::core::table::{PreloadOptions, Table, VectorSearchParams};
 use tempfile::tempdir;
 
 fn schema(dim: usize) -> Arc<Schema> {
@@ -120,7 +120,7 @@ async fn test_multi_segment_vector_router_pruning() -> anyhow::Result<()> {
     // Query 1: Vector near Segment 0 center (10.0)
     let q1 = vec![10.01; dim];
     let vp1 = VectorSearchParams::new("embedding", VectorValue::Float32(q1), 5)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let plan1 = router.route(&vec![10.01; dim], 2);
@@ -171,7 +171,7 @@ async fn test_multi_segment_vector_router_pruning() -> anyhow::Result<()> {
     // Query 2: Vector near Segment 2 center (100.0)
     let q2 = vec![100.01; dim];
     let vp2 = VectorSearchParams::new("embedding", VectorValue::Float32(q2), 5)
-        .with_metric(benostreamdb::core::index::VectorMetric::L2)
+        .with_metric(benodb::core::index::VectorMetric::L2)
         .with_probes(2);
 
     let results2 = table

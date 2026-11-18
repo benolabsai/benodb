@@ -3,7 +3,7 @@ import pandas as pd
 
 
 def test_flight_sql_client_operations():
-    print("Connecting to benostreamdb-flight at grpc://localhost:50051...")
+    print("Connecting to benodb-flight at grpc://localhost:50051...")
     with flight_sql.connect(uri="grpc://localhost:50051") as conn:
         print("Connection established!")
 

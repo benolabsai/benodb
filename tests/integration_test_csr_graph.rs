@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
 use anyhow::Result;
-use benostreamdb::core::index::csr_graph::MmapCsrGraph;
-use benostreamdb::core::sql::graph_udf::graph_view::GraphView;
+use benodb::core::index::csr_graph::MmapCsrGraph;
+use benodb::core::sql::graph_udf::graph_view::GraphView;
 use std::fs::File;
 use std::io::Write;
 
@@ -20,7 +20,7 @@ async fn test_csr_graph_out_of_core() -> Result<()> {
     let num_nodes = 4;
     let offsets: Vec<u64> = vec![0, 2, 3, 6, 7];
 
-    use benostreamdb::core::index::csr_graph::CsrEdge;
+    use benodb::core::index::csr_graph::CsrEdge;
     let edges: Vec<CsrEdge> = vec![
         CsrEdge {
             dst_id: 1,

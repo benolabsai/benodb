@@ -14,7 +14,7 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 np = pytest.importorskip("numpy")
-bsdb = pytest.importorskip("benostreamdb")
+bsdb = pytest.importorskip("benodb")
 
 DIM = 64
 ROWS = 5_000

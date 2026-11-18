@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 import numpy as np
-import benostreamdb as bsdb
+import benodb as bsdb
 import pyarrow as pa
 import os
 import shutil

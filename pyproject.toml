@@ -3,12 +3,12 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "benostreamdb"
+name = "benodb"
 # Single source of truth is Cargo.toml [workspace.package].version; maturin
 # derives the Python version from it (PEP 621 dynamic version). The release
 # workflow overrides this to <base>.postN at build time for a PyPI repack.
 dynamic = ["version"]
-description = "BenoStreamDB - Serverless Index-Streaming Database with Overlay Indexing"
+description = "BenoDB - Serverless Index-Streaming Database with Overlay Indexing"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT AND Apache-2.0" }
@@ -70,17 +70,18 @@ timeout = 180
 timeout_method = "thread"
 
 [project.urls]
-Homepage = "https://github.com/benolabsai/benostreamdb"
-Repository = "https://github.com/benolabsai/benostreamdb"
+Homepage = "https://github.com/benolabsai/benodb"
+Repository = "https://github.com/benolabsai/benodb"
 
 [project.scripts]
-bsdb = "benostreamdb.cli:main"
+benodb = "benodb.cli:main"
+bsdb = "benodb.cli:main"
 
 
 [tool.maturin]
 features = ["python"]
 # Build both the Rust library and Python bindings (multi-version compatible)
-module-name = "benostreamdb.benostreamdb"
+module-name = "benodb.benodb"
 python-source = "python"
 # Build both the Rust library and Python bindings
 bindings = "pyo3"

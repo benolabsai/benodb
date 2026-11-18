@@ -9,7 +9,7 @@
 use libfuzzer_sys::fuzz_target;
 use serde_json::Value;
 
-use benostreamdb_search::qdrant_types::{
+use benodb_search::qdrant_types::{
     CreateCollectionRequest, DeletePointsRequest, QueryPointsRequest, RetrievePointsRequest,
     UpsertPointsRequest,
 };

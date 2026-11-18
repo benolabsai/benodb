@@ -5,7 +5,7 @@ import tempfile
 import pyarrow as pa
 import pytest
 from pyiceberg.catalog.sql import SqlCatalog
-import benostreamdb as bsdb
+import benodb as bsdb
 
 CATEGORIES = ["database", "vector", "graph", "lakehouse", "search", "streaming"]
 WORDS = [

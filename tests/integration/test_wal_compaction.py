@@ -1,4 +1,4 @@
-import benostreamdb as bsdb
+import benodb as bsdb
 import pandas as pd
 import os
 import time

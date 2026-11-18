@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""BEIR Lexical / BM25 Benchmark Runner: BenoStreamDB vs Tantivy / OpenSearch / Elasticsearch.
+"""BEIR Lexical / BM25 Benchmark Runner: BenoDB vs Tantivy / OpenSearch / Elasticsearch.
 
 Evaluates BM25 inverted index construction, index size on disk, query latency
 (p50, p90, p99), throughput (QPS), and IR retrieval quality (Recall@10, nDCG@10, MRR@10)
 on standard Information Retrieval benchmarks (SciFact / BEIR).
 
 Engines:
-  * ``benostreamdb``  — embedded engine, BM25 overlay index.
+  * ``benodb``  — embedded engine, BM25 overlay index.
   * ``tantivy``       — embedded Rust IR library (``pip install tantivy``).
   * ``opensearch``    — server-backed BM25 (``pip install opensearch-py``); the
     docker compose stack runs OpenSearch and exports ``ES_URL``.
@@ -16,11 +16,11 @@ Every engine is measured with the same corpus, queries, ``k``, and metric code,
 so the numbers are directly comparable.
 
 Usage:
-    python benchmarks/beir/run.py --dataset scifact --engines benostreamdb,tantivy \\
+    python benchmarks/beir/run.py --dataset scifact --engines benodb,tantivy \\
         --out benchmarks/beir/results/scifact_bm25.md
 
     python benchmarks/beir/run.py --dataset scifact \\
-        --engines benostreamdb,tantivy,opensearch --host http://localhost:9200 \\
+        --engines benodb,tantivy,opensearch --host http://localhost:9200 \\
         --out benchmarks/beir/results/scifact_bm25_competitors.md
 """
 
@@ -165,13 +165,13 @@ def _env_record() -> Dict[str, Any]:
 def _engine_backend(engine: str) -> str:
     """The backend the engine actually used (``cuda``/``metal``/``cpu``/...).
 
-    For BenoStreamDB this is the live GPU context; competitors are CPU-only, so
+    For BenoDB this is the live GPU context; competitors are CPU-only, so
     they report ``cpu``. This is what distinguishes a real GPU run from a CPU
     run that merely happened inside the GPU container.
     """
-    if engine in ("benostreamdb", "bsdb"):
+    if engine in ("benodb", "bsdb"):
         try:
-            import benostreamdb as bsdb
+            import benodb as bsdb
 
             return bsdb.gpu_device()
         except Exception:
@@ -328,13 +328,13 @@ def compute_ir_metrics(
     }
 
 
-def run_benostreamdb(
+def run_benodb(
     corpus: List[Tuple[str, str]],
     queries: Dict[str, str],
     k: int = 10,
 ) -> Dict[str, Any]:
-    """Benchmarks BenoStreamDB BM25 inverted index build and retrieval."""
-    import benostreamdb as bsdb
+    """Benchmarks BenoDB BM25 inverted index build and retrieval."""
+    import benodb as bsdb
 
     tmpdir = tempfile.mkdtemp(prefix="bsdb_beir_")
     try:
@@ -390,7 +390,7 @@ def run_benostreamdb(
         qps = len(queries) / total_search_time if total_search_time > 0 else 0.0
 
         return {
-            "engine": "benostreamdb",
+            "engine": "benodb",
             "available": True,
             "build_s": build_s,
             "index_mb": round(index_bytes / (1024 * 1024), 2),
@@ -623,7 +623,7 @@ def _jaccard_agreement(
 def main():
     parser = argparse.ArgumentParser(description="BEIR Lexical / BM25 Benchmark Runner")
     parser.add_argument("--dataset", default="scifact", help="Dataset name under benchmarks/beir/data/")
-    parser.add_argument("--engines", default="benostreamdb,tantivy", help="Comma-separated engines to run")
+    parser.add_argument("--engines", default="benodb,tantivy", help="Comma-separated engines to run")
     parser.add_argument("--k", type=int, default=10, help="Top-k retrieval limit")
     parser.add_argument("--limit-queries", type=int, default=None, help="Limit number of queries evaluated")
     parser.add_argument("--out", default=None, help="Output markdown path")
@@ -661,24 +661,24 @@ def main():
 
     engines = [e.strip() for e in args.engines.split(",") if e.strip()]
 
-    # In the GPU pass, select the GPU backend for BenoStreamDB so the run is a
+    # In the GPU pass, select the GPU backend for BenoDB so the run is a
     # real GPU run rather than a CPU run that merely happened inside the GPU
     # container. `auto` picks the best available device; override with
     # BSDB_GPU_DEVICE (e.g. `cuda:1`).
     if args.device == "gpu":
         try:
-            import benostreamdb as bsdb
+            import benodb as bsdb
 
             resolved = bsdb.set_gpu_device(os.environ.get("BSDB_GPU_DEVICE", "auto"))
-            print(f"BenoStreamDB GPU backend: {resolved}", flush=True)
+            print(f"BenoDB GPU backend: {resolved}", flush=True)
         except Exception as exc:  # no GPU / no wheel: fall back to CPU
             print(f"GPU device selection failed ({exc}); using CPU", flush=True)
 
     results = []
     for engine in engines:
         print(f"Running {engine}...", flush=True)
-        if engine == "benostreamdb":
-            res = run_benostreamdb(corpus, queries, k=args.k)
+        if engine == "benodb":
+            res = run_benodb(corpus, queries, k=args.k)
         elif engine == "tantivy":
             res = run_tantivy(corpus, queries, k=args.k)
         elif engine in ("opensearch", "elasticsearch"):
@@ -701,8 +701,8 @@ def main():
 
         results.append(res)
 
-    # Top-k agreement of every competitor vs BenoStreamDB.
-    bsdb_res = next((r for r in results if r["engine"] == "benostreamdb" and r.get("available")), None)
+    # Top-k agreement of every competitor vs BenoDB.
+    bsdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
     agreements: Dict[str, float] = {}
     if bsdb_res:
         for r in results:
@@ -711,7 +711,7 @@ def main():
             pct = _jaccard_agreement(bsdb_res, r, queries)
             agreements[r["engine"]] = pct
             print(
-                f"\nBenoStreamDB vs {r['engine']} Top-{args.k} Jaccard Agreement: {pct:.1f}%",
+                f"\nBenoDB vs {r['engine']} Top-{args.k} Jaccard Agreement: {pct:.1f}%",
                 flush=True,
             )
 

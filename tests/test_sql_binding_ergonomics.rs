@@ -12,8 +12,8 @@
 use arrow::array::{Float32Array, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use benostreamdb::core::sql::session::BenoStreamSession;
-use benostreamdb::core::table::Table;
+use benodb::core::sql::session::BenoStreamSession;
+use benodb::core::table::Table;
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -204,7 +204,7 @@ async fn test_vector_ergonomics_without_casts() -> anyhow::Result<()> {
 
 #[test]
 fn test_sanitize_sql_semicolon_and_comments() {
-    use benostreamdb::core::sql::session::sanitize_sql_query;
+    use benodb::core::sql::session::sanitize_sql_query;
 
     // Semicolon at end stripped
     let cleaned = sanitize_sql_query("SELECT 1;").unwrap();

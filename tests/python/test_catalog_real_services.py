@@ -64,7 +64,7 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
-import benostreamdb as bsdb
+import benodb as bsdb
 
 UC_IMAGE = os.environ.get("BSDB_UC_IMAGE", "unitycatalog/unitycatalog:latest")
 NESSIE_IMAGE = os.environ.get(

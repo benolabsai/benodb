@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-import benostreamdb as bsdb
+import benodb as bsdb
 
 @pytest.fixture
 def aggregate_data():

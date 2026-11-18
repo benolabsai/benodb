@@ -14,7 +14,7 @@ echo "============================================="
 
 # Launch Flight SQL server in background
 echo "[quickstart] Starting Flight SQL server on :50051..."
-benostreamdb-flight &
+benodb-flight &
 FLIGHT_PID=$!
 
 # Launch Search server in foreground (captures signals for graceful shutdown)
