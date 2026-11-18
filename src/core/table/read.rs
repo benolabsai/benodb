@@ -627,31 +627,44 @@ impl Table {
             for attempt in 0..8usize {
                 let epoch1 = self.buffer_epoch.load(std::sync::atomic::Ordering::SeqCst);
                 let (m, e, v) = if force_direct {
-                    match manifest_manager.load_latest_direct().await {
-                        Ok((m, v)) => {
-                            let entries = manifest_manager.load_all_entries(&m).await?;
-                            (m, entries, v)
-                        }
+                    match manifest_manager.load_latest_direct_full_arc().await {
+                        Ok(full) => full,
                         Err(_) => {
                             if manifest_manager.exists().await.unwrap_or(false) {
-                                (crate::core::manifest::Manifest::default(), Vec::new(), 0)
+                                (
+                                    Arc::new(crate::core::manifest::Manifest::default()),
+                                    Arc::new(Vec::new()),
+                                    0,
+                                )
                             } else {
                                 let segments =
                                     self.list_segments_from_store().await.unwrap_or_default();
-                                (crate::core::manifest::Manifest::default(), segments, 0)
+                                (
+                                    Arc::new(crate::core::manifest::Manifest::default()),
+                                    Arc::new(segments),
+                                    0,
+                                )
                             }
                         }
                     }
                 } else {
-                    match manifest_manager.load_latest_full().await {
-                        Ok((m, e, v)) => (m, e, v),
+                    match manifest_manager.load_latest_full_arc().await {
+                        Ok(full) => full,
                         Err(_) => {
                             if manifest_manager.exists().await.unwrap_or(false) {
-                                (crate::core::manifest::Manifest::default(), Vec::new(), 0)
+                                (
+                                    Arc::new(crate::core::manifest::Manifest::default()),
+                                    Arc::new(Vec::new()),
+                                    0,
+                                )
                             } else {
                                 let segments =
                                     self.list_segments_from_store().await.unwrap_or_default();
-                                (crate::core::manifest::Manifest::default(), segments, 0)
+                                (
+                                    Arc::new(crate::core::manifest::Manifest::default()),
+                                    Arc::new(segments),
+                                    0,
+                                )
                             }
                         }
                     }
@@ -743,7 +756,10 @@ impl Table {
                     // the refinement (and make the refined operating point look
                     // identical to the unrefined one), so fall through instead.
                     if vp.refine_factor.unwrap_or(1) <= 1 {
-                        if let Ok(Some(index)) = self.ensure_cluster_index(&vp.column).await {
+                        if let Ok(Some(index)) = self
+                            .ensure_cluster_index_for(&vp.column, &manifest, &all_entries, version)
+                            .await
+                        {
                             if let crate::core::index::VectorValue::Float32(q) = &vp.query {
                                 let probes = vp
                                     .probes
@@ -816,7 +832,14 @@ impl Table {
                                     hits = scored.len(),
                                     "cluster_index: served query from the table-level artifact"
                                 );
-                                let results = self.fetch_results_by_id(scored, columns).await?;
+                                let results = self
+                                    .fetch_results_by_id_with_entries(
+                                        scored,
+                                        columns,
+                                        &manifest,
+                                        &all_entries,
+                                    )
+                                    .await?;
                                 return Ok(
                                     futures::stream::iter(results.into_iter().map(Ok)).boxed()
                                 );
@@ -841,7 +864,7 @@ impl Table {
                     .map(|(e, _)| e)
                     .collect()
             } else {
-                all_entries.clone()
+                all_entries.as_ref().clone()
             };
 
         // If vector filters are present, evaluate table-level vector routing
@@ -1676,7 +1699,7 @@ impl Table {
         let start_time = std::time::Instant::now();
 
         let manifest_manager = self.manifest_manager();
-        let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
+        let (manifest, all_entries, version) = manifest_manager.load_latest_full_arc().await?;
         let iceberg_schema = manifest
             .schemas
             .iter()
@@ -1692,7 +1715,10 @@ impl Table {
         // unrefined one.
         let has_deletes = all_entries.iter().any(|e| !e.delete_files.is_empty());
         if filter.is_none() && !has_deletes && params.refine_factor.unwrap_or(1) <= 1 {
-            if let Ok(Some(index)) = self.ensure_cluster_index(&params.column).await {
+            if let Ok(Some(index)) = self
+                .ensure_cluster_index_for(&params.column, &manifest, &all_entries, version)
+                .await
+            {
                 if let crate::core::index::VectorValue::Float32(q) = &params.query {
                     let probes = params
                         .probes
@@ -1772,7 +1798,7 @@ impl Table {
                 .map(|(e, _)| e)
                 .collect()
         } else {
-            all_entries
+            all_entries.as_ref().clone()
         };
 
         if entries_after_filter.is_empty() {
@@ -1997,6 +2023,25 @@ impl Table {
         if results.is_empty() {
             return Ok(vec![]);
         }
+        let manifest_manager = self.manifest_manager();
+        let (manifest, all_entries, _) = manifest_manager.load_latest_full_arc().await?;
+        self.fetch_results_by_id_with_entries(results, columns, &manifest, &all_entries)
+            .await
+    }
+
+    /// Fetch full RecordBatches for `results` using an already-loaded
+    /// `(manifest, all_entries)` snapshot, avoiding redundant manifest lookups
+    /// and deep clones on the hot query path.
+    pub(crate) async fn fetch_results_by_id_with_entries(
+        &self,
+        results: Vec<ScoredResult>,
+        columns: Option<&[&str]>,
+        manifest: &crate::core::manifest::Manifest,
+        all_entries: &[crate::core::manifest::ManifestEntry],
+    ) -> Result<Vec<RecordBatch>> {
+        if results.is_empty() {
+            return Ok(vec![]);
+        }
 
         // Score-only short-circuit (vector-search I/O optimisation).
         //
@@ -2036,8 +2081,6 @@ impl Table {
         }
 
         let mut final_batches = Vec::new();
-        let manifest_manager = self.manifest_manager();
-        let (manifest, all_entries, _) = manifest_manager.load_latest_full().await?;
         let iceberg_schema = manifest
             .schemas
             .iter()

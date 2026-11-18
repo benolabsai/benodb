@@ -636,8 +636,21 @@ impl Table {
         column: &str,
     ) -> Result<Option<Arc<crate::core::index::ClusterIndex>>> {
         let manager = self.manifest_manager();
-        let (manifest, entries, version) = manager.load_latest_full().await?;
+        let (manifest, entries, version) = manager.load_latest_full_arc().await?;
+        self.ensure_cluster_index_for(column, &manifest, &entries, version)
+            .await
+    }
 
+    /// Resolve and cache the table-level [`ClusterIndex`] for `column` against
+    /// an already-loaded `(manifest, entries, version)` snapshot, avoiding
+    /// redundant manifest reads and entry clones on the query hot path.
+    pub(crate) async fn ensure_cluster_index_for(
+        &self,
+        column: &str,
+        manifest: &crate::core::manifest::Manifest,
+        entries: &[crate::core::manifest::ManifestEntry],
+        version: u64,
+    ) -> Result<Option<Arc<crate::core::index::ClusterIndex>>> {
         // The set of live data files, normalised to bare segment ids. Both the
         // cached-artifact check and the manifest-artifact check compare against
         // this same set.

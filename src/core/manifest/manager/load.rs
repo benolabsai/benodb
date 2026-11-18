@@ -31,14 +31,14 @@ fn relativize_file_path(root_uri: &str, file_path: &str) -> String {
 }
 
 impl ManifestManager {
-    /// Load the latest manifest bypassing LATEST_VERSION_CACHE.
-    pub async fn load_latest_direct(&self) -> Result<(Manifest, u64)> {
+    /// Resolve the durable head version number directly from `_manifest/`
+    /// storage, bypassing `LATEST_VERSION_CACHE` (preserving linearizability
+    /// across concurrent writers/flushes).
+    async fn resolve_latest_version_direct(&self) -> Result<u64> {
         if let Some(version) = self.pinned_version {
-            return Ok((self.load_version(version).await?, version));
+            return Ok(version);
         }
         let mut max_ver = 0;
-        let mut latest_loc = None;
-
         let mut stream = self.store.list(Some(&self.manifest_dir));
         while let Some(meta) = stream.next().await {
             let meta = meta?;
@@ -49,20 +49,52 @@ impl ManifestManager {
                         if let Ok(ver) = filename[1..filename.len() - 5].parse::<u64>() {
                             if ver >= max_ver {
                                 max_ver = ver;
-                                latest_loc = Some(meta.location);
                             }
                         }
                     }
                 }
             }
         }
+        Ok(max_ver)
+    }
 
-        if let Some(loc) = latest_loc {
-            let manifest_bytes = self.store.get(&loc).await?.bytes().await?;
-            let manifest: Manifest = serde_json::from_slice(&manifest_bytes)?;
+    /// Load the latest manifest bypassing `LATEST_VERSION_CACHE`, while still
+    /// reusing the immutable `v{N}.json` content from `MANIFEST_CACHE`.
+    pub async fn load_latest_direct(&self) -> Result<(Manifest, u64)> {
+        let (manifest, ver) = self.load_latest_direct_arc().await?;
+        Ok((manifest.as_ref().clone(), ver))
+    }
+
+    /// Zero-clone variant of [`Self::load_latest_direct`].
+    pub async fn load_latest_direct_arc(&self) -> Result<(std::sync::Arc<Manifest>, u64)> {
+        let max_ver = self.resolve_latest_version_direct().await?;
+        if max_ver > 0 {
+            let manifest = self.load_version_arc(max_ver).await?;
             Ok((manifest, max_ver))
         } else {
-            Ok((Manifest::default(), 0))
+            Ok((std::sync::Arc::new(Manifest::default()), 0))
+        }
+    }
+
+    /// Zero-clone durable head load: checks `_manifest/` directly for the
+    /// latest version (bypassing `LATEST_VERSION_CACHE`), then returns cached
+    /// immutable `(Arc<Manifest>, Arc<Vec<ManifestEntry>>, version)`.
+    pub async fn load_latest_direct_full_arc(
+        &self,
+    ) -> Result<(
+        std::sync::Arc<Manifest>,
+        std::sync::Arc<Vec<ManifestEntry>>,
+        u64,
+    )> {
+        let max_ver = self.resolve_latest_version_direct().await?;
+        if max_ver > 0 {
+            self.load_version_full_arc(max_ver).await
+        } else {
+            Ok((
+                std::sync::Arc::new(Manifest::default()),
+                std::sync::Arc::new(Vec::new()),
+                0,
+            ))
         }
     }
 
@@ -157,12 +189,43 @@ impl ManifestManager {
 
     /// Load the latest manifest and ALL its entries (including sharded ones)
     pub async fn load_latest_full(&self) -> Result<(Manifest, Vec<ManifestEntry>, u64)> {
+        let (manifest, entries, ver) = self.load_latest_full_arc().await?;
+        Ok((manifest.as_ref().clone(), entries.as_ref().clone(), ver))
+    }
+
+    /// Zero-clone variant of [`Self::load_latest_full`].
+    pub async fn load_latest_full_arc(
+        &self,
+    ) -> Result<(
+        std::sync::Arc<Manifest>,
+        std::sync::Arc<Vec<ManifestEntry>>,
+        u64,
+    )> {
         if let Some(version) = self.pinned_version {
-            return self.load_version_full(version).await;
+            return self.load_version_full_arc(version).await;
         }
-        let (manifest, ver) = self.load_latest().await?;
-        let entries = self.load_all_entries(&manifest).await?;
-        Ok((manifest, entries, ver))
+        let cache_key = self.get_dir_cache_key();
+        if let Some(ver) = crate::core::cache::LATEST_VERSION_CACHE
+            .get_with_metrics(&cache_key, "latest_version")
+            .await
+        {
+            if let Ok(full) = self.load_version_full_arc(ver).await {
+                return Ok(full);
+            }
+        }
+        let max_ver = self.resolve_latest_version_direct().await?;
+        if max_ver > 0 {
+            crate::core::cache::LATEST_VERSION_CACHE
+                .insert(cache_key, max_ver)
+                .await;
+            self.load_version_full_arc(max_ver).await
+        } else {
+            Ok((
+                std::sync::Arc::new(Manifest::new(0, Vec::new(), None)),
+                std::sync::Arc::new(Vec::new()),
+                0,
+            ))
+        }
     }
 
     /// Load a specific version with all of its entries, including sharded
@@ -172,35 +235,84 @@ impl ManifestManager {
         &self,
         version: u64,
     ) -> Result<(Manifest, Vec<ManifestEntry>, u64)> {
-        let manifest = self.load_version(version).await?;
-        let entries = self.load_all_entries(&manifest).await?;
-        Ok((manifest, entries, version))
+        let (manifest, entries, ver) = self.load_version_full_arc(version).await?;
+        Ok((manifest.as_ref().clone(), entries.as_ref().clone(), ver))
     }
 
-    /// Load a specific version of the manifest
-    pub async fn load_version(&self, version: u64) -> Result<Manifest> {
+    /// Zero-clone immutable `(Arc<Manifest>, Arc<Vec<ManifestEntry>>, version)`
+    /// backed by `MANIFEST_FULL_CACHE` with per-key singleflight deduplication.
+    pub async fn load_version_full_arc(
+        &self,
+        version: u64,
+    ) -> Result<(
+        std::sync::Arc<Manifest>,
+        std::sync::Arc<Vec<ManifestEntry>>,
+        u64,
+    )> {
         let filename = format!("v{}.json", version);
         let path = self.manifest_dir.child(filename);
         let cache_key = self.get_cache_key(&path);
 
-        // 1. Check Data Cache
+        if let Some(cached) = crate::core::cache::MANIFEST_FULL_CACHE
+            .get_with_metrics(&cache_key, "manifest_full")
+            .await
+        {
+            return Ok((
+                std::sync::Arc::clone(&cached.0),
+                std::sync::Arc::clone(&cached.1),
+                version,
+            ));
+        }
+
+        let res = crate::core::cache::MANIFEST_FULL_CACHE
+            .try_get_with(cache_key, async {
+                let manifest = self.load_version_arc(version).await?;
+                let entries = self.load_all_entries(&manifest).await?;
+                Ok::<_, anyhow::Error>(std::sync::Arc::new((
+                    manifest,
+                    std::sync::Arc::new(entries),
+                )))
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        Ok((
+            std::sync::Arc::clone(&res.0),
+            std::sync::Arc::clone(&res.1),
+            version,
+        ))
+    }
+
+    /// Load a specific version of the manifest (owned clone).
+    pub async fn load_version(&self, version: u64) -> Result<Manifest> {
+        let manifest = self.load_version_arc(version).await?;
+        Ok(manifest.as_ref().clone())
+    }
+
+    /// Zero-clone immutable manifest load backed by `MANIFEST_CACHE` with
+    /// per-key singleflight deduplication (prevents concurrent threads from
+    /// simultaneously re-parsing multi-megabyte JSON manifests on cold start).
+    pub async fn load_version_arc(&self, version: u64) -> Result<std::sync::Arc<Manifest>> {
+        let filename = format!("v{}.json", version);
+        let path = self.manifest_dir.child(filename);
+        let cache_key = self.get_cache_key(&path);
+
         if let Some(manifest) = crate::core::cache::MANIFEST_CACHE
             .get_with_metrics(&cache_key, "manifest")
             .await
         {
-            return Ok(manifest.as_ref().clone());
+            return Ok(manifest);
         }
 
-        // 2. Fetch from S3
-        let bytes = self.store.get(&path).await?.bytes().await?;
-        let manifest: Manifest = serde_json::from_slice(&bytes)?;
-
-        // 3. Populate Cache
+        let store = self.store.clone();
         crate::core::cache::MANIFEST_CACHE
-            .insert(cache_key, std::sync::Arc::new(manifest.clone()))
-            .await;
-
-        Ok(manifest)
+            .try_get_with(cache_key, async move {
+                let bytes = store.get(&path).await?.bytes().await?;
+                let manifest: Manifest = serde_json::from_slice(&bytes)?;
+                Ok::<_, anyhow::Error>(std::sync::Arc::new(manifest))
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     /// Load a manifest list from a specific path

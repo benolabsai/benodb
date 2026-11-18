@@ -150,6 +150,7 @@ impl ManifestManager {
             .invalidate(&dir_key)
             .await;
         crate::core::cache::MANIFEST_CACHE.invalidate_all();
+        crate::core::cache::MANIFEST_FULL_CACHE.invalidate_all();
     }
 
     /// Invalidate only the latest-version entry for this table directory.

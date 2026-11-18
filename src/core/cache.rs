@@ -540,7 +540,26 @@ impl DiskCache {
 pub static MANIFEST_CACHE: Lazy<Cache<String, Arc<Manifest>>> = Lazy::new(|| {
     Cache::builder()
         .max_capacity(1000)
-        .time_to_live(Duration::from_secs(5)) // Short TTL; commit() explicitly invalidates
+        // Versioned manifest files (`v{N}.json`) are immutable once committed;
+        // `invalidate_caches()` / `invalidate_table_caches()` clear them on drop.
+        .time_to_live(Duration::from_secs(60 * 60))
+        .build()
+});
+
+/// Cached immutable `(Manifest, all_entries)` pair for a manifest version.
+pub type CachedFullManifest = Arc<(
+    Arc<Manifest>,
+    Arc<Vec<crate::core::manifest::ManifestEntry>>,
+)>;
+
+/// Resolved `(Manifest, all_entries)` cache keyed by `"{root_uri}/{manifest_dir}/v{N}.json"`.
+///
+/// Immutable per manifest version; eliminates per-query deep cloning of tens of
+/// thousands of `ManifestEntry` / `IndexFile` structs on high-segment tables.
+pub static MANIFEST_FULL_CACHE: Lazy<Cache<String, CachedFullManifest>> = Lazy::new(|| {
+    Cache::builder()
+        .max_capacity(256)
+        .time_to_live(Duration::from_secs(60 * 60))
         .build()
 });
 
@@ -902,6 +921,7 @@ pub async fn invalidate_table_caches(uri: &str) {
     // keyed by both the normalized and raw table path depending on the caller.
     // Clearing them globally is cheap and avoids a stale-version read.
     MANIFEST_CACHE.invalidate_all();
+    MANIFEST_FULL_CACHE.invalidate_all();
     MANIFEST_LIST_CACHE.invalidate_all();
     LATEST_VERSION_CACHE.invalidate_all();
 }
@@ -914,6 +934,7 @@ pub fn invalidate_index_caches() {
     CSR_GRAPH_CACHE.invalidate_all();
     INVERTED_INDEX_CACHE.invalidate_all();
     MANIFEST_CACHE.invalidate_all();
+    MANIFEST_FULL_CACHE.invalidate_all();
     MANIFEST_LIST_CACHE.invalidate_all();
     LATEST_VERSION_CACHE.invalidate_all();
 }
