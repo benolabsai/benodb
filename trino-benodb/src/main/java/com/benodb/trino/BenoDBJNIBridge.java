@@ -5,7 +5,7 @@ public class BenoDBJNIBridge {
 
     static {
         try {
-            System.loadLibrary("benostreamdb");
+            System.loadLibrary("benodb");
             loaded = true;
             System.out.println("Successfully loaded native BenoDB library for Trino.");
         } catch (UnsatisfiedLinkError e) {

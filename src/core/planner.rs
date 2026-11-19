@@ -366,6 +366,73 @@ impl FilterExpr {
 
         let sql = format!("SELECT * FROM t WHERE {}", filter);
 
+        // Pre-parse with sqlparser to guard against upstream DataFusion panics on malformed
+        // typed strings (e.g. `TIME?` where DataFusion 52.5.0 calls `value.into_string().unwrap()`).
+        {
+            use datafusion::sql::sqlparser::ast::{Expr as SQLExpr, SetExpr, Statement};
+            use datafusion::sql::sqlparser::dialect::GenericDialect;
+            use datafusion::sql::sqlparser::parser::Parser;
+
+            fn has_invalid_typed_string(expr: &SQLExpr) -> bool {
+                match expr {
+                    SQLExpr::TypedString(ts) => ts.value.clone().into_string().is_none(),
+                    SQLExpr::BinaryOp { left, right, .. } => {
+                        has_invalid_typed_string(left) || has_invalid_typed_string(right)
+                    }
+                    SQLExpr::UnaryOp { expr, .. } | SQLExpr::Nested(expr) => {
+                        has_invalid_typed_string(expr)
+                    }
+                    SQLExpr::IsNull(expr) | SQLExpr::IsNotNull(expr) => {
+                        has_invalid_typed_string(expr)
+                    }
+                    SQLExpr::InList { expr, list, .. } => {
+                        has_invalid_typed_string(expr) || list.iter().any(has_invalid_typed_string)
+                    }
+                    SQLExpr::Between {
+                        expr, low, high, ..
+                    } => {
+                        has_invalid_typed_string(expr)
+                            || has_invalid_typed_string(low)
+                            || has_invalid_typed_string(high)
+                    }
+                    SQLExpr::Function(f) => {
+                        use datafusion::sql::sqlparser::ast::{
+                            FunctionArg, FunctionArgExpr, FunctionArguments,
+                        };
+                        match &f.args {
+                            FunctionArguments::List(arg_list) => {
+                                arg_list.args.iter().any(|arg| match arg {
+                                    FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
+                                        match arg {
+                                            FunctionArgExpr::Expr(e) => has_invalid_typed_string(e),
+                                            _ => false,
+                                        }
+                                    }
+                                    _ => false,
+                                })
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                }
+            }
+
+            if let Ok(stmts) = Parser::parse_sql(&GenericDialect {}, &sql) {
+                for stmt in stmts {
+                    if let Statement::Query(query) = stmt {
+                        if let SetExpr::Select(select) = *query.body {
+                            if let Some(selection) = select.selection {
+                                if has_invalid_typed_string(&selection) {
+                                    anyhow::bail!("malformed typed string in filter: '{}'", filter);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Normalize schema to use standard Utf8 for string columns to avoid Utf8/LargeUtf8 confusion
         let normalized_fields: Vec<arrow::datatypes::Field> = schema
             .fields()
@@ -1077,6 +1144,23 @@ mod between_dump_tests {
             res.is_err(),
             "malformed expression 'dec?' must return an Err, not panic"
         );
+    }
+
+    #[tokio::test]
+    async fn fuzzer_time_question_mark() {
+        let schema = std::sync::Arc::new(arrow::datatypes::Schema::new(vec![
+            arrow::datatypes::Field::new("id", arrow::datatypes::DataType::Int64, false),
+            arrow::datatypes::Field::new("title", arrow::datatypes::DataType::Utf8, true),
+            arrow::datatypes::Field::new("score", arrow::datatypes::DataType::Float64, true),
+        ]));
+        // Test parse_sql_inner directly without catch_unwind to prove it never panics
+        let res = FilterExpr::parse_sql_inner("TIME?".to_string(), schema.clone()).await;
+        assert!(
+            res.is_err(),
+            "malformed expression 'TIME?' must return an Err, not panic"
+        );
+        let res_outer = FilterExpr::parse_sql("TIME?", schema).await;
+        assert!(res_outer.is_err(), "parse_sql('TIME?') must return an Err");
     }
 }
 

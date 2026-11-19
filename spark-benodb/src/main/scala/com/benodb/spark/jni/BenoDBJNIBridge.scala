@@ -192,7 +192,7 @@ object BenoDBJNIBridge {
       synchronized {
         if (instance == null) {
           try {
-            System.loadLibrary("benostreamdb")
+            System.loadLibrary("benodb")
             loaded = true
             logger.info("Successfully loaded native BenoDB library.")
           } catch {

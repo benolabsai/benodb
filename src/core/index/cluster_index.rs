@@ -3238,67 +3238,116 @@ impl ClusterIndex {
 
     /// Advise the page cache for winning clusters' `node_meta` blobs only.
     fn prefetch_node_meta(&self, cluster_ids: &[usize]) {
-        #[cfg(unix)]
-        {
-            if self.local_root.is_none() || cluster_ids.is_empty() {
-                return;
-            }
-            let mut per_shard: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
-            for &cluster_id in cluster_ids {
-                if self
-                    .cache
-                    .contains_key(&ClusterCacheKey::NodeMeta(cluster_id))
-                    || self.cache.contains_key(&ClusterCacheKey::Graph(cluster_id))
-                {
-                    continue;
-                }
-                let Some(&shard_idx) = self.cluster_to_shard.get(&cluster_id) else {
-                    continue;
-                };
-                let Some(shard) = self.shards.get(shard_idx) else {
-                    continue;
-                };
-                let Some(slices) = shard.cluster_slices.get(&cluster_id) else {
-                    continue;
-                };
-                per_shard
-                    .entry(shard_idx)
-                    .or_default()
-                    .push(slices.node_meta);
-            }
-            self.advise_shard_spans(per_shard);
-        }
-        #[cfg(not(unix))]
-        let _ = cluster_ids;
-    }
-
-    #[cfg(unix)]
-    fn advise_shard_spans(&self, per_shard: HashMap<usize, Vec<(usize, usize)>>) {
-        use std::os::unix::io::AsRawFd;
-        let Some(root) = self.local_root.as_ref() else {
+        if self.local_root.is_none() || cluster_ids.is_empty() {
             return;
-        };
-        for (shard_idx, spans) in per_shard {
+        }
+        let mut per_shard: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+        for &cluster_id in cluster_ids {
+            if self
+                .cache
+                .contains_key(&ClusterCacheKey::NodeMeta(cluster_id))
+                || self.cache.contains_key(&ClusterCacheKey::Graph(cluster_id))
+            {
+                continue;
+            }
+            let Some(&shard_idx) = self.cluster_to_shard.get(&cluster_id) else {
+                continue;
+            };
             let Some(shard) = self.shards.get(shard_idx) else {
                 continue;
             };
-            let Some(relative) = shard.file_path.as_deref() else {
+            let Some(slices) = shard.cluster_slices.get(&cluster_id) else {
                 continue;
             };
-            let Ok(file) = std::fs::File::open(root.join(relative)) else {
-                continue;
+            per_shard
+                .entry(shard_idx)
+                .or_default()
+                .push(slices.node_meta);
+        }
+        self.advise_shard_spans(per_shard);
+    }
+
+    fn advise_shard_spans(&self, per_shard: HashMap<usize, Vec<(usize, usize)>>) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let Some(root) = self.local_root.as_ref() else {
+                return;
             };
-            let fd = file.as_raw_fd();
-            for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
-                // SAFETY: the descriptor is open for the duration of the call
-                // and `posix_fadvise` neither reads nor writes through it.
-                unsafe {
-                    libc::posix_fadvise(
-                        fd,
-                        offset as libc::off_t,
-                        len as libc::off_t,
-                        libc::POSIX_FADV_WILLNEED,
-                    );
+            for (shard_idx, spans) in per_shard {
+                let Some(shard) = self.shards.get(shard_idx) else {
+                    continue;
+                };
+                let Some(relative) = shard.file_path.as_deref() else {
+                    continue;
+                };
+                let Ok(file) = std::fs::File::open(root.join(relative)) else {
+                    continue;
+                };
+                let fd = file.as_raw_fd();
+                for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
+                    // SAFETY: the descriptor is open for the duration of the call
+                    // and the advisory neither reads nor writes through it.
+                    unsafe {
+                        #[cfg(target_os = "linux")]
+                        libc::posix_fadvise(
+                            fd,
+                            offset as libc::off_t,
+                            len as libc::off_t,
+                            libc::POSIX_FADV_WILLNEED,
+                        );
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            let ra = libc::radvisory {
+                                ra_offset: offset as libc::off_t,
+                                ra_count: len.min(libc::c_int::MAX as usize) as libc::c_int,
+                            };
+                            libc::fcntl(fd, libc::F_RDADVISE, &ra);
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            #[repr(C)]
+            struct WIN32_MEMORY_RANGE_ENTRY {
+                virtual_address: *mut std::ffi::c_void,
+                number_of_bytes: usize,
+            }
+            extern "system" {
+                fn GetCurrentProcess() -> *mut std::ffi::c_void;
+                fn PrefetchVirtualMemory(
+                    h_process: *mut std::ffi::c_void,
+                    number_of_entries: usize,
+                    virtual_addresses: *const WIN32_MEMORY_RANGE_ENTRY,
+                    flags: u32,
+                ) -> i32;
+            }
+
+            for (shard_idx, spans) in per_shard {
+                let Some(shard) = self.shards.get(shard_idx) else {
+                    continue;
+                };
+                if shard.container.is_empty() {
+                    continue;
+                }
+                let base_ptr = shard.container.as_ptr();
+                for (offset, len) in coalesce_spans(spans, PREFETCH_MERGE_GAP) {
+                    if offset + len <= shard.container.len() {
+                        let entry = WIN32_MEMORY_RANGE_ENTRY {
+                            virtual_address: unsafe {
+                                base_ptr.add(offset) as *mut std::ffi::c_void
+                            },
+                            number_of_bytes: len,
+                        };
+                        unsafe {
+                            let proc = GetCurrentProcess();
+                            let _ = PrefetchVirtualMemory(proc, 1, &entry, 0);
+                        }
+                    }
                 }
             }
         }
