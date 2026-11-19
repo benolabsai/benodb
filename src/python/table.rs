@@ -3643,7 +3643,7 @@ impl PyTable {
             use datafusion::prelude::{SessionConfig, SessionContext};
 
             // Apply the configurable DataFusion query memory limit
-            // (`BSDB_DATAFUSION_MEMORY_GB`, else half the effective memory) so
+            // (`BDB_DATAFUSION_MEMORY_GB`, else half the effective memory) so
             // SQL operators spill to disk instead of OOMing. This is the path the
             // graph UDFs (`subgraph`, `communities`, `bfs`) run on.
             let memory_limit = crate::core::resources::default_datafusion_memory_bytes();

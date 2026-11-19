@@ -25,7 +25,7 @@ maturin develop --features cuda
 **BenoDB's network servers are not hardened for untrusted networks.**
 The network servers (`benodb-flight`, `bsdb-search`, and `contrib/benodb-mcp`)
 ship with **no native TLS**. While they support **stateless authentication** (via
-`BSDB_API_KEY` or JWT tokens), they should be deployed on a **trusted internal network**
+`BDB_API_KEY` or JWT tokens), they should be deployed on a **trusted internal network**
 or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. Do **not** expose
 them directly to the public internet without an authenticating, TLS-terminating gateway.
 
@@ -576,9 +576,9 @@ The binary is produced at `target/release/bsdb-search`.
 ./target/release/bsdb-search
 
 # Or with explicit configuration:
-BSDB_SEARCH_BIND=0.0.0.0 \
-BSDB_SEARCH_PORT=9200 \
-BSDB_SEARCH_STORAGE_URI=file:///data/search \
+BDB_SEARCH_BIND=0.0.0.0 \
+BDB_SEARCH_PORT=9200 \
+BDB_SEARCH_STORAGE_URI=file:///data/search \
 ./target/release/bsdb-search
 ```
 
@@ -586,15 +586,15 @@ BSDB_SEARCH_STORAGE_URI=file:///data/search \
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `BSDB_SEARCH_STORAGE_URI` | `file://~/.benodb/search` | Index root. Each index `<name>` is a table at `{root}/{name}`. Supports `file://`, `s3://`, `gs://`, `az://`, `http(s)://`. |
-| `BSDB_SEARCH_BIND` | `127.0.0.1` | OpenSearch/ES API bind address. |
-| `BSDB_SEARCH_PORT` | `9200` | OpenSearch/ES API port. |
-| `BSDB_SEARCH_AUTO_REFRESH_SECS` | `0` (off) | Periodically flush every index so new docs become searchable without an explicit `_refresh`. |
-| `BSDB_SEARCH_RRF_K` | `60` | Default RRF fusion constant for hybrid (BM25 + HNSW) search. Overridable per-request with `rrf_k`. |
-| `BSDB_QDRANT_BIND` | `127.0.0.1` | Qdrant-compatible API bind address. |
-| `BSDB_QDRANT_PORT` | `6333` | Qdrant-compatible API port. |
-| `BSDB_CACHE_GB` | — | (inherited) read-cache size in GB. |
-| `BSDB_WAL_SYNC_INTERVAL_MS` | — | (inherited) WAL sync interval. |
+| `BDB_SEARCH_STORAGE_URI` | `file://~/.benodb/search` | Index root. Each index `<name>` is a table at `{root}/{name}`. Supports `file://`, `s3://`, `gs://`, `az://`, `http(s)://`. |
+| `BDB_SEARCH_BIND` | `127.0.0.1` | OpenSearch/ES API bind address. |
+| `BDB_SEARCH_PORT` | `9200` | OpenSearch/ES API port. |
+| `BDB_SEARCH_AUTO_REFRESH_SECS` | `0` (off) | Periodically flush every index so new docs become searchable without an explicit `_refresh`. |
+| `BDB_SEARCH_RRF_K` | `60` | Default RRF fusion constant for hybrid (BM25 + HNSW) search. Overridable per-request with `rrf_k`. |
+| `BDB_QDRANT_BIND` | `127.0.0.1` | Qdrant-compatible API bind address. |
+| `BDB_QDRANT_PORT` | `6333` | Qdrant-compatible API port. |
+| `BDB_CACHE_GB` | — | (inherited) read-cache size in GB. |
+| `BDB_WAL_SYNC_INTERVAL_MS` | — | (inherited) WAL sync interval. |
 
 > **Security note:** `bsdb-search` v1 has **no authentication** and binds to
 > `127.0.0.1` by default. If you expose it beyond localhost, place it behind a

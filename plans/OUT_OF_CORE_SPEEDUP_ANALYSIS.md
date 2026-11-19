@@ -15,7 +15,7 @@
 | 3.6 | Multi-quantizer & cross-architecture SIMD parity (`x86_64` AVX2+FMA & `aarch64` NEON for Apple M-series / Graviton across TQ8, TQ4, SQ8, PQ, Cosine/IP, L1, F32) | ✅ Completed | [benoquant.rs](file:///home/ralbright/projects/benodb/src/core/index/benoquant.rs), [sq.rs](file:///home/ralbright/projects/benodb/src/core/index/sq.rs), [pq.rs](file:///home/ralbright/projects/benodb/src/core/index/pq.rs), [distance.rs](file:///home/ralbright/projects/benodb/src/core/index/distance.rs), [mod.rs](file:///home/ralbright/projects/benodb/src/core/index/mod.rs) | `test_scan_l2_u8_codes_matches_distance`, `test_scan_codes_tq4_and_cosine_match_distance`, `test_sq8_scan_codes_matches_distance`, `test_pq_scan_codes_matches_distance` |
 
 > [!NOTE]
-> **Backward compatibility:** Existing artifacts built prior to this change (including the 40.3 GiB 100M BigANN artifact on disk) carry `ClusterSlices.codes == None` and automatically fall back to the HNSW graph path while still benefiting from §3.4 pipelining and §3.5 singleflight caching. Rebuilding the table-level cluster index (`rebuild_cluster_index`) activates §3.1–§3.3. `BSDB_CLUSTER_SEARCH_MODE=graph|codes|auto` allows A/B benchmarking on the same artifact.
+> **Backward compatibility:** Existing artifacts built prior to this change (including the 40.3 GiB 100M BigANN artifact on disk) carry `ClusterSlices.codes == None` and automatically fall back to the HNSW graph path while still benefiting from §3.4 pipelining and §3.5 singleflight caching. Rebuilding the table-level cluster index (`rebuild_cluster_index`) activates §3.1–§3.3. `BDB_CLUSTER_SEARCH_MODE=graph|codes|auto` allows A/B benchmarking on the same artifact.
 
 ---
 

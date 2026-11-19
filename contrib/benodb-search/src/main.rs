@@ -2,8 +2,8 @@
 
 //! `bsdb-search` — OpenSearch / Elasticsearch 7.10-compatible REST server.
 //!
-//! Binds to `BSDB_SEARCH_BIND:BSDB_SEARCH_PORT` (default `127.0.0.1:9200`)
-//! and stores indexes under `BSDB_SEARCH_STORAGE_URI`
+//! Binds to `BDB_SEARCH_BIND:BDB_SEARCH_PORT` (default `127.0.0.1:9200`)
+//! and stores indexes under `BDB_SEARCH_STORAGE_URI`
 //! (default `file://~/.benodb/search`).
 
 // No-panic policy for production binaries (see NO_PANIC_POLICY.md).
@@ -69,8 +69,8 @@ async fn main() {
     // the gateway's own registry and the core engine's.
     benodb::core::telemetry::install_metrics_recorder();
 
-    let bind = std::env::var("BSDB_SEARCH_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BSDB_SEARCH_PORT")
+    let bind = std::env::var("BDB_SEARCH_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BDB_SEARCH_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(9200);
@@ -81,7 +81,7 @@ async fn main() {
                 error = %e,
                 bind = %bind,
                 port,
-                "Invalid BSDB_SEARCH_BIND/BSDB_SEARCH_PORT"
+                "Invalid BDB_SEARCH_BIND/BDB_SEARCH_PORT"
             );
             std::process::exit(1);
         }
@@ -89,7 +89,7 @@ async fn main() {
 
     let cluster_uuid = uuid::Uuid::new_v4().to_string();
 
-    let device_str = std::env::var("BSDB_SEARCH_DEVICE").unwrap_or_else(|_| "auto".to_string());
+    let device_str = std::env::var("BDB_SEARCH_DEVICE").unwrap_or_else(|_| "auto".to_string());
     let compute_ctx = benodb::core::index::gpu::ComputeContext::from_device_str(&device_str)
         .unwrap_or_else(|e| {
             tracing::warn!(error = %e, device = %device_str, "Failed to initialize requested compute device; falling back to auto-detect");
@@ -121,12 +121,12 @@ async fn main() {
     // deployment that expects writes should fail fast rather than accept them
     // and 403 at request time.
     if state.is_read_only() {
-        let require_policy = std::env::var("BSDB_SEARCH_REQUIRE_POLICY")
+        let require_policy = std::env::var("BDB_SEARCH_REQUIRE_POLICY")
             .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
             .unwrap_or(false);
         if require_policy {
             tracing::error!(
-                "BSDB_SEARCH_REQUIRE_POLICY is set but no writable schema is configured \
+                "BDB_SEARCH_REQUIRE_POLICY is set but no writable schema is configured \
                  (publish a .benostream-policy.json); refusing to start in read-only mode"
             );
             std::process::exit(1);
@@ -146,7 +146,7 @@ async fn main() {
 
     // Optional NRT convenience: periodically flush every index so newly
     // written documents become searchable without an explicit `_refresh`.
-    if let Ok(secs) = std::env::var("BSDB_SEARCH_AUTO_REFRESH_SECS") {
+    if let Ok(secs) = std::env::var("BDB_SEARCH_AUTO_REFRESH_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
             if secs > 0 {
                 let state = state.clone();
@@ -158,8 +158,7 @@ async fn main() {
                         let indexes = state.list_indexes().await.unwrap_or_default();
                         for index in indexes {
                             if let Err(e) =
-                                benodb_search::handlers::docs::refresh_core(&state, &index)
-                                    .await
+                                benodb_search::handlers::docs::refresh_core(&state, &index).await
                             {
                                 tracing::warn!(index, error = %e, "auto-refresh failed for index");
                             }
@@ -311,21 +310,21 @@ async fn main() {
             benodb_search::auth::auth_middleware,
         ));
 
-    let qdrant_bind = std::env::var("BSDB_QDRANT_BIND").unwrap_or_else(|_| bind.clone());
+    let qdrant_bind = std::env::var("BDB_QDRANT_BIND").unwrap_or_else(|_| bind.clone());
     let is_loopback = |b: &str| b == "127.0.0.1" || b == "::1" || b == "localhost";
     if (!is_loopback(&bind) || !is_loopback(&qdrant_bind)) && !auth.enabled() {
-        tracing::error!("Network-exposed bind address without authentication credentials! Set BSDB_API_KEY or JWT config.");
+        tracing::error!("Network-exposed bind address without authentication credentials! Set BDB_API_KEY or JWT config.");
         std::process::exit(1);
     }
 
-    let qdrant_port: u16 = std::env::var("BSDB_QDRANT_PORT")
+    let qdrant_port: u16 = std::env::var("BDB_QDRANT_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(6333);
     let qdrant_addr: SocketAddr = match format!("{qdrant_bind}:{qdrant_port}").parse() {
         Ok(a) => a,
         Err(e) => {
-            tracing::error!(error = %e, "Invalid BSDB_QDRANT_BIND/BSDB_QDRANT_PORT");
+            tracing::error!(error = %e, "Invalid BDB_QDRANT_BIND/BDB_QDRANT_PORT");
             std::process::exit(1);
         }
     };

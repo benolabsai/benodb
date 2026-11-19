@@ -52,7 +52,7 @@ pending_commit (Mutex)  -->  pending_writes (RwLock)  -->  indexing.memory_index
 
 Asynchronous coarse-grained serialization sits outside these short critical sections:
 - `maintenance_lock`: shared read guard for `write_with_durability_async` and `flush_async`; exclusive write guard for `compact`, `truncate_async`, and `vacuum`.
-- `write_with_durability_async` explicitly drops its `_maintenance_guard` immediately after appending to WAL, `memory_index`, and `pending_writes`, preventing self-deadlock when autocommit or `BSDB_CACHE_GB` spillover triggers `commit_async()`.
+- `write_with_durability_async` explicitly drops its `_maintenance_guard` immediately after appending to WAL, `memory_index`, and `pending_writes`, preventing self-deadlock when autocommit or `BDB_CACHE_GB` spillover triggers `commit_async()`.
 
 ---
 
@@ -110,9 +110,9 @@ For distributed JVM connectors (Spark `BatchWrite` executors staging Parquet fil
 Consistent with BenoDB's systems-first contract, operators must respect four explicit boundaries of `PendingCommit`:
 
 1. **Single-Table Coordinator Only:** `PendingCommit`, `commit_lock`, and `maintenance_lock` coordinate within a single `Table` handle against shared object-store CAS (`_manifest/v{N}.json` and `metadata/v{N}.metadata.json`). Multi-table cross-statement transactions and distributed two-phase consensus protocols are **out of scope**.
-2. **Remote Object Storage + Ephemeral Local WAL:** When opening an `s3://`, `gs://`, or `az://` URI without setting `BSDB_WAL_DIR` or `TableBuilder::with_wal_dir()`, the WAL defaults to local temporary storage (`/tmp/benostream_wal/...`) and logs a startup `tracing::warn!`. Un-committed WAL records in temporary local storage do not survive container or VM loss prior to `commit_async()`.
+2. **Remote Object Storage + Ephemeral Local WAL:** When opening an `s3://`, `gs://`, or `az://` URI without setting `BDB_WAL_DIR` or `TableBuilder::with_wal_dir()`, the WAL defaults to local temporary storage (`/tmp/benostream_wal/...`) and logs a startup `tracing::warn!`. Un-committed WAL records in temporary local storage do not survive container or VM loss prior to `commit_async()`.
 3. **256-Transaction Manifest Window:** `benostream.committed_wal_tx` retains the trailing `MAX_TRACKED_WAL_TX = 256` UUIDs in `_manifest/v{N}.json`. Segment rotation + `prune_committed_segments()` removes committed `.arrow` segments immediately during `finish_pending_commit_tail_async()`, preventing accumulation; however, if an operator restores a snapshot older than 256 commits alongside unpruned legacy WAL files, manual WAL cleanup may be needed.
-4. **Durability Modes:** [`WalDurability`](https://github.com/benolabsai/benodb/blob/main/src/core/table/mod.rs#L249-L256) exposes only `Sync` (default, `fdatasync`/`fsync` per batch before client ack) and `Async` (buffered worker sync every `BSDB_WAL_SYNC_BATCH_SIZE = 10` batches or `BSDB_WAL_SYNC_INTERVAL_MS = 100` ms). Under `Async`, an un-synced tail window can be lost on process termination.
+4. **Durability Modes:** [`WalDurability`](https://github.com/benolabsai/benodb/blob/main/src/core/table/mod.rs#L249-L256) exposes only `Sync` (default, `fdatasync`/`fsync` per batch before client ack) and `Async` (buffered worker sync every `BDB_WAL_SYNC_BATCH_SIZE = 10` batches or `BDB_WAL_SYNC_INTERVAL_MS = 100` ms). Under `Async`, an un-synced tail window can be lost on process termination.
 
 ---
 

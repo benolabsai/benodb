@@ -311,7 +311,7 @@ See [`../benchmarks/beir/`](https://github.com/benolabsai/benodb/tree/main/bench
 
 `--cpus` sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS`; `--mem` sets the container
 cgroup `deploy.resources.limits.memory`. The BenoDB side is constrained by
-`RAYON_NUM_THREADS`, `BSDB_MAX_CONCURRENCY`, and the ingest RAM backpressure
+`RAYON_NUM_THREADS`, `BDB_MAX_CONCURRENCY`, and the ingest RAM backpressure
 (see [`RESOURCE_LIMITS.md`](RESOURCE_LIMITS.md)).
 
 > **`RLIMIT_AS` is not applied to GPU engines.** `RLIMIT_AS` limits *virtual*
@@ -343,9 +343,9 @@ limits itself when the profile does not pin them (`hardware = "auto"`) and deriv
 | Knob | Derivation |
 | :--- | :--- |
 | query threads | the CPU limit (env `--cpus`) |
-| `BSDB_CACHE_GB` | half the memory limit |
+| `BDB_CACHE_GB` | half the memory limit |
 | preload budget | the same half, capped |
-| `BSDB_DISK_CACHE` | off — a local `file://` table is served in place, never copied |
+| `BDB_DISK_CACHE` | off — a local `file://` table is served in place, never copied |
 
 `--profile d8lds` pins the reference envelope and **aborts** if the container is
 not actually constrained, so an oversized host run cannot silently produce a
@@ -629,9 +629,9 @@ Each profile also carries `storage_note`, the storage class it expects. The star
 
 ### Page size ablation
 
-`BSDB_PARQUET_PAGE_BYTES` overrides the 32 KB writer default, and the effective value is written into both the index manifest and the result metadata. Without an override the writer cannot be varied, and the page size comparison in the paper has nothing to compare.
+`BDB_PARQUET_PAGE_BYTES` overrides the 32 KB writer default, and the effective value is written into both the index manifest and the result metadata. Without an override the writer cannot be varied, and the page size comparison in the paper has nothing to compare.
 
-`BSDB_PARQUET_ROW_GROUP_ROWS` overrides the writer's row group size in rows, default 1,048,576, which is arrow-rs's own default. The rerank ablation changes it from 512 MB to 128 MB per group, so the unit is rows and the ablation script converts from bytes using the schema width. Both values land in the manifest and in `meta.harness`.
+`BDB_PARQUET_ROW_GROUP_ROWS` overrides the writer's row group size in rows, default 1,048,576, which is arrow-rs's own default. The rerank ablation changes it from 512 MB to 128 MB per group, so the unit is rows and the ablation script converts from bytes using the schema width. Both values land in the manifest and in `meta.harness`.
 
 ### Reader counters and the skip arm
 
@@ -647,6 +647,6 @@ Each profile also carries `storage_note`, the storage class it expects. The star
 
 The pair that matters is `rows_decoded` against `rows_selected`. A sparse read that skips pages keeps them close. A read that materialises whole row groups and filters afterwards shows `rows_decoded` near `rows_requested`, and the harness records that honestly rather than asserting a skip. The result record carries every field, so the paper's I/O claim can be checked against the artifact instead of the prose.
 
-`BSDB_READER_SKIP=0` forces a full `RowSelection`, every row group read to the end. It measures the read cost of the same query, but it is **not** a matched recall arm: the rescore path expects a compacted candidate array, sees the full row count instead, and returns the graph order without rescoring. The reader logs `rescore_candidates vector count mismatch` when this happens. Use it for the byte comparison only, and use a coarse page size (`BSDB_PARQUET_PAGE_BYTES` near the row group size) when the control must still rescore.
+`BDB_READER_SKIP=0` forces a full `RowSelection`, every row group read to the end. It measures the read cost of the same query, but it is **not** a matched recall arm: the rescore path expects a compacted candidate array, sees the full row count instead, and returns the graph order without rescoring. The reader logs `rescore_candidates vector count mismatch` when this happens. Use it for the byte comparison only, and use a coarse page size (`BDB_PARQUET_PAGE_BYTES` near the row group size) when the control must still rescore.
 
-`BSDB_BENCH_EVICT=query` drops the Parquet pages before every timed query with `posix_fadvise`, and forces a single query worker because a cold measurement and a thread pool are incompatible. Without it the table stays in page cache, `read_bytes` barely moves, and the skip looks like it saves nothing.
+`BDB_BENCH_EVICT=query` drops the Parquet pages before every timed query with `posix_fadvise`, and forces a single query worker because a cold measurement and a thread pool are incompatible. Without it the table stays in page cache, `read_bytes` barely moves, and the skip looks like it saves nothing.

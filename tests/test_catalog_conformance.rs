@@ -6,7 +6,7 @@
 //! convergence contract across:
 //! - [`CatalogType::Memory`] (always-on in CI)
 //! - [`CatalogType::Jdbc`] over SQLite `:memory:` & file-backed SQLite (always-on in CI),
-//!   plus PostgreSQL when `BSDB_TEST_POSTGRES_URL` or `DATABASE_URL` is provided
+//!   plus PostgreSQL when `BDB_TEST_POSTGRES_URL` or `DATABASE_URL` is provided
 //! - [`CatalogType::Rest`] against an embedded Axum Iceberg REST mock server
 //!   (OAuth2 `/v1/oauth/tokens` refresh + `requirements` CAS 409 retry)
 //! - [`CatalogType::Nessie`] when `NESSIE_URI` is provided
@@ -524,7 +524,7 @@ async fn jdbc_sqlite_file_conformance_and_concurrent_cas() -> Result<()> {
 #[tokio::test]
 async fn jdbc_postgres_conformance_if_configured() -> Result<()> {
     let Ok(pg_url) =
-        std::env::var("BSDB_TEST_POSTGRES_URL").or_else(|_| std::env::var("DATABASE_URL"))
+        std::env::var("BDB_TEST_POSTGRES_URL").or_else(|_| std::env::var("DATABASE_URL"))
     else {
         return Ok(());
     };

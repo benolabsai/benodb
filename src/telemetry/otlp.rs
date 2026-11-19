@@ -9,12 +9,12 @@
 //! collector. That keeps the push path dependency-light: it uses only
 //! `reqwest` and `serde_json`, which the engine already depends on.
 //!
-//! Enable by setting `BSDB_OTLP_ENDPOINT` (e.g. `http://localhost:4318`); the
+//! Enable by setting `BDB_OTLP_ENDPOINT` (e.g. `http://localhost:4318`); the
 //! pusher appends `/v1/metrics`. Other knobs:
 //!
-//! - `BSDB_OTLP_INTERVAL_SECS` — push period, default 15.
-//! - `BSDB_OTLP_HEADERS` — comma-separated `key=value` headers (e.g. auth).
-//! - `BSDB_SERVICE_NAME` — `service.name` resource attribute, default
+//! - `BDB_OTLP_INTERVAL_SECS` — push period, default 15.
+//! - `BDB_OTLP_HEADERS` — comma-separated `key=value` headers (e.g. auth).
+//! - `BDB_SERVICE_NAME` — `service.name` resource attribute, default
 //!   `benodb`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -28,16 +28,16 @@ fn now_unix_nano() -> u64 {
         .unwrap_or(0)
 }
 
-/// The configured OTLP endpoint, if any (`BSDB_OTLP_ENDPOINT`).
+/// The configured OTLP endpoint, if any (`BDB_OTLP_ENDPOINT`).
 pub fn endpoint() -> Option<String> {
-    std::env::var("BSDB_OTLP_ENDPOINT")
+    std::env::var("BDB_OTLP_ENDPOINT")
         .ok()
         .map(|s| s.trim().trim_end_matches('/').to_string())
         .filter(|s| !s.is_empty())
 }
 
 fn push_interval() -> Duration {
-    let secs = std::env::var("BSDB_OTLP_INTERVAL_SECS")
+    let secs = std::env::var("BDB_OTLP_INTERVAL_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|s| *s > 0)
@@ -46,11 +46,11 @@ fn push_interval() -> Duration {
 }
 
 fn service_name() -> String {
-    std::env::var("BSDB_SERVICE_NAME").unwrap_or_else(|_| "benodb".to_string())
+    std::env::var("BDB_SERVICE_NAME").unwrap_or_else(|_| "benodb".to_string())
 }
 
 fn extra_headers() -> Vec<(String, String)> {
-    std::env::var("BSDB_OTLP_HEADERS")
+    std::env::var("BDB_OTLP_HEADERS")
         .ok()
         .map(|raw| {
             raw.split(',')
@@ -225,7 +225,7 @@ pub fn push_once(endpoint: &str, body: &Value) -> anyhow::Result<u16> {
     Ok(resp.status().as_u16())
 }
 
-/// Spawn the background OTLP pusher if `BSDB_OTLP_ENDPOINT` is set.
+/// Spawn the background OTLP pusher if `BDB_OTLP_ENDPOINT` is set.
 ///
 /// Runs on a dedicated thread using `reqwest::blocking`, so it needs no Tokio
 /// runtime and does not interfere with the caller's runtime. Idempotent per

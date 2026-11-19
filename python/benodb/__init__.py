@@ -51,9 +51,9 @@ def _probe_backend_subprocess(backend: str) -> bool:
     such a crash is observed as a non-zero exit instead of killing the caller,
     so we can fall back to CPU safely.
 
-    The child sets ``BSDB_SKIP_GPU_PROBE=1`` so it does not recurse.
+    The child sets ``BDB_SKIP_GPU_PROBE=1`` so it does not recurse.
     """
-    if os.environ.get("BSDB_SKIP_GPU_PROBE") == "1":
+    if os.environ.get("BDB_SKIP_GPU_PROBE") == "1":
         return True  # already inside a probe child: let it try for real
     if backend in _BACKEND_PROBE_CACHE:
         return _BACKEND_PROBE_CACHE[backend]
@@ -68,7 +68,7 @@ def _probe_backend_subprocess(backend: str) -> bool:
             [sys.executable, "-c", code],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            env=dict(os.environ, BSDB_SKIP_GPU_PROBE="1"),
+            env=dict(os.environ, BDB_SKIP_GPU_PROBE="1"),
             timeout=180,
         )
         ok = rc.returncode == 0
@@ -1228,7 +1228,7 @@ class Table:
 
         `mode` selects the graph backend:
           - ``"auto"`` (default): in-memory when the regional subgraph fits the
-            DRIFT memory budget (``BSDB_DRIFT_MEMORY_MB``, else the derived
+            DRIFT memory budget (``BDB_DRIFT_MEMORY_MB``, else the derived
             budget), else out-of-core.
           - ``"in_memory"``: materialize the regional subgraph (fastest per hop).
           - ``"out_of_core"``: walk the mmap CSR directly (no materialization).
@@ -3901,7 +3901,7 @@ class Table:
         "in-memory posting list" residency, but on demand and bounded.
 
         Indexes are warmed into RAM until ``max_memory_bytes`` is exhausted;
-        the remainder spills into the mmap disk cache (``BSDB_DISK_CACHE_DIR``)
+        the remainder spills into the mmap disk cache (``BDB_DISK_CACHE_DIR``)
         for out-of-core serving when ``spill_to_disk`` is true. The bounded
         caches evict by LRU/TinyLFU + TTI, so overflow evicts the
         least-recently-used entries.
@@ -3956,7 +3956,7 @@ class Table:
                 and manifest counts stay bounded at TB scale.
             memory_budget_gb: return freed heap pages to the OS after a unit once
                 RSS exceeds this budget (GB). Falls back to the
-                ``BSDB_INGEST_MEMORY_BUDGET_GB`` env var when unset; disabled if
+                ``BDB_INGEST_MEMORY_BUDGET_GB`` env var when unset; disabled if
                 neither is set.
             coordinate: multi-machine mode — claim units from a shared
                 object-store lease queue instead of a fixed local list. Run on N

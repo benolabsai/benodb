@@ -42,7 +42,7 @@ pub struct IngestOptions {
     /// bounded at TB scale (chunked loads create many small segments by design).
     pub compact_after: bool,
     /// Return freed heap pages to the OS after a committed unit once RSS exceeds
-    /// this budget. `None` falls back to `BSDB_INGEST_MEMORY_BUDGET_GB`, then to
+    /// this budget. `None` falls back to `BDB_INGEST_MEMORY_BUDGET_GB`, then to
     /// the memory-derived default. See [`crate::core::memory`].
     pub memory_budget_bytes: Option<u64>,
 }

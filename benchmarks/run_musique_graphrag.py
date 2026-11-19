@@ -307,16 +307,16 @@ def apply_hardware(args):
         print(f"  detected cgroup limits: cpus={detected_cpus} mem={mem_txt}")
     print(f"  cpus: {cpus}   memory: {mem / GIB:.1f} GiB")
     print(f"  retrieval embedder: {embed_profile['hf_id']} ({embed_profile['dim']}-d, {resident_txt})")
-    print(f"  query threads: {args.threads}   BSDB_CACHE_GB: {args.cache_gb}   preload budget: {args.preload_gb:.1f} GiB")
+    print(f"  query threads: {args.threads}   BDB_CACHE_GB: {args.cache_gb}   preload budget: {args.preload_gb:.1f} GiB")
     print("=" * 80 + "\n", flush=True)
 
     # Export process-wide environment variables BEFORE importing benodb
-    os.environ.setdefault("BSDB_DISK_CACHE", "off")
-    os.environ.setdefault("BSDB_DISK_CACHE_GB", "0")
-    os.environ["BSDB_CACHE_GB"] = str(args.cache_gb)
+    os.environ.setdefault("BDB_DISK_CACHE", "off")
+    os.environ.setdefault("BDB_DISK_CACHE_GB", "0")
+    os.environ["BDB_CACHE_GB"] = str(args.cache_gb)
 
     for env_var in (
-        "BSDB_INDEX_THREADS",
+        "BDB_INDEX_THREADS",
         "RAYON_NUM_THREADS",
         "POLARS_MAX_THREADS",
         "DATA_FUSION_EXECUTION_TARGET_PARTITIONS",
@@ -2070,7 +2070,7 @@ def main():
     parser.add_argument("--threads", type=int, default=8,
                         help="Query and execution thread budget (default: 8)")
     parser.add_argument("--cache-gb", type=int, default=0,
-                        help="Override BSDB_CACHE_GB; 0 = half envelope memory")
+                        help="Override BDB_CACHE_GB; 0 = half envelope memory")
     parser.add_argument("--preload-gb", type=float, default=0.0,
                         help="Preload budget in GiB for cache warming")
     parser.add_argument("--embed-model", choices=list(EMBED_MODEL_PROFILES), default=DEFAULT_EMBED_MODEL,

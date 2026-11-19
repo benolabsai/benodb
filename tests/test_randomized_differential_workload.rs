@@ -22,7 +22,7 @@
 //! Compaction / vacuum / index-rebuild are interleaved because those are exactly
 //! the operations that mutate the physical layout under the logical model.
 //!
-//! Step count is `BSDB_WORKLOAD_STEPS` (default 400; the weekly soak runs more).
+//! Step count is `BDB_WORKLOAD_STEPS` (default 400; the weekly soak runs more).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -257,12 +257,12 @@ async fn vector_recall_survives_compaction() -> anyhow::Result<()> {
 /// delete-file work (see `plans/production_readiness_plan.md` §8): the delete
 /// list is now stored once per manifest and resolved at read time, so a
 /// full-table read after a `delete_async` on a compacted table no longer
-/// blocks. Runs by default; the weekly soak raises `BSDB_WORKLOAD_STEPS`.
+/// blocks. Runs by default; the weekly soak raises `BDB_WORKLOAD_STEPS`.
 #[tokio::test]
 async fn randomized_differential_workload_matches_model() -> anyhow::Result<()> {
     let _guard = SERIAL.lock().await;
     // Bounded by default so the per-PR run is fast; the weekly soak raises it.
-    let steps: usize = std::env::var("BSDB_WORKLOAD_STEPS")
+    let steps: usize = std::env::var("BDB_WORKLOAD_STEPS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);

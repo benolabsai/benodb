@@ -55,8 +55,8 @@ Add the server to your MCP client configuration (e.g., `claude_desktop_config.js
       "command": "uvx",
       "args": ["benodb-mcp"],
       "env": {
-        "BSDB_WAREHOUSE": "/path/to/warehouse",
-        "BSDB_GPU_DEVICE": "auto"
+        "BDB_WAREHOUSE": "/path/to/warehouse",
+        "BDB_GPU_DEVICE": "auto"
       }
     }
   }
@@ -71,8 +71,8 @@ Add the server to your MCP client configuration (e.g., `claude_desktop_config.js
     "benodb": {
       "command": "/path/to/target/release/benodb-mcp",
       "env": {
-        "BSDB_WAREHOUSE": "/path/to/warehouse",
-        "BSDB_GPU_DEVICE": "auto"
+        "BDB_WAREHOUSE": "/path/to/warehouse",
+        "BDB_GPU_DEVICE": "auto"
       }
     }
   }
@@ -87,7 +87,7 @@ cloud-hosted agent that cannot spawn a subprocess, run the HTTP + SSE transport
 
 ```bash
 benodb-mcp --transport sse --bind 0.0.0.0:8080
-# or: BSDB_MCP_TRANSPORT=sse BSDB_MCP_BIND=0.0.0.0:8080 benodb-mcp
+# or: BDB_MCP_TRANSPORT=sse BDB_MCP_BIND=0.0.0.0:8080 benodb-mcp
 ```
 
 | Endpoint | Method | Purpose |
@@ -106,11 +106,11 @@ notifications behave identically. Sessions are dropped when their stream closes
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_WAREHOUSE` | Base directory or URI for tables | `./data` |
-| `BSDB_GPU_DEVICE` | Compute target or pool (`auto`, `cpu`, `cuda[:N]`, `mps`, `cuda:0,cuda:1`) | `auto` |
-| `BSDB_CONFIG` | Catalog configuration file path | Unset |
-| `BSDB_MCP_TRANSPORT` | `stdio` or `sse` (flag `--transport` wins) | `stdio` |
-| `BSDB_MCP_BIND` | Listen address for `sse` (flag `--bind` wins) | `127.0.0.1:8080` |
+| `BDB_WAREHOUSE` | Base directory or URI for tables | `./data` |
+| `BDB_GPU_DEVICE` | Compute target or pool (`auto`, `cpu`, `cuda[:N]`, `mps`, `cuda:0,cuda:1`) | `auto` |
+| `BDB_CONFIG` | Catalog configuration file path | Unset |
+| `BDB_MCP_TRANSPORT` | `stdio` or `sse` (flag `--transport` wins) | `stdio` |
+| `BDB_MCP_BIND` | Listen address for `sse` (flag `--bind` wins) | `127.0.0.1:8080` |
 
 ---
 

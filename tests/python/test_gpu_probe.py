@@ -23,7 +23,7 @@ def test_probe_returns_bool_and_never_crashes():
 def test_probe_short_circuits_inside_child(monkeypatch):
     # Inside a probe child the guard must return True without spawning again
     # (otherwise the probe would recurse forever).
-    monkeypatch.setenv("BSDB_SKIP_GPU_PROBE", "1")
+    monkeypatch.setenv("BDB_SKIP_GPU_PROBE", "1")
     assert benodb._probe_backend_subprocess("cuda") is True
 
 

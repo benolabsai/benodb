@@ -8,7 +8,7 @@ dimension as the 384-d demo run) are still on disk and exercise the exact
 same builder.
 
 Usage:
-  RUST_BACKTRACE=full BSDB_INDEX_BUILD_CONCURRENCY=1 \
+  RUST_BACKTRACE=full BDB_INDEX_BUILD_CONCURRENCY=1 \
     .venv/bin/python -u scripts/repro_hnsw_crash.py --rows 2000000 --quant tq8
 """
 import argparse

@@ -1520,9 +1520,7 @@ pub async fn create_payload_index(
     };
     if let Ok(table) = open_existing(&state, &name).await {
         let algo = match schema_type.to_ascii_lowercase().as_str() {
-            "integer" | "float" | "datetime" => {
-                benodb::core::manifest::IndexAlgorithm::Bitmap
-            }
+            "integer" | "float" | "datetime" => benodb::core::manifest::IndexAlgorithm::Bitmap,
             _ => benodb::core::manifest::IndexAlgorithm::Bm25 {
                 k1: 1.2,
                 b: 0.75,

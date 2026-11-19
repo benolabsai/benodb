@@ -81,7 +81,7 @@ and fails on any divergence between indexed and full-scan execution:
 ./scripts/pre_release_soak.sh --quick
 
 # Explicit seconds
-BSDB_SOAK_SECONDS=600 ./scripts/pre_release_soak.sh
+BDB_SOAK_SECONDS=600 ./scripts/pre_release_soak.sh
 ```
 
 It runs three steps: the randomized differential workload (model oracle), the

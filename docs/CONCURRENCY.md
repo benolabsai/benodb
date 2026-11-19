@@ -31,11 +31,11 @@ In addition to catalog-level atomicity, BenoDB includes a built-in cloud-agnosti
 
 ## Write-Ahead Log (WAL) Durability Modes
 
-BenoDB writes each incoming batch as a transaction-tagged Arrow IPC record (`benostream:tx_id`, `benostream:seq`) into rotated WAL segment files (`log_<timestamp>_<pid>_<seq>.arrow` under `BSDB_WAL_DIR` or `{table_uri}/_wal`). Before committing a snapshot, the active segment is flushed and sealed via `rotate_async()` so concurrent writes open a fresh segment, and `prune_committed_segments()` removes sealed segments only once every transaction ID in that file appears in the durable manifest (`benostream.committed_wal_tx`).
+BenoDB writes each incoming batch as a transaction-tagged Arrow IPC record (`benostream:tx_id`, `benostream:seq`) into rotated WAL segment files (`log_<timestamp>_<pid>_<seq>.arrow` under `BDB_WAL_DIR` or `{table_uri}/_wal`). Before committing a snapshot, the active segment is flushed and sealed via `rotate_async()` so concurrent writes open a fresh segment, and `prune_committed_segments()` removes sealed segments only once every transaction ID in that file appears in the durable manifest (`benostream.committed_wal_tx`).
 
-Two `WalDurability` policies are supported via `BSDB_WAL_DURABILITY` or `TableBuilder::with_durability(...)`:
+Two `WalDurability` policies are supported via `BDB_WAL_DURABILITY` or `TableBuilder::with_durability(...)`:
 - **`sync` (Default, `WalDurability::Sync`)**: Runs `fdatasync` (`File::sync_data`, falling back to `File::sync_all`) on the WAL segment before acknowledging the write to the caller (`RPO = 0` for acknowledged writes). Failed syncs propagate as write errors rather than false acknowledgements.
-- **`async` (`WalDurability::Async`)**: Enqueues batches to the dedicated WAL worker channel and returns without waiting for disk sync. The worker flushes and syncs on either `BSDB_WAL_SYNC_BATCH_SIZE` (`10` batches) or `BSDB_WAL_SYNC_INTERVAL_MS` (`100` ms). Individual segments compact automatically above `BSDB_WAL_COMPACT_MB` (`1024` MiB).
+- **`async` (`WalDurability::Async`)**: Enqueues batches to the dedicated WAL worker channel and returns without waiting for disk sync. The worker flushes and syncs on either `BDB_WAL_SYNC_BATCH_SIZE` (`10` batches) or `BDB_WAL_SYNC_INTERVAL_MS` (`100` ms). Individual segments compact automatically above `BDB_WAL_COMPACT_MB` (`1024` MiB).
 
 ## Read Isolation
 
@@ -45,12 +45,12 @@ Readers in BenoDB always see a **consistent snapshot** of the table. Once a read
 
 BenoDB decouples I/O stream concurrency from CPU compute parallelism:
 
-1. **I/O Pipeline (`BSDB_MAX_CONCURRENCY`)**: Tokio asynchronously pulls up to $N$ Parquet segments concurrently via non-blocking streams (`buffer_unordered`). Non-blocking tasks spend the majority of their time awaiting network packets or NVMe block reads without consuming CPU cores.
+1. **I/O Pipeline (`BDB_MAX_CONCURRENCY`)**: Tokio asynchronously pulls up to $N$ Parquet segments concurrently via non-blocking streams (`buffer_unordered`). Non-blocking tasks spend the majority of their time awaiting network packets or NVMe block reads without consuming CPU cores.
 2. **Compute Pipeline (`RAYON_NUM_THREADS`)**: As segment buffers arrive in memory, Rayon parallelizes CPU-intensive SIMD distance metrics, HNSW graph deserialization, and scalar filters across dedicated OS worker threads.
 
 ### Sizing & Tuning Matrix
 
-| Deployment Profile | Machine Specs | `RAYON_NUM_THREADS` (Compute) | `BSDB_MAX_CONCURRENCY` (I/O) | Focus |
+| Deployment Profile | Machine Specs | `RAYON_NUM_THREADS` (Compute) | `BDB_MAX_CONCURRENCY` (I/O) | Focus |
 |:---|:---|:---|:---|:---|
 | **Benchmark / Container** | 4 Cores, 4 GB RAM | `2` – `4` | `4` – `8` | Low memory footprint, zero cache thrashing. |
 | **Production Server** | 16 Cores, 32 GB RAM | `8` – `14` | `16` – `32` | High-throughput mixed analytics and hybrid search. |

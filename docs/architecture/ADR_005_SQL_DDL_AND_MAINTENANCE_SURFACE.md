@@ -190,7 +190,7 @@ config-display statement.
 - `CREATE TABLE db.s.t (...)`:
   1. resolve `db` → external catalog, `s` → namespace, `t` → table
   2. `catalog.create_table(s, t, schema, location)` — location is derived from
-     `BSDB_WAREHOUSE` as `<warehouse>/<schema>/<table>` (the catalog may override)
+     `BDB_WAREHOUSE` as `<warehouse>/<schema>/<table>` (the catalog may override)
   3. `Table::create_with_catalog_async(location, schema, catalog, s, t)`
   4. `session.register_table(TableReference::full(db, s, t), provider)`
 
@@ -255,7 +255,7 @@ src/core/sql/
 5. **Default index algorithm** for `CREATE INDEX` without `USING`: `Bitmap`
    (closest analogue to a B-tree for scalar columns).
 6. **`DELETE FROM`**: intercept like `MERGE INTO` → `Table::delete_async`.
-7. **Location policy**: `BSDB_WAREHOUSE`-derived (`<warehouse>/<schema>/<table>`),
+7. **Location policy**: `BDB_WAREHOUSE`-derived (`<warehouse>/<schema>/<table>`),
    overridable by the catalog.
 
 ## 10. `SET` and environment variables

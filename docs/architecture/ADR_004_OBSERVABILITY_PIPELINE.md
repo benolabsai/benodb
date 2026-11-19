@@ -3,17 +3,17 @@
 > **Status: implemented.** Promoted from `plans/observability_implementation_plan.md`. The core owns the registry
 > ([`gather_text`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/metrics.rs#L313) +
 > [`render_metrics`](https://github.com/benolabsai/benodb/blob/main/src/core/telemetry.rs#L50)); the `observability` exporter
-> is configurable (`BSDB_METRICS_BIND`/`BSDB_METRICS_PORT`, localhost default);
+> is configurable (`BDB_METRICS_BIND`/`BDB_METRICS_PORT`, localhost default);
 > Flight SQL serves `/metrics`, `/health`, `/readyz`; `bsdb-search` merges the
 > core registry; and the JNI `gatherMetrics()` bridge is in place for the Spark
-> and Trino connectors. The env-var prefix was unified to `BSDB_` /
-> `BSDB_SEARCH_` / `BSDB_QDRANT_` (hard rename, no aliases).
+> and Trino connectors. The env-var prefix was unified to `BDB_` /
+> `BDB_SEARCH_` / `BDB_QDRANT_` (hard rename, no aliases).
 >
 > **OTLP push + Grafana are now implemented** (the follow-ups previously listed
 > as out of scope): [`src/telemetry/otlp.rs`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/otlp.rs) converts
 > the Prometheus registry to OTLP/HTTP JSON and pushes it
-> (`BSDB_OTLP_ENDPOINT`, `BSDB_OTLP_INTERVAL_SECS`, `BSDB_OTLP_HEADERS`,
-> `BSDB_SERVICE_NAME`); [`deploy/observability/`](https://github.com/benolabsai/benodb/blob/main/deploy/observability/README.md)
+> (`BDB_OTLP_ENDPOINT`, `BDB_OTLP_INTERVAL_SECS`, `BDB_OTLP_HEADERS`,
+> `BDB_SERVICE_NAME`); [`deploy/observability/`](https://github.com/benolabsai/benodb/blob/main/deploy/observability/README.md)
 > brings up a collector + Prometheus + a provisioned Grafana dashboard.
 
 Implements the recommendations from the observability review. Goal: one metrics
@@ -61,8 +61,8 @@ pub fn gather_text() -> String {
 ### 2. Configurable, working exporter — `src/core/telemetry.rs`
 
 Replace the `metrics-exporter-prometheus` listener with an axum server serving
-the core registry. Read `BSDB_METRICS_BIND` (default `127.0.0.1`) and
-`BSDB_METRICS_PORT` (default `9090`). Keep the `observability` feature gate.
+the core registry. Read `BDB_METRICS_BIND` (default `127.0.0.1`) and
+`BDB_METRICS_PORT` (default `9090`). Keep the `observability` feature gate.
 Spawn the server on a background task so `init_metrics_exporter()` returns.
 
 - Verify whether anything records via the `metrics` facade; if so, keep that
@@ -75,7 +75,7 @@ Spawn the server on a background task so `init_metrics_exporter()` returns.
 - `src/main.rs`:
   - call `benodb::telemetry::tracing::init_tracing("flight_sql")` and hold
     the guard;
-  - spawn an axum server on `BSDB_METRICS_BIND:BSDB_METRICS_PORT`
+  - spawn an axum server on `BDB_METRICS_BIND:BDB_METRICS_PORT`
     (default `127.0.0.1:9090`) with:
     - `GET /metrics` → `benodb::telemetry::metrics::gather_text()`
       (`text/plain; version=0.0.4`);
@@ -134,7 +134,7 @@ Follow-up (optional, larger): register the parsed metrics into Spark's
 ### 7. Documentation
 
 - `docs/monitoring.md`: document the endpoints per deployment mode, the
-  `BSDB_METRICS_BIND`/`BSDB_METRICS_PORT` knobs, and the full metric catalog
+  `BDB_METRICS_BIND`/`BDB_METRICS_PORT` knobs, and the full metric catalog
   (`benostreamdb_*` and `bsdb_search_*`) with what a rising value means.
 - `docs/CONFIGURATION.md`: add the two metrics env vars.
 - `docs/RESOURCE_LIMITS.md`: cross-reference the metrics endpoint.

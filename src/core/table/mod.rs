@@ -204,7 +204,7 @@ pub struct Table {
     /// budget (see [`crate::core::memory`]) and, by avoiding page-cache
     /// eviction, is usually *faster* than unbounded fan-out.
     ///
-    /// Sized by `BSDB_INDEX_BUILD_CONCURRENCY` (memory-scaled default).
+    /// Sized by `BDB_INDEX_BUILD_CONCURRENCY` (memory-scaled default).
     pub(crate) index_build_gate: Arc<tokio::sync::Semaphore>,
 
     /// Sort order to apply when writing data (Iceberg V2 spec compliance)
@@ -250,7 +250,7 @@ pub struct Table {
 ///   successful commit.
 /// - [`WalDurability::Async`] — a write returns once the batch is handed to the
 ///   WAL worker channel; the worker syncs on a batch/interval boundary
-///   (`BSDB_WAL_SYNC_BATCH_SIZE` / `BSDB_WAL_SYNC_INTERVAL_MS`,
+///   (`BDB_WAL_SYNC_BATCH_SIZE` / `BDB_WAL_SYNC_INTERVAL_MS`,
 ///   default 10 batches / 100 ms). Higher throughput, but writes inside that
 ///   un-synced window can be lost on process failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -286,12 +286,12 @@ const INDEX_BUILD_WORKING_SET_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 /// Build the concurrency gate for background segment index builds.
 ///
-/// Always bounded. `BSDB_INDEX_BUILD_CONCURRENCY` overrides the default; a
+/// Always bounded. `BDB_INDEX_BUILD_CONCURRENCY` overrides the default; a
 /// non-positive value is ignored. The default scales with the memory available
 /// to the process (one build per ~8 GB, capped at the CPU count, at least 1), so
 /// a 4 GB container runs one build at a time while a large host fans out.
 pub(crate) fn index_build_concurrency() -> usize {
-    if let Some(n) = std::env::var("BSDB_INDEX_BUILD_CONCURRENCY")
+    if let Some(n) = std::env::var("BDB_INDEX_BUILD_CONCURRENCY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|n| *n > 0)
@@ -672,7 +672,7 @@ impl Table {
             .await
             .map_err(|e| anyhow::anyhow!("index build gate closed: {}", e))?;
         // Observability: how long writers wait for a build slot. A rising value
-        // means the gate (BSDB_INDEX_BUILD_CONCURRENCY) is the throughput limit.
+        // means the gate (BDB_INDEX_BUILD_CONCURRENCY) is the throughput limit.
         crate::telemetry::metrics::INDEX_BUILD_GATE_WAIT_SECONDS
             .observe(start.elapsed().as_secs_f64());
         Ok(permit)

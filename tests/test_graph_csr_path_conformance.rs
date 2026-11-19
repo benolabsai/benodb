@@ -77,8 +77,7 @@ async fn graph_csr_index_is_registered_as_v2_with_files_on_disk() -> anyhow::Res
     eprintln!("manifest version: {}", manifest.version);
 
     // Resolve the tiered manifest list exactly as the reader does.
-    let manager =
-        benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
+    let manager = benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
     let entries = manager.load_all_entries(&manifest).await?;
 
     let all_index_files: Vec<_> = entries
@@ -120,8 +119,7 @@ async fn graph_csr_index_is_registered_as_v2_with_files_on_disk() -> anyhow::Res
                 "reader expects Puffin bundle `{full}` but it does not exist"
             );
             let bytes = std::fs::read(&full)?;
-            let reader =
-                benodb::core::puffin::PuffinReader::new(std::io::Cursor::new(bytes))?;
+            let reader = benodb::core::puffin::PuffinReader::new(std::io::Cursor::new(bytes))?;
             let types: Vec<&str> = reader
                 .footer()
                 .blobs

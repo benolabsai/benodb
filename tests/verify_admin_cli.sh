@@ -3,7 +3,7 @@ set -e
 
 # Setup test table URI
 export TEST_URI="file:///tmp/hdb_admin_test/default/admin_table"
-export BSDB_STORAGE_URI="$TEST_URI"
+export BDB_STORAGE_URI="$TEST_URI"
 
 # Clean up any existing data
 rm -rf /tmp/hdb_admin_test

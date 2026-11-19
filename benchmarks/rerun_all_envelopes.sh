@@ -35,10 +35,10 @@ set -euo pipefail
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$BENCH_DIR/.." && pwd)"
 # Namespaced deliberately: a generic DATA_ROOT is often already exported by an
-# unrelated project in the operator's shell, and `${BSDB_DATA_ROOT:-default}` would
+# unrelated project in the operator's shell, and `${BDB_DATA_ROOT:-default}` would
 # then silently mount the wrong directory (the harness reports the dataset as
 # missing, which reads like a download problem rather than a wiring mistake).
-BSDB_DATA_ROOT="${BSDB_DATA_ROOT:-/home/ralbright/data/datasets}"
+BDB_DATA_ROOT="${BDB_DATA_ROOT:-/home/ralbright/data/datasets}"
 SCRATCH="${SCRATCH:-$BENCH_DIR/scratch_neurips}"
 WHEELS="${WHEELS:-$ROOT_DIR/dist}"
 LOGS="${LOGS:-/tmp}"
@@ -58,7 +58,7 @@ require_dataset() {
     for f in "$@"; do
         [ -s "$dir/$f" ] || {
             echo "dataset $dir is missing (or has an empty) $f" >&2
-            echo "resolved from BSDB_DATA_ROOT=${BSDB_DATA_ROOT}" >&2
+            echo "resolved from BDB_DATA_ROOT=${BDB_DATA_ROOT}" >&2
             exit 1
         }
     done
@@ -99,31 +99,31 @@ run_neurips() {
 }
 
 neurips_10m() {
-    require_dataset "$BSDB_DATA_ROOT/bigann" \
+    require_dataset "$BDB_DATA_ROOT/bigann" \
         base.10M.u8bin query.public.10K.u8bin GT.10M
     prepare
     # Matches bigann_10m_10000k_20261101T201843Z: modes sq8+pq, full sweep.
-    run_neurips 10m "$BSDB_DATA_ROOT/bigann" \
+    run_neurips 10m "$BDB_DATA_ROOT/bigann" \
         --dataset 10m --limit 0 --queries 10000 --stage both \
         --modes sq8,pq --flush-every 5000000 --sweep \
         2>&1 | tee "$LOGS/bench_neurips_10m.log"
 }
 
 cohere_10m() {
-    require_dataset "$BSDB_DATA_ROOT/cohere" base.fbin queries.fbin gt_100.fbin
+    require_dataset "$BDB_DATA_ROOT/cohere" base.fbin queries.fbin gt_100.fbin
     prepare
     # Matches bigann_cohere-10m_10000k_20261104T130028Z: sq8 only, 1000 queries,
     # index compaction on with k=1024. Cohere ships `.fbin` files, not `.u8bin`,
     # and lives in its own directory (the harness derives the file names from the
     # dataset tag).
-    run_neurips cohere "$BSDB_DATA_ROOT/cohere" \
+    run_neurips cohere "$BDB_DATA_ROOT/cohere" \
         --dataset cohere-10m --limit 0 --queries 1000 --stage both \
         --mode sq8 --index-compaction --compaction-k 1024 --flush-every 5000000 --sweep \
         2>&1 | tee "$LOGS/bench_cohere_10m.log"
 }
 
 musique_parity() {
-    require_dataset "$BSDB_DATA_ROOT/musique" musique_ans_v1.0_dev.jsonl
+    require_dataset "$BDB_DATA_ROOT/musique" musique_ans_v1.0_dev.jsonl
     prepare
     docker image inspect "$MUSIQUE_IMAGE" >/dev/null 2>&1 || {
         echo "building $MUSIQUE_IMAGE" >&2
@@ -143,8 +143,8 @@ musique_parity() {
     if [ -f "$MUSIQUE_MANIFEST" ]; then
         case "$MUSIQUE_MANIFEST" in
             "$BENCH_DIR"/*) manifest_args=(--sample-manifest "/opt/bench/${MUSIQUE_MANIFEST#"$BENCH_DIR"/}") ;;
-            "$BSDB_DATA_ROOT"/musique/*) manifest_args=(--sample-manifest "/data/musique/${MUSIQUE_MANIFEST#"$BSDB_DATA_ROOT"/musique/}") ;;
-            *) echo "$MUSIQUE_MANIFEST is not under \$BENCH_DIR or \$BSDB_DATA_ROOT/musique, so the container cannot see it" >&2; exit 1 ;;
+            "$BDB_DATA_ROOT"/musique/*) manifest_args=(--sample-manifest "/data/musique/${MUSIQUE_MANIFEST#"$BDB_DATA_ROOT"/musique/}") ;;
+            *) echo "$MUSIQUE_MANIFEST is not under \$BENCH_DIR or \$BDB_DATA_ROOT/musique, so the container cannot see it" >&2; exit 1 ;;
         esac
         manifest_args+=(--manifest-dataset musique)
     else
@@ -164,7 +164,7 @@ musique_parity() {
     }
     docker run --rm --name bsdb-musique-parity \
         --cpus=8 --memory=32g --memory-swap=32g \
-        -v "$BSDB_DATA_ROOT/musique:/data/musique" \
+        -v "$BDB_DATA_ROOT/musique:/data/musique" \
         -v "$BENCH_DIR:/opt/bench:ro" \
         -v "$SCRATCH:/work/scratch" \
         -v "$WHEELS:/wheels:ro" \

@@ -297,7 +297,7 @@ struct SearchRequest {
     from: usize,
     source: Option<SourceFilter>,
     /// RRF fusion constant override (request-level; falls back to
-    /// `BSDB_SEARCH_RRF_K`, then the core default of 60).
+    /// `BDB_SEARCH_RRF_K`, then the core default of 60).
     rrf_k: Option<f32>,
     /// ES `aggs` / `aggregations` object, computed over the top-level filter.
     aggs: Option<Value>,
@@ -1915,9 +1915,9 @@ pub async fn search_core(
     let table = state.open_or_create(index, &None).await?;
 
     // RRF fusion constant: request-level `rrf_k` wins, then the
-    // `BSDB_SEARCH_RRF_K` env var, then the core default (60).
+    // `BDB_SEARCH_RRF_K` env var, then the core default (60).
     let rrf_k = req.rrf_k.or_else(|| {
-        std::env::var("BSDB_SEARCH_RRF_K")
+        std::env::var("BDB_SEARCH_RRF_K")
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
             .filter(|k| *k > 0.0)
@@ -2542,8 +2542,7 @@ mod tests {
         let mut policy = benodb::core::catalog::CatalogPolicy::new();
         policy.readwrite_schemas = Some(vec!["scratch".to_string()]);
         policy.readonly_schemas = Some(vec!["reporting".to_string()]);
-        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy)
-            .unwrap();
+        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy).unwrap();
         let state = AppState::new(root, "test-cluster".into());
 
         let body = serde_json::json!({ "query": { "match_all": {} } });

@@ -971,10 +971,10 @@ async fn rest_commit_table(
 
 #[tokio::test]
 async fn z_pillar2_subprocess_entrypoint() -> Result<()> {
-    let Ok(mode) = std::env::var("BSDB_M2_CHILD_MODE") else {
+    let Ok(mode) = std::env::var("BDB_M2_CHILD_MODE") else {
         return Ok(());
     };
-    let uri = std::env::var("BSDB_M2_TABLE_URI").context("missing BSDB_M2_TABLE_URI")?;
+    let uri = std::env::var("BDB_M2_TABLE_URI").context("missing BDB_M2_TABLE_URI")?;
     let dir_path = uri.strip_prefix("file://").unwrap_or(&uri);
 
     match mode.as_str() {
@@ -1033,7 +1033,7 @@ async fn z_pillar2_subprocess_entrypoint() -> Result<()> {
                 }
             }
         }
-        other => anyhow::bail!("unknown BSDB_M2_CHILD_MODE: {other}"),
+        other => anyhow::bail!("unknown BDB_M2_CHILD_MODE: {other}"),
     }
 
     Ok(())
@@ -1306,8 +1306,8 @@ async fn pillar2_subprocess_sigabrt_boundaries() -> Result<()> {
 
         let status = std::process::Command::new(&exe)
             .args(["--exact", "z_pillar2_subprocess_entrypoint", "--nocapture"])
-            .env("BSDB_M2_CHILD_MODE", "abort_after_manifest")
-            .env("BSDB_M2_TABLE_URI", &uri)
+            .env("BDB_M2_CHILD_MODE", "abort_after_manifest")
+            .env("BDB_M2_TABLE_URI", &uri)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()?;
@@ -1359,8 +1359,8 @@ async fn pillar2_subprocess_sigabrt_boundaries() -> Result<()> {
 
         let status = std::process::Command::new(&exe)
             .args(["--exact", "z_pillar2_subprocess_entrypoint", "--nocapture"])
-            .env("BSDB_M2_CHILD_MODE", "abort_before_hint")
-            .env("BSDB_M2_TABLE_URI", &uri)
+            .env("BDB_M2_CHILD_MODE", "abort_before_hint")
+            .env("BDB_M2_TABLE_URI", &uri)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()?;
@@ -1426,8 +1426,8 @@ async fn pillar2_subprocess_sigkill_sustained_sync_writes() -> Result<()> {
 
     let mut child = tokio::process::Command::new(&exe)
         .args(["--exact", "z_pillar2_subprocess_entrypoint", "--nocapture"])
-        .env("BSDB_M2_CHILD_MODE", "sigkill_streaming_loop")
-        .env("BSDB_M2_TABLE_URI", &uri)
+        .env("BDB_M2_CHILD_MODE", "sigkill_streaming_loop")
+        .env("BDB_M2_TABLE_URI", &uri)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
@@ -2189,9 +2189,7 @@ async fn pillar8_version_hint_non_regression_and_metadata_cas_stress() -> Result
             TableMetadata::commit_update_atomic(s.as_ref(), 2, move |existing| {
                 let mut meta = existing.context("expected existing metadata")?;
                 if meta.snapshots.iter().any(|sn| sn.snapshot_id == snap_id) {
-                    return Ok(
-                        benodb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(meta),
-                    );
+                    return Ok(benodb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(meta));
                 }
                 let seq = meta.last_sequence_number + 1;
                 meta.add_snapshot(Snapshot {

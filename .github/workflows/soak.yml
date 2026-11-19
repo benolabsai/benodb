@@ -21,10 +21,10 @@ permissions:
   contents: read
 
 env:
-  BSDB_STRESS: "1"
-  BSDB_SOAK_SECONDS: ${{ github.event.inputs.soak_seconds || '120' }}
+  BDB_STRESS: "1"
+  BDB_SOAK_SECONDS: ${{ github.event.inputs.soak_seconds || '120' }}
   # Keep the assertions honest on a small runner.
-  BSDB_STRESS_RSS_CEILING_GB: "12"
+  BDB_STRESS_RSS_CEILING_GB: "12"
 
 jobs:
   python-soak:
@@ -104,7 +104,7 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "|---|---|"
-            echo "| Soak duration | ${BSDB_SOAK_SECONDS}s |"
+            echo "| Soak duration | ${BDB_SOAK_SECONDS}s |"
             echo "| Result | ${{ job.status }} |"
             echo
             echo "## Soak stats"

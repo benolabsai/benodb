@@ -1,4 +1,54 @@
-## [0.17.0] - 2026-11-16
+## [0.17.0] - 2026-11-19
+
+### Highlights
+
+- **BenoDB Product & Package Rename (`14a3ffb4`, `ee6a3a04`):**
+  Canonical rename of the engine, Rust workspace crates, Python package (`benodb`),
+  JVM connector packages (`com.benodb.*`), C-FFI exports, and docs from
+  `benostreamdb` to `benodb`. Ecosystem connectors (PyArrow, DataFusion, Iceberg
+  REST, Trino, dbt) are fully unified under the `benodb` namespace.
+
+- **Interactive SQL Client (`bsql`) & Short Administrative CLI (`bdb`):**
+  Introduced `bsql` as an interactive SQL terminal and command-line query executor
+  (modeled after PostgreSQL's `psql`) running directly over Apache Iceberg tables
+  and Parquet files with embedded DataFusion and native pgvector syntax (`<=>`, `<->`, `<#>`).
+  Registered `bdb` as the primary short CLI entry point alongside canonical `benodb`.
+
+- **Canonical `BDB_*` Environment Variable Modernization:**
+  All configuration environment variables have migrated to the canonical `BDB_*`
+  prefix (including `BDB_CACHE_GB`, `BDB_CLUSTER_SEARCH_MODE`, `BDB_SEARCH_PORT`,
+  `BDB_STORAGE_URI`, and `BDB_API_KEY`).
+
+- **GPU Acceleration Crate Rename (`benodb-gpu-ann` v0.2.0):**
+  Renamed the standalone GPU index construction and ANN search crate from
+  `benostream-gpu-ann` to `benodb-gpu-ann` (v0.2.0), providing out-of-the-box
+  Apple Metal (MPS), NVIDIA CUDA, and Vulkan/WGPU acceleration.
+
+- **Immutable Manifest-Version Caching (`b53e59e4`):**
+  `load_latest_direct_full_arc` now caches parsed `(Arc<Manifest>, Arc<Vec<ManifestEntry>>)`
+  tuples keyed by immutable snapshot version. On a 100M table with 40,100 segment
+  entries, this eliminates repetitive 32 MB JSON parsing on every query, reducing
+  logical metadata I/O by 100x (from 33.4 MB/q to 0.32 MB/q), cutting anonymous
+  heap overhead by 2.6x (from 1,859 MiB to 537-727 MiB), and lifting query
+  throughput by 1.9x to 3.4x across the 100M Pareto frontier.
+
+- **Codes-First ClusterIndex Retrieval (`BDB_CLUSTER_SEARCH_MODE=codes`):**
+  Introduced sharded contiguous flat quantized codes (`cluster-codes` Puffin blobs)
+  alongside pipelined AVX2 SIMD dot-product scanning and asynchronous `posix_fadvise`
+  prefetching. Bypassing out-of-core graph pointer chasing eliminates random NVMe
+  4 KB page faults, lifting NeurIPS BigANN 100M throughput from 0.40-0.95 QPS to
+  49.7-148.4 QPS across 0.8420 to 0.9810 Recall@10 under a strict 16 GiB container envelope.
+
+- **NeurIPS BigANN 100M & Cohere 10M Cgroup-Verified Audits:**
+  Official empirical verification under the standardized Azure `Standard_D8lds_v5`
+  envelope (--cpus=8 --memory=16g):
+  - **BigANN 100M:** 76.49 GiB store ($4.8\times$ host RAM), 49.7 to 148.4 QPS, peak memory
+    14,071.1 MiB (2.26 GiB headroom below 16 GiB limit), 0 swap, 0 OOM kills.
+  - **Cohere 10M (768-D MIPS):** BenoQuant TQ8 ($H \cdot D$) delivers 0.9800 Recall@10
+    at 65.9 QPS and 0.8025 at 344.3 QPS (22.64 ms p50), peaking at 10,396 MiB RAM.
+  - **Sparse Parquet Reranking:** 32 KB data pages with Parquet `OffsetIndex` and
+    Arrow `RowSelection` cut cold physical I/O from 380.55 MB to 3.80 MB ($100.2\times$ reduction)
+    with zero post-read row filtering.
 
 ### Fixed
 
@@ -65,7 +115,7 @@
   bucket sizing change a 256 MB bucket held about six of 1024 clusters, so the
   phase that dominates a 100M build ran at roughly 400% CPU while 32 cores sat
   idle. The builder now reads, groups, and builds a window of buckets together
-  (`BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS`, default 3, clamped 1 through 8) and
+  (`BDB_CLUSTER_BUILD_PARALLEL_BUCKETS`, default 3, clamped 1 through 8) and
   keeps the shard writer ordered, so cluster slices still ascend.
 
 - **Table level index builds spilled into the system temp directory**
@@ -73,7 +123,7 @@
   shards through `std::env::temp_dir()`, which is a sized tmpfs on many hosts. At
   100M that is about 90 GB, so the build died with `Disk quota exceeded` after
   filling a 61 GB tmpfs that was already 73% used, two hours in. The spill
-  directory is now `BSDB_CLUSTER_BUILD_TMPDIR` when set, the builder refuses up
+  directory is now `BDB_CLUSTER_BUILD_TMPDIR` when set, the builder refuses up
   front when the target filesystem cannot hold about twice the raw vector bytes,
   and it removes spill directories older than six hours at start, which is what
   an OOM killed build leaves behind. Two such directories held 32 GB on this
@@ -110,7 +160,7 @@
   build under `memory.max` hit the OOM killer with under 1 GB of anonymous
   memory. Bucket files now sync once per segment, bounding the dirty window to
   one segment's spill, and the bucket count is derived from the vector bytes at
-  a 256 MB target instead of a fixed 64. `BSDB_CLUSTER_BUILD_BUCKETS` still
+  a 256 MB target instead of a fixed 64. `BDB_CLUSTER_BUILD_BUCKETS` still
   overrides.
 
 - **Index preload charged a thousandth of what it loaded**
@@ -125,7 +175,7 @@
   budget the pass warms 19 containers, reports 8,233,029,099 bytes, and stops in
   0.8 s. Any 100M result recorded before this commit measured an unbounded
   preload and is not comparable to one taken after it, whatever its record says
-  about `BSDB_CACHE_GB`.
+  about `BDB_CACHE_GB`.
 
 ### Added
 
@@ -146,7 +196,7 @@
   only for the winning clusters that contribute to top-$k$. Cluster members are
   ordered deterministically by `(row_id, segment_idx)` so quantized-code ties
   interleave across segments. Legacy artifacts lacking `cluster-codes` fall back
-  transparently to HNSW graph traversal, and `BSDB_CLUSTER_SEARCH_MODE`
+  transparently to HNSW graph traversal, and `BDB_CLUSTER_SEARCH_MODE`
   (`auto` | `codes` | `graph`) enables A/B comparison on the same artifact.
 
 - **S3 concurrent shard pipelining, singleflight request coalescing, and unified
@@ -159,8 +209,8 @@
   gates (`tokio::sync::watch` with RAII guards) deduplicate concurrent remote
   footer and blob GETs across parallel query threads, while local loads use
   `moka::sync::Cache::optionally_get_with`. Graphs, flat codes, and `node_meta`
-  share a single byte-weighed `moka` cache under `BSDB_CLUSTER_CACHE_KIB` (or
-  `BSDB_CACHE_GB / 4`).
+  share a single byte-weighed `moka` cache under `BDB_CLUSTER_CACHE_KIB` (or
+  `BDB_CACHE_GB / 4`).
 
 - **Cross-architecture SIMD quantizer and distance kernels (`x86_64` AVX2+FMA
   and `aarch64` NEON)** (`src/core/index/benoquant.rs`, `src/core/index/sq.rs`,
@@ -261,9 +311,9 @@
   skip arm decoded 3,200 rows against 3,200 selected.
 
 - **Writer and reader controls for the rerank ablation**:
-  `BSDB_PARQUET_PAGE_BYTES` (default 32 KiB),
-  `BSDB_PARQUET_ROW_GROUP_ROWS` (default 1,048,576, arrow-rs's own default), and
-  `BSDB_READER_SKIP=0` to force a full selection as the control arm. All three
+  `BDB_PARQUET_PAGE_BYTES` (default 32 KiB),
+  `BDB_PARQUET_ROW_GROUP_ROWS` (default 1,048,576, arrow-rs's own default), and
+  `BDB_READER_SKIP=0` to force a full selection as the control arm. All three
   default to the previous behaviour, so an unset environment writes byte
   identical Parquet and reads it the same way.
 
@@ -294,7 +344,7 @@
 - **Cold rerank measurement in the BigANN harness**
   (`benchmarks/run_neurips_bigann.py`, `benchmarks/phase_c_sweep.sh`): each
   record now carries cgroup memory counters, physical and logical bytes read,
-  input file digests, and the reader counters above. `BSDB_BENCH_EVICT=query`
+  input file digests, and the reader counters above. `BDB_BENCH_EVICT=query`
   drops the Parquet pages before every timed query and forces one query worker,
   because a resident table makes the physical counters flat. Measured cold on
   10M, 40 candidates, recall 0.910: 3.80 MB per query with 32 KiB pages against
@@ -376,13 +426,13 @@
   `/iceberg` prefix to the Glue JSON-RPC surface (`400 missing x-amz-target`) and
   answers `501` for S3 Tables' Iceberg REST mount, and our S3 Tables client only
   speaks that mount.
-- **`BSDB_SSRF_ALLOW_HOSTS` — loopback-only SSRF override**
+- **`BDB_SSRF_ALLOW_HOSTS` — loopback-only SSRF override**
   (`src/core/storage.rs`): the guard is always on, so the conformance tests needed a
   deliberate way to reach a container on `127.0.0.1`. The variable takes a
   comma-separated list of hosts; an entry is honoured only when it is loopback, so
   private, link-local, and public addresses stay rejected even if listed, and every
   accepted host logs a warning naming the variable. Documented in
-  [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) (the stale `BSDB_SSRF_GUARD` row,
+  [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) (the stale `BDB_SSRF_GUARD` row,
   which was never read by the code, is gone).
 - **Glue SDK errors now carry the modeled code and message**: `SdkError`'s `Display`
   is just `service error`, which hid `AccessDenied` and friends; the adapters format
@@ -797,15 +847,15 @@ Major release consolidating vector search, out-of-core indexing, and performance
 ### Removed
 - **Streamlined Configuration Surface** — Removed legacy and redundant environment-variable
   knobs in favor of per-table/per-index APIs and compile-time feature flags:
-  - **Legacy aliases**: Dropped `BENOSTREAM_GPU_DEVICE` (use `BSDB_GPU_DEVICE`),
-    `BENOSTREAM_MAX_CONCURRENCY` (use `BSDB_MAX_CONCURRENCY`), and the
-    `BSDB_SEARCH_WAL_DURABILITY` alias (use `BSDB_WAL_DURABILITY`).
-  - **Debug toggles → Cargo features**: `BSDB_TRACE_SEARCH` and `BSDB_VALIDATE_EMBEDDINGS`
+  - **Legacy aliases**: Dropped `BENOSTREAM_GPU_DEVICE` (use `BDB_GPU_DEVICE`),
+    `BENOSTREAM_MAX_CONCURRENCY` (use `BDB_MAX_CONCURRENCY`), and the
+    `BDB_SEARCH_WAL_DURABILITY` alias (use `BDB_WAL_DURABILITY`).
+  - **Debug toggles → Cargo features**: `BDB_TRACE_SEARCH` and `BDB_VALIDATE_EMBEDDINGS`
     are now compile-time `trace-search` and `validate-embeddings` features instead of
-    runtime environment reads; `BSDB_SSRF_GUARD` is now always on.
-  - **HNSW/IVF build knobs → per-index API**: Removed `BSDB_HNSW_M`,
-    `BSDB_HNSW_EF_CONSTRUCTION`, `BSDB_HNSW_N_LISTS`, `BSDB_HNSW_N_PROBE`,
-    `BSDB_HNSW_SEED`, and `BSDB_KMEANS_SEED`. M/ef_construction now come from the
+    runtime environment reads; `BDB_SSRF_GUARD` is now always on.
+  - **HNSW/IVF build knobs → per-index API**: Removed `BDB_HNSW_M`,
+    `BDB_HNSW_EF_CONSTRUCTION`, `BDB_HNSW_N_LISTS`, `BDB_HNSW_N_PROBE`,
+    `BDB_HNSW_SEED`, and `BDB_KMEANS_SEED`. M/ef_construction now come from the
     `IndexAlgorithm` `complexity`/`quality` fields, IVF probe count from the explicit
     `probes` search parameter, and k-means determinism from the `seed` build parameter
     (defaulting to `0x00C0_FFEE_1337`).
@@ -1110,7 +1160,7 @@ needed to publish the resulting numbers honestly.
   (`openFileSession`). File granularity is what the reader supports today;
   `Split::row_group_ids` is reserved for sub-file splits.
 - **MCP HTTP + SSE transport** — `benostreamdb-mcp --transport sse --bind
-  <addr:port>` (or `BSDB_MCP_TRANSPORT`/`BSDB_MCP_BIND`) serves `GET /sse` and
+  <addr:port>` (or `BDB_MCP_TRANSPORT`/`BDB_MCP_BIND`) serves `GET /sse` and
   `POST /message?sessionId=...` on top of a shared JSON-RPC handler, so a
   cloud-hosted agent no longer needs to spawn a subprocess. `stdio` stays the
   default. The transport is unauthenticated: bind it to loopback or front it with
@@ -1162,7 +1212,7 @@ needed to publish the resulting numbers honestly.
   `do_get_prepared_statement` use `execute_stream()` +
   `FlightDataEncoderBuilder` instead of `collect()`, so the first page leaves
   before the result is buffered; dropping the stream cancels execution. The
-  `BSDB_FLIGHT_MAX_ROWS` cap is enforced during streaming and mapped to
+  `BDB_FLIGHT_MAX_ROWS` cap is enforced during streaming and mapped to
   `RESOURCE_EXHAUSTED`.
 - **Spark stored procedures return rows** — `show_indexes` yields
   `(column_name, index_category, algorithm, index_id, format_version)` and
@@ -1330,9 +1380,9 @@ needed to publish the resulting numbers honestly.
   default, plus Ollama, OpenAI-compatible, and TEI HTTP endpoints. Models are
   fetched with `hf-hub`, dimensions are inferred from the model config, and
   `tokenizers` handles truncation and batching. New `--embedding-*` flags and
-  `BSDB_EMBEDDING_*` variables; `list_embedding_models` exposes the active
+  `BDB_EMBEDDING_*` variables; `list_embedding_models` exposes the active
   provider, model, dimension, cache, and local catalogue.
-- **GPU device pools across Python, Flight SQL, and MCP** — `BSDB_GPU_DEVICE`
+- **GPU device pools across Python, Flight SQL, and MCP** — `BDB_GPU_DEVICE`
   now accepts a comma-separated list (`cuda:0,cuda:1`) and installs a
   round-robin device pool. Python exposes `set_gpu_device_pool()` /
   `gpu_device_pool()`. Worker threads are assigned one device each; a single
@@ -1344,16 +1394,16 @@ needed to publish the resulting numbers honestly.
   `compute_batch_distance`, `bsdb.cdist` in Python, and 65,536-row out-of-core
   bucketing.
 - **Cross-connector configuration and API documentation** — `docs/CONFIGURATION.md`
-  now covers every `BSDB_*` variable, including embeddings, catalog, GPU/HNSW,
+  now covers every `BDB_*` variable, including embeddings, catalog, GPU/HNSW,
   OTLP, Flight SQL, and MCP.
 
 ### Changed
 - **MCP default embeddings are local** — the first embedding call downloads the
   model into a private cache (`~/.benostreamdb/models` by default). Set
-  `BSDB_EMBEDDING_PROVIDER=http` or `none` to avoid the download.
+  `BDB_EMBEDDING_PROVIDER=http` or `none` to avoid the download.
 - Examples and demo builders default to `BAAI/bge-small-en-v1.5` instead of
   `all-MiniLM-L6-v2` / `bge-large-en-v1.5`.
-- `BSDB_FLIGHT_READ_ONLY` is consistently a boolean: `1`/`true` enables it, and
+- `BDB_FLIGHT_READ_ONLY` is consistently a boolean: `1`/`true` enables it, and
   `0` no longer blocks the ingest/update paths.
 
 ### Fixed
@@ -1373,7 +1423,7 @@ needed to publish the resulting numbers honestly.
   with `num_cpus.min(4)`, producing different cluster topologies on 2-vCPU CI
   runners versus multi-core workstations. Added `simple_kmeans_with_seed`,
   defaulting to deterministic PRNG seed `0x00C0_FFEE_1337` (configurable via
-  `BSDB_KMEANS_SEED` and `BSDB_HNSW_SEED`), exposed `seed` in
+  `BDB_KMEANS_SEED` and `BDB_HNSW_SEED`), exposed `seed` in
   `Device.kmeans(..., seed=...)`, and normalized small collection cluster counts
   to a constant `4`.
 - **Disk-cache key collisions across stores, runs, and CI steps** (long-standing;
@@ -1405,7 +1455,7 @@ needed to publish the resulting numbers honestly.
 - Model identity is not recoverable from a vector; the declared table property is
   the contract. Writes that bypass the engine and catalog (direct
   Parquet/object-store mutation) remain outside the guard.
-- `BSDB_VALIDATE_EMBEDDINGS=strict` enables per-row `List`/stringified-vector
+- `BDB_VALIDATE_EMBEDDINGS=strict` enables per-row `List`/stringified-vector
   length checks; the default only validates `FixedSizeList` columns.
 
 ## [0.12.0]
@@ -1485,7 +1535,7 @@ needed to publish the resulting numbers honestly.
 ### Changed
 - **Search gateway read-only posture is loud and fail-fast-able** — the gateway
   logs a `WARN` at startup when it has no writable schema, and
-  `BSDB_SEARCH_REQUIRE_POLICY=1` makes it **refuse to start** instead of running
+  `BDB_SEARCH_REQUIRE_POLICY=1` makes it **refuse to start** instead of running
   read-only.
 - **Reproducibility is now checked** — the release workflow builds the core wheel
   twice under the pinned `SOURCE_DATE_EPOCH` and fails unless the archives are
@@ -1538,7 +1588,7 @@ needed to publish the resulting numbers honestly.
   `mps`/`metal` | `intel`/`xpu` | `rocm`/`hip`) now backs the Spark/Trino JNI
   bridges, the Python binding (`benostreamdb.set_gpu_device` / `gpu_device`),
   the dbt adapter (profile `gpu_device`), and the Flight SQL + MCP servers
-  (`BSDB_GPU_DEVICE` / `BENOSTREAM_GPU_DEVICE` at startup). Previously only
+  (`BDB_GPU_DEVICE` / `BENOSTREAM_GPU_DEVICE` at startup). Previously only
   Python/Spark/Trino exposed a device; Flight, dbt, and MCP had none.
 - **Multi-GPU execution** — `gpu::set_gpu_device_pool` (+ `set_gpu_device_pool_from_str`)
   installs a round-robin pool of devices; each engine worker thread is assigned
@@ -1606,7 +1656,7 @@ needed to publish the resulting numbers honestly.
   convention), so `CREATE TABLE t` and `INSERT INTO t` resolve identically
   across every connector surface.
 - **`Session(warehouse=...)` Python binding** — the embedded session accepts a
-  warehouse base location (as the Flight server does via `BSDB_WAREHOUSE`), so
+  warehouse base location (as the Flight server does via `BDB_WAREHOUSE`), so
   DDL/CTAS can derive table URIs; the dbt adapter passes the profile `path`
   through (`:memory:` maps to the engine's in-memory store).
 - **Native Spark connector (v0.12.0)** — the Spark DataSource V2 connector is
@@ -1862,7 +1912,7 @@ needed to publish the resulting numbers honestly.
   and the SQL scan partition count now derive from
   `effective_target_partitions()` (the process-visible CPU count, respecting
   cgroup limits) instead of a hard-coded `4` / the framework default.
-  `BSDB_TARGET_PARTITIONS` overrides for tuning.
+  `BDB_TARGET_PARTITIONS` overrides for tuning.
 - **Community detection now defaults to Leiden** — `communities`,
   `update_communities`, `graph_rag_search(community_algorithm=...)`,
   `summarize_communities(algorithm=...)`, and the Rust `communities_csr*`
@@ -1892,7 +1942,7 @@ needed to publish the resulting numbers honestly.
   follow-up `DoGet` for DML, so the statement would otherwise never run.
 - **`BenoStreamTableProvider::insert_into`** — `INSERT INTO` now writes and
   commits the rows, so they are immediately visible to subsequent scans.
-- **Flight SQL startup loads `CatalogConfig` and `BSDB_WAREHOUSE`** so
+- **Flight SQL startup loads `CatalogConfig` and `BDB_WAREHOUSE`** so
   `CREATE TABLE` lands in the instance's catalog.
 - **`Table::checkpoint_async`** — an async WAL checkpoint safe to call from
   within a Tokio runtime (the sync `checkpoint` uses `blocking_lock`).
@@ -1903,7 +1953,7 @@ needed to publish the resulting numbers honestly.
 - **SQL injection fix (A03)** — the DDL/maintenance interception layer no longer
   interpolates untrusted identifiers into SQL; statements are parsed and
   dispatched through the core `Table` API.
-- **SSRF guard (A10)** — `BSDB_SSRF_GUARD` blocks requests to link-local,
+- **SSRF guard (A10)** — `BDB_SSRF_GUARD` blocks requests to link-local,
   private, and non-public endpoints, including Azure/GCP metadata endpoints and
   IP-literal hosts.
 - **Dependency-advisory tracking plan (A06)** — documented in
@@ -1940,11 +1990,11 @@ needed to publish the resulting numbers honestly.
   (e.g. NYC TLC's `passenger_count`) failed with "Unable to create native array".
   Nullable Parquet fields now map to `Nullable(...)`.
 - **Quickstart container had an unsafe default network posture** — the search
-  images defaulted `BSDB_QDRANT_BIND=0.0.0.0` and the quickstart compose
+  images defaulted `BDB_QDRANT_BIND=0.0.0.0` and the quickstart compose
   published `9200`/`6333`/`50051` on all host interfaces with no credentials
   (the server fails closed, so it would exit rather than serve). The image
   defaults are now loopback, the quickstart publishes on `127.0.0.1` only, and
-  it sets a local dev `BSDB_API_KEY`.
+  it sets a local dev `BDB_API_KEY`.
 - **`CREATE INDEX ... USING <algorithm>` silently ignored most algorithms** —
   the engine's parser accepts `CREATE INDEX` but **drops the `USING` clause**
   (`ci.using` is always `None`), and the mapped set was only `hnsw*`/`bm25`, so
@@ -1994,12 +2044,12 @@ needed to publish the resulting numbers honestly.
   `core_*` bindings expose optional `source_column`/`target_column`, so every
   graph entry point can name its endpoints explicitly.
 - **Ingest RAM back-pressure could block a writer forever** — the high-water
-  check compared *absolute* process RSS against `BSDB_MAX_INGEST_RAM_GB`, so once
+  check compared *absolute* process RSS against `BDB_MAX_INGEST_RAM_GB`, so once
   the process baseline (a prior test in the same process, caches, the runtime
   itself) was already at/above the cap and no background task could reclaim it,
   `write` spun indefinitely. The check is now baseline-relative (it bounds the
   engine's *growth* since the write began) with a bounded fail-open grace
-  (`BSDB_INGEST_BACKPRESSURE_GRACE_SECS`, default 60s) that logs an error and
+  (`BDB_INGEST_BACKPRESSURE_GRACE_SECS`, default 60s) that logs an error and
   proceeds when RSS is stuck above the cap for reasons the write cannot relieve.
   The soak suite's memory-backpressure test now completes instead of hanging.
 - **`graph_betweenness_centrality` panicked** — the result builder indexed the
@@ -2425,7 +2475,7 @@ needed to publish the resulting numbers honestly.
   memory limit instead of leaving it unbounded, so SQL sorts/joins/aggregations
   spill to disk rather than OOMing. The limit is derived from the effective
   (cgroup-aware) memory at `DATAFUSION_MEMORY_FRACTION` of it, and is
-  independently configurable via `BSDB_DATAFUSION_MEMORY_GB`; an explicit limit
+  independently configurable via `BDB_DATAFUSION_MEMORY_GB`; an explicit limit
   still wins. Deliberately its own knob, not part of a fixed split — see
   `docs/RESOURCE_LIMITS.md`.
 - **CSR-backed community detection.** `Table.communities()` now runs Louvain or
@@ -2535,14 +2585,14 @@ needed to publish the resulting numbers honestly.
   resolves the memory actually available to the process — cgroup v2
   `memory.max`, then cgroup v1 `memory.limit_in_bytes`, then host RAM, then a
   conservative 4 GiB fallback — and every memory limit is derived from it:
-  `BSDB_MAX_INGEST_RAM_GB` and `BSDB_INGEST_MEMORY_BUDGET_GB` default to 80% of
+  `BDB_MAX_INGEST_RAM_GB` and `BDB_INGEST_MEMORY_BUDGET_GB` default to 80% of
   it,
-  and `BSDB_INDEX_BUILD_CONCURRENCY` scales as one build per ~8 GiB (capped at
+  and `BDB_INDEX_BUILD_CONCURRENCY` scales as one build per ~8 GiB (capped at
   the
   CPU count, at least 1). The "off unless configured" semantics are gone: an
   unset or non-positive variable now means "use the derived default", never
-  "disable the guard". `BSDB_MIN_FREE_DISK_GB` defaults to 1 GiB, and
-  `BSDB_INDEX_BUILD_CONCURRENCY=0` no longer re-enables unbounded fan-out.
+  "disable the guard". `BDB_MIN_FREE_DISK_GB` defaults to 1 GiB, and
+  `BDB_INDEX_BUILD_CONCURRENCY=0` no longer re-enables unbounded fan-out.
   `HeapTrimPolicy::from_budget_or_env` always returns a policy. See
   `RESOURCE_LIMITS.md` for how the knobs interact, with worked 4 GB → 128 GB
   examples.
@@ -2556,8 +2606,8 @@ needed to publish the resulting numbers honestly.
   documented in `deny.toml`.
 - **`cargo fmt --all` applied** across the workspace.
 - **Memory guards now size from *available* memory, not total.** The value that
-  derives `BSDB_MAX_INGEST_RAM_GB`, `BSDB_INGEST_MEMORY_BUDGET_GB`, and
-  `BSDB_INDEX_BUILD_CONCURRENCY` previously used the host's `MemTotal`, so on a
+  derives `BDB_MAX_INGEST_RAM_GB`, `BDB_INGEST_MEMORY_BUDGET_GB`, and
+  `BDB_INDEX_BUILD_CONCURRENCY` previously used the host's `MemTotal`, so on a
   shared machine the guards were sized for RAM the process could not actually
   get — the demo load was OOM-killed at ~74 GB RSS on a 121 GiB host because the
   derived high-water mark was ~102 GB. `effective_memory_bytes()` now prefers
@@ -2567,14 +2617,14 @@ needed to publish the resulting numbers honestly.
 
 ### Added
 - **Disk-headroom admission limit + a single resource-limits reference.** New
-  `core::resources` module: `BSDB_MIN_FREE_DISK_GB` refuses a flush when a local
+  `core::resources` module: `BDB_MIN_FREE_DISK_GB` refuses a flush when a local
   table's filesystem is below the threshold, so the failure is a clear error
   *before* any bytes are written rather than a partial segment, and
   `benostreamdb_free_disk_bytes` exposes the sampled headroom. Fail-open when
   the threshold is unset or the free space cannot be queried. Every
-  resource/back-pressure knob (`BSDB_MAX_INGEST_RAM_GB`,
-  `BSDB_INGEST_MEMORY_BUDGET_GB`, `BSDB_INDEX_BUILD_CONCURRENCY`,
-  `BSDB_MIN_FREE_DISK_GB`, and the CPU/concurrency bounds) is now documented in
+  resource/back-pressure knob (`BDB_MAX_INGEST_RAM_GB`,
+  `BDB_INGEST_MEMORY_BUDGET_GB`, `BDB_INDEX_BUILD_CONCURRENCY`,
+  `BDB_MIN_FREE_DISK_GB`, and the CPU/concurrency bounds) is now documented in
   one place: `RESOURCE_LIMITS.md`.
 - **No-panic gate enforced for the library.** The production `unwrap()`/
   `expect()`/`panic!` count across both crates went **289 → 0** (247 core
@@ -2602,10 +2652,10 @@ needed to publish the resulting numbers honestly.
   (`test_cpu_saturation.py`), many commit cycles must stay durable
   (`test_disk_io.py`), and a mixed write/search/read churn must keep memory
   bounded over a wall-clock budget (`test_mixed_soak.py`). Skipped unless
-  `BSDB_STRESS=1`; run on push by the `Soak` workflow. A Rust long-running soak
+  `BDB_STRESS=1`; run on push by the `Soak` workflow. A Rust long-running soak
   harness (`tests/soak.rs`, `#[ignore]`) provides the same coverage in-process.
 - **Event-driven ingest back-pressure.** The ingest RAM high-water mark
-  (`BSDB_MAX_INGEST_RAM_GB`) previously blocked writers with a flat 500 ms sleep
+  (`BDB_MAX_INGEST_RAM_GB`) previously blocked writers with a flat 500 ms sleep
   loop that re-read `/proc/self/status` on every iteration — wasting time when
   memory had already been freed and delaying resumption when it had not. Writers
   now wait on a `tokio::sync::Notify` signalled by the tasks that release memory
@@ -2677,7 +2727,7 @@ needed to publish the resulting numbers honestly.
   **105 GB RSS** and was OOM-killed, and before that thrashed so badly that
   per-chunk time exploded 43 min → 8.65 h. Builds now go through a shared
   semaphore (`Table::index_build_gate`, default 2,
-  `BSDB_INDEX_BUILD_CONCURRENCY`)
+  `BDB_INDEX_BUILD_CONCURRENCY`)
   that back-pressures the writer; the bounded working set also removes the
   page-cache eviction that made the unbounded case slow, not just fatal.
 - **`add_index` re-indexed every prior segment on each call (O(n²) demo-load
@@ -2702,7 +2752,7 @@ needed to publish the resulting numbers honestly.
   allocations ratcheted RSS toward the sum of every arena's high-water mark.
   Both
   the flush path and the end of each background index build now call
-  `memory::trim_if_over_budget` (budget via `BSDB_INGEST_MEMORY_BUDGET_GB`,
+  `memory::trim_if_over_budget` (budget via `BDB_INGEST_MEMORY_BUDGET_GB`,
   default 8 GiB) so freed arena pages are released before the next build starts.
 - **`simple_kmeans` allocated a `Vec` per vector** in the capacity-capped final
   assignment. Over millions of vectors that churned and fragmented the heap. It
@@ -2746,7 +2796,7 @@ needed to publish the resulting numbers honestly.
   `libnvrtc.so.{12,11,10,1}`) that predates CUDA 13, so `nvidia-*-cu13` wheels
   (`libnvrtc.so.13`) were never found: the probe panicked and the GPU silently
   fell back to CPU. `core::index::nvrtc` now resolves *whatever* `libnvrtc.so*`
-  is installed — any version, any layout (`BSDB_NVRTC_PATH`, the interpreter's
+  is installed — any version, any layout (`BDB_NVRTC_PATH`, the interpreter's
   `site-packages`, `CUDA_HOME`/`CUDA_PATH`, `PYTHONPATH`, `LD_LIBRARY_PATH`,
   system paths) — preloads the `libnvrtc-builtins` companion with `RTLD_GLOBAL`,
   and compiles the embedded `.cu` sources itself, handing the PTX to cudarc. No
@@ -2808,7 +2858,7 @@ needed to publish the resulting numbers honestly.
   heap pages to the OS (`malloc_trim`) at work-unit boundaries once RSS exceeds
   a budget, so long-lived in-process loads no longer ratchet toward the sum of
   every glibc arena's high-water mark. Wired through
-  `IngestOptions::memory_budget_bytes`, the `BSDB_INGEST_MEMORY_BUDGET_GB` env
+  `IngestOptions::memory_budget_bytes`, the `BDB_INGEST_MEMORY_BUDGET_GB` env
   var, `bsdb table ingest --memory-budget-gb`, and
   `table.ingest(..., memory_budget_gb=…)`. Allocator evaluation recorded in
   `core::memory`: glibc + `malloc_trim` chosen; jemalloc deferred; mimalloc
@@ -2851,8 +2901,8 @@ needed to publish the resulting numbers honestly.
      count from the file length instead of re-reading the whole file just to
      count vectors (a multi-GB read per segment). Legacy header-less files still
      work via the old full-scan path.
-  Tuning knobs (no rebuild): `BSDB_HNSW_N_LISTS`, `BSDB_HNSW_M`,
-  `BSDB_HNSW_EF_CONSTRUCTION`.
+  Tuning knobs (no rebuild): `BDB_HNSW_N_LISTS`, `BDB_HNSW_M`,
+  `BDB_HNSW_EF_CONSTRUCTION`.
 
 ## [0.9.0] - 2026-09-23
 
@@ -3046,7 +3096,7 @@ needed to publish the resulting numbers honestly.
   (verified position-aligned across multi-shard/coprime-batch boundaries).
   Shard deletion moved to strictly AFTER table commit (an earlier delete-on-
   advance variant destroyed the only embedding copy). Stage `embed` now rotates
-  5M-row shards (`BSDB_EMBED_SHARD_ROWS` override) so load can reclaim disk
+  5M-row shards (`BDB_EMBED_SHARD_ROWS` override) so load can reclaim disk
   incrementally. Covered by `tests/python/test_prepare_demo.py`.
 
 ### Added

@@ -4,10 +4,10 @@ OTLP collector + Prometheus + Grafana for BenoStreamDB. Two ways to get metrics
 in, both supported simultaneously:
 
 1. **OTLP push** — the engine converts its Prometheus registry to OTLP/HTTP JSON
-   and pushes every `BSDB_OTLP_INTERVAL_SECS` (default 15) to
-   `BSDB_OTLP_ENDPOINT`. See `src/telemetry/otlp.rs`.
+   and pushes every `BDB_OTLP_INTERVAL_SECS` (default 15) to
+   `BDB_OTLP_ENDPOINT`. See `src/telemetry/otlp.rs`.
 2. **Pull scrape** — every host serves `/metrics` (Prometheus text). Set
-   `BSDB_METRICS_BIND=0.0.0.0` so Prometheus can reach it.
+   `BDB_METRICS_BIND=0.0.0.0` so Prometheus can reach it.
 
 ## Run
 
@@ -19,22 +19,22 @@ docker compose -f deploy/observability/docker-compose.observability.yml up -d
 |---|---|---|
 | Grafana | http://localhost:3000 | `admin` / `admin`; dashboard "BenoStreamDB" provisioned |
 | Prometheus | http://localhost:9091 | scrapes the collector (`:8889`) and the host `:9090` |
-| OTLP/HTTP | http://localhost:4318 | set `BSDB_OTLP_ENDPOINT` to this |
+| OTLP/HTTP | http://localhost:4318 | set `BDB_OTLP_ENDPOINT` to this |
 | OTLP/gRPC | localhost:4317 | |
 | Collector metrics | http://localhost:8889/metrics | Prometheus-format re-export |
 
 ### Point the engine at it
 
 ```bash
-export BSDB_OTLP_ENDPOINT=http://localhost:4318
-export BSDB_SERVICE_NAME=benodb        # resource service.name
-export BSDB_OTLP_INTERVAL_SECS=15
+export BDB_OTLP_ENDPOINT=http://localhost:4318
+export BDB_SERVICE_NAME=benodb        # resource service.name
+export BDB_OTLP_INTERVAL_SECS=15
 # optional auth/multi-tenant headers:
-# export BSDB_OTLP_HEADERS="authorization=Bearer <token>,x-tenant=acme"
+# export BDB_OTLP_HEADERS="authorization=Bearer <token>,x-tenant=acme"
 
 # For pull scraping as well:
-export BSDB_METRICS_BIND=0.0.0.0
-export BSDB_METRICS_PORT=9090
+export BDB_METRICS_BIND=0.0.0.0
+export BDB_METRICS_PORT=9090
 ```
 
 The Flight SQL server, the search gateway, and the JVM connectors (via the JNI
@@ -57,12 +57,12 @@ metrics bridge) all expose the same registry, so one pipeline covers every host.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BSDB_OTLP_ENDPOINT` | (unset) | enables OTLP push; e.g. `http://localhost:4318` |
-| `BSDB_OTLP_INTERVAL_SECS` | `15` | push period |
-| `BSDB_OTLP_HEADERS` | (unset) | comma-separated `key=value` headers |
-| `BSDB_SERVICE_NAME` | `benodb` | OTLP `service.name` |
-| `BSDB_METRICS_BIND` | `127.0.0.1` | `/metrics` bind address |
-| `BSDB_METRICS_PORT` | `9090` | `/metrics` port |
+| `BDB_OTLP_ENDPOINT` | (unset) | enables OTLP push; e.g. `http://localhost:4318` |
+| `BDB_OTLP_INTERVAL_SECS` | `15` | push period |
+| `BDB_OTLP_HEADERS` | (unset) | comma-separated `key=value` headers |
+| `BDB_SERVICE_NAME` | `benodb` | OTLP `service.name` |
+| `BDB_METRICS_BIND` | `127.0.0.1` | `/metrics` bind address |
+| `BDB_METRICS_PORT` | `9090` | `/metrics` port |
 
 ## Notes
 

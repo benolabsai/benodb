@@ -514,7 +514,7 @@ def write_index_mode(db_path: str, mode: str, idx_type: str, args) -> None:
         "flush_every": getattr(args, "flush_every", None),
         "parquet_page_bytes": parquet_page_bytes(),
         "parquet_row_group_rows": int(
-            os.environ.get("BSDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
+            os.environ.get("BDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
         ),
         "cache_gb": getattr(args, "cache_gb", None),
         "index_compaction": bool(getattr(args, "index_compaction", False)),
@@ -556,13 +556,22 @@ def reindex_and_preload(bsdb, args, mode: str):
             f"DB '{base_db}' does not exist; run the ingest command first "
             "(or drop the query subcommand)"
         )
-    db_path = base_db
-
-    if getattr(args, "auto_warmup", False):
-        inner = bsdb._RustTable(db_path, auto_warmup=True)
-        table = bsdb.Table(db_path, inner_table=inner)
+    overlay_dir = os.environ.get("BDB_BENCH_OVERLAY", "").strip()
+    if overlay_dir:
+        os.makedirs(overlay_dir, exist_ok=True)
+        db_path = overlay_dir
+        print(
+            f"    -> Mounting detached overlay '{overlay_dir}' over upstream '{base_db}'",
+            flush=True,
+        )
+        table = bsdb.Table.mount_external_iceberg(base_db, overlay_dir)
     else:
-        table = bsdb.Table(db_path)
+        db_path = base_db
+        if getattr(args, "auto_warmup", False):
+            inner = bsdb._RustTable(db_path, auto_warmup=True)
+            table = bsdb.Table(db_path, inner_table=inner)
+        else:
+            table = bsdb.Table(db_path)
 
     # Which algorithm this mode builds. Each quantizer is a distinct, first-class
     # `IndexAlgorithm` (`hnsw`, `hnsw_sq8`, `hnsw_tq8`, `hnsw_tq4`, `hnsw_pq`),
@@ -584,13 +593,25 @@ def reindex_and_preload(bsdb, args, mode: str):
     # An index is reusable only if it is the one this mode asked for. Counting
     # `*.puffin` against `*.parquet` proves something was built; it does not
     # prove which quantizer built it, and reusing the wrong one reports a
-    # quantizer that never ran.
+    # quantizer that never ran. In detached overlay mode, Parquet lives in
+    # `base_db` while Puffin artifacts live inside `overlay_dir` (nested under
+    # `indexes/` and the mirrored upstream path).
     marker = read_index_mode(db_path)
     has_existing_index = False
     try:
-        parquets = [f for f in os.listdir(db_path) if f.endswith(".parquet")]
-        puffins = [f for f in os.listdir(db_path) if f.endswith(".puffin")]
-        if len(parquets) > 0 and len(puffins) >= len(parquets):
+        if overlay_dir:
+            has_puffins = any(
+                fn.endswith(".puffin")
+                for _, _, files in os.walk(overlay_dir)
+                for fn in files
+            )
+            index_present = has_puffins
+        else:
+            parquets = [f for f in os.listdir(db_path) if f.endswith(".parquet")]
+            puffins = [f for f in os.listdir(db_path) if f.endswith(".puffin")]
+            index_present = len(parquets) > 0 and len(puffins) >= len(parquets)
+
+        if index_present:
             if marker.get("mode") == mode:
                 has_existing_index = True
             elif marker:
@@ -698,7 +719,10 @@ def reindex_and_preload(bsdb, args, mode: str):
         )
 
     # Invalidate engine internal caches and evict unneeded Parquet build data from OS page cache
-    clear_evaluation_caches(table, [db_path, getattr(args, "scratch_dir", None)], label=f"pre-warm-{mode.upper()}")
+    evict_dirs = [db_path, getattr(args, "scratch_dir", None)]
+    if overlay_dir and base_db not in evict_dirs:
+        evict_dirs.append(base_db)
+    clear_evaluation_caches(table, evict_dirs, label=f"pre-warm-{mode.upper()}")
 
     print("    -> Preloading index into RAM cache ...", flush=True)
     warm = table.preload_indexes(
@@ -743,11 +767,11 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
 
     # A warm cache hides the skip: the table is already resident, so `read_bytes`
     # barely moves and only the characters returned to the caller differ. The
-    # physical byte claim needs a cold read, so `BSDB_BENCH_EVICT=query` drops
+    # physical byte claim needs a cold read, so `BDB_BENCH_EVICT=query` drops
     # the Parquet pages before every timed query. That only makes sense with one
     # query in flight, so the pool is forced to a single worker and the record
     # says so.
-    evict_mode = os.environ.get("BSDB_BENCH_EVICT", "pass").strip().lower()
+    evict_mode = os.environ.get("BDB_BENCH_EVICT", "pass").strip().lower()
     cold_paths = parquet_files(args.db_dir) if evict_mode == "query" else []
     workers = 1 if evict_mode == "query" else args.threads
 
@@ -884,7 +908,7 @@ def parquet_page_bytes() -> int:
     several page sizes and compare the physical bytes read per query, which is
     the measurement the paper's central claim currently lacks.
     """
-    raw = os.environ.get("BSDB_PARQUET_PAGE_BYTES", "").strip()
+    raw = os.environ.get("BDB_PARQUET_PAGE_BYTES", "").strip()
     try:
         value = int(raw)
     except ValueError:
@@ -966,7 +990,7 @@ def render_report(args, records, meta) -> str:
         f"oom_kill={mem.get('events', {}).get('oom_kill')}, "
         f"process maxrss {_mb(mem.get('process', {}).get('maxrss_bytes'))} MiB",
         f"- Envelope: hardware=`{env['hardware']}`, threads={env['threads']}, "
-        f"BSDB_CACHE_GB={env['cache_gb']}, preload={env['preload_gb']:.1f} GiB",
+        f"BDB_CACHE_GB={env['cache_gb']}, preload={env['preload_gb']:.1f} GiB",
         f"- Storage: `{env.get('storage', {}).get('device', 'unknown')}` "
         f"{env.get('storage', {}).get('model') or ''}, "
         f"PCIe {env.get('storage', {}).get('pcie_generation', '?')} "
@@ -1021,8 +1045,49 @@ def render_report(args, records, meta) -> str:
     return "\n".join(lines) + "\n"
 
 
+def envelope_verified(records) -> bool:
+    """Whether every record proves it ran inside a cgroup memory limit.
+
+    A `hardware` label is a claim, not evidence: one 100M artifact in this tree is
+    labelled `d8lds` while its peak RSS was 35.6 GB against a 16 GiB envelope, and
+    nothing in the file contradicted the label until the limit was also recorded.
+    A record proves the envelope only when it carries a positive `cgroup_limit_mb`
+    and its peak stays under it. Anything else is a developer run.
+    """
+    if not records:
+        return False
+    for r in records:
+        limit = r.get("cgroup_limit_mb") or 0
+        peak = r.get("cgroup_peak_mb") or 0
+        if limit <= 0 or peak > limit * 1.02:
+            return False
+    return True
+
+
 def save_results(args, records, meta) -> None:
-    """Persist JSON (machine), Markdown (paper), and an append-only ledger."""
+    """Persist JSON (machine), Markdown (paper), and an append-only ledger.
+
+    Refuses to write an artifact whose envelope cannot be proven, unless
+    `BDB_ALLOW_UNVERIFIED=1` is set, in which case the records are stamped
+    `envelope_verified: false` so no reader can mistake them for envelope results.
+    Auditing 464 existing records found 460 that carried a hardware label with no
+    recorded limit, and three 100M artifacts that were labelled `d8lds` while
+    running at 19.2 to 29.7 GiB. The check exists so that cannot recur silently.
+    """
+    verified = envelope_verified(records)
+    if not verified:
+        if os.environ.get("BDB_ALLOW_UNVERIFIED", "").strip() != "1":
+            raise SystemExit(
+                "refusing to write an artifact with no proven memory envelope: no record "
+                "carries a positive cgroup_limit_mb, or a peak exceeded it. Re-run inside "
+                "the envelope (docker compose -f benchmarks/docker-compose.neurips.yml), or "
+                "set BDB_ALLOW_UNVERIFIED=1 to record a developer run that is stamped as such."
+            )
+    for r in records:
+        r["envelope_verified"] = verified
+    meta = dict(meta)
+    meta["envelope_verified"] = verified
+
     out_dir = os.path.abspath(args.out)
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -1373,7 +1438,7 @@ def apply_hardware(args) -> None:
         print(f"  detected cgroup limits: cpus={detected_cpus} mem={mem_txt}")
     print(f"  cpus: {cpus}   memory: {mem / GIB:.1f} GiB")
     print(
-        f"  query threads: {args.threads}   BSDB_CACHE_GB: {args.cache_gb}   "
+        f"  query threads: {args.threads}   BDB_CACHE_GB: {args.cache_gb}   "
         f"preload budget: {args.preload_gb:.1f} GiB"
     )
     if args.hardware == "auto" and (detected_cpus is None or detected_mem is None):
@@ -1452,8 +1517,8 @@ def apply_profile(args) -> None:
         # Inside a container the scratch volume is a mount path that no profile
         # can know, so the environment wins over the profile for these two.
         env_override = {
-            "scratch_dir": "BSDB_BENCH_SCRATCH",
-            "tmp_dir": "BSDB_BENCH_TMP",
+            "scratch_dir": "BDB_BENCH_SCRATCH",
+            "tmp_dir": "BDB_BENCH_TMP",
         }.get(dest)
         if env_override and os.environ.get(env_override):
             setattr(args, dest, os.environ[env_override])
@@ -1586,13 +1651,13 @@ def main():
         sys.exit(3)
 
     # Constrain threads/caches to the evaluation envelope before importing the
-    # engine: BSDB_CACHE_GB is read once, when the caches are first built.
+    # engine: BDB_CACHE_GB is read once, when the caches are first built.
     apply_hardware(args)
 
     # The table is local, so a second on-disk copy of every index is pure waste.
-    os.environ.setdefault("BSDB_DISK_CACHE", "off")
-    os.environ.setdefault("BSDB_DISK_CACHE_GB", "0")
-    os.environ["BSDB_CACHE_GB"] = str(args.cache_gb)
+    os.environ.setdefault("BDB_DISK_CACHE", "off")
+    os.environ.setdefault("BDB_DISK_CACHE_GB", "0")
+    os.environ["BDB_CACHE_GB"] = str(args.cache_gb)
 
     os.makedirs(args.scratch_dir, exist_ok=True)
 
@@ -1643,7 +1708,7 @@ def main():
         grid = [(args.ef_search, args.n_probe)]
 
     print("=" * 90)
-    print("NEURIPS BIGANN BENCHMARK HARNESS - BENOSTREAMDB")
+    print("NEURIPS BIGANN BENCHMARK HARNESS - BENODB")
     print(f"Vectors: {n:,} | Queries: {args.queries:,} | Top-k: {args.k} | M: {args.m} "
           f"| ef_c: {args.ef_construction}")
     print(f"Operating points: {len(grid)} "
@@ -1735,10 +1800,12 @@ def main():
             # claims to measure. Without this check a `--skip-reindex` run can
             # report TQ8 while querying whatever the last build left behind.
             if args.skip_reindex and not args.force_reindex:
-                manifest = read_index_mode(args.db_dir)
+                overlay_dir = os.environ.get("BDB_BENCH_OVERLAY", "").strip()
+                check_dir = overlay_dir if overlay_dir else args.db_dir
+                manifest = read_index_mode(check_dir)
                 mismatch = []
                 if not manifest:
-                    mismatch.append(f"no index manifest at {index_mode_marker(args.db_dir)}")
+                    mismatch.append(f"no index manifest at {index_mode_marker(check_dir)}")
                 else:
                     for key, want in (("mode", mode), ("complexity", args.m),
                                       ("quality", args.ef_construction),
@@ -1859,9 +1926,9 @@ def main():
                 "repeat": args.repeat,
                 "parquet_page_bytes": parquet_page_bytes(),
                 "parquet_row_group_rows": int(
-                    os.environ.get("BSDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
+                    os.environ.get("BDB_PARQUET_ROW_GROUP_ROWS", "1048576") or 1048576
                 ),
-                "reader_skip": os.environ.get("BSDB_READER_SKIP", "1") != "0",
+                "reader_skip": os.environ.get("BDB_READER_SKIP", "1") != "0",
                 "reused_index": bool(args.skip_reindex),
                 "allow_dirty": bool(args.allow_dirty),
             },
@@ -1909,7 +1976,7 @@ def main():
 
         print("\n" + "=" * 90)
         print(f"FINAL BIGANN RESULTS  (threads={args.threads}, "
-              f"BSDB_CACHE_GB={args.cache_gb}, hardware={args.hardware})")
+              f"BDB_CACHE_GB={args.cache_gb}, hardware={args.hardware})")
         print("=" * 90)
         print("\n".join(md), flush=True)
 

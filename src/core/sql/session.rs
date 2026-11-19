@@ -100,7 +100,7 @@ impl BenoStreamSession {
             // Default the query memory limit from the effective memory so SQL
             // sorts/joins/aggregations spill to disk instead of OOMing. A caller
             // that passes an explicit limit (e.g. `PySession`) still wins;
-            // `BSDB_DATAFUSION_MEMORY_GB` overrides the derived default.
+            // `BDB_DATAFUSION_MEMORY_GB` overrides the derived default.
             let limit = memory_limit_bytes.unwrap_or_else(|| {
                 crate::core::resources::default_datafusion_memory_bytes() as usize
             });

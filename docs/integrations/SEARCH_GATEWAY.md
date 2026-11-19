@@ -18,7 +18,7 @@ The search gateway runs as a standalone daemon (`bsdb-search`) and exposes two d
 
 ## ⚠️ Deployment Security
 
-* **Stateless Authentication**: Supports static API keys (`BSDB_API_KEY`) and JWT verification. Keys are accepted via `Authorization: Bearer <token>`, `Authorization: ApiKey <token>`, or the `api-key` header.
+* **Stateless Authentication**: Supports static API keys (`BDB_API_KEY`) and JWT verification. Keys are accepted via `Authorization: Bearer <token>`, `Authorization: ApiKey <token>`, or the `api-key` header.
 * **No TLS**: The search gateway does not provide native TLS termination. Bind to `127.0.0.1` or an internal VPC subnet behind a reverse proxy that terminates TLS.
 
 ---
@@ -27,14 +27,14 @@ The search gateway runs as a standalone daemon (`bsdb-search`) and exposes two d
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_SEARCH_BIND` | Bind address for OpenSearch REST server | `0.0.0.0` |
-| `BSDB_SEARCH_PORT` | Port for OpenSearch / ES 7.10 REST server | `9200` |
-| `BSDB_QDRANT_BIND` | Bind address for Qdrant REST server | Matches search bind |
-| `BSDB_QDRANT_PORT` | Port for Qdrant REST server | `6333` |
-| `BSDB_SEARCH_STORAGE_URI` | Base storage URI for indices and collections | `./data` |
-| `BSDB_API_KEY` | Shared secret API key | Unset |
-| `BSDB_WAL_DURABILITY` | Ingestion durability (`"async"` for batching, `"sync"` for fsync) | `"async"` |
-| `BSDB_SEARCH_AUTO_REFRESH_SECS` | Background flush interval for memory buffers | `1.0` |
+| `BDB_SEARCH_BIND` | Bind address for OpenSearch REST server | `0.0.0.0` |
+| `BDB_SEARCH_PORT` | Port for OpenSearch / ES 7.10 REST server | `9200` |
+| `BDB_QDRANT_BIND` | Bind address for Qdrant REST server | Matches search bind |
+| `BDB_QDRANT_PORT` | Port for Qdrant REST server | `6333` |
+| `BDB_SEARCH_STORAGE_URI` | Base storage URI for indices and collections | `./data` |
+| `BDB_API_KEY` | Shared secret API key | Unset |
+| `BDB_WAL_DURABILITY` | Ingestion durability (`"async"` for batching, `"sync"` for fsync) | `"async"` |
+| `BDB_SEARCH_AUTO_REFRESH_SECS` | Background flush interval for memory buffers | `1.0` |
 
 ---
 
@@ -53,7 +53,7 @@ bsdb-search --bind 127.0.0.1 --port 9200 --storage-uri s3://my-bucket/search
 
 ```bash
 # Cluster health check
-curl -H "Authorization: Bearer $BSDB_API_KEY" http://localhost:9200/_cluster/health
+curl -H "Authorization: Bearer $BDB_API_KEY" http://localhost:9200/_cluster/health
 
 # Create an index
 curl -X PUT http://localhost:9200/articles -H "Content-Type: application/json" -d '{

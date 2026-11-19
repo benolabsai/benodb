@@ -31,11 +31,11 @@ fn current_rss_bytes() -> usize {
 /// above the cap for reasons the current write cannot relieve (pre-existing
 /// process memory the engine will never free), before it fails open.
 ///
-/// Overridable via `BSDB_INGEST_BACKPRESSURE_GRACE_SECS`; a non-positive or
+/// Overridable via `BDB_INGEST_BACKPRESSURE_GRACE_SECS`; a non-positive or
 /// unparseable value falls back to the 60-second default.
 fn ingest_backpressure_grace() -> std::time::Duration {
     std::time::Duration::from_secs_f64(backpressure_grace_secs(
-        std::env::var("BSDB_INGEST_BACKPRESSURE_GRACE_SECS")
+        std::env::var("BDB_INGEST_BACKPRESSURE_GRACE_SECS")
             .ok()
             .as_deref(),
     ))
@@ -54,7 +54,7 @@ impl Table {
     /// Write Arrow RecordBatches to the table (Buffered)
     ///
     /// Data is written to an in-memory buffer. It is NOT persisted to disk until:
-    /// 1. The buffer exceeds `BSDB_CACHE_GB`
+    /// 1. The buffer exceeds `BDB_CACHE_GB`
     /// 2. `commit()` is called explicitly
     pub fn write(&self, batches: Vec<RecordBatch>) -> Result<()> {
         // A pinned handle is a read view. Refuse before entering the runtime
@@ -340,7 +340,7 @@ impl Table {
         }
 
         // Disk admission: refuse a flush when a local table's filesystem is below
-        // the free-space threshold (default `BSDB_MIN_FREE_DISK_GB`), so the
+        // the free-space threshold (default `BDB_MIN_FREE_DISK_GB`), so the
         // failure is a clear error instead of a partial segment written mid-way.
         // Fail-open when the free space is unknown.
         if let Some(local) = self.uri.strip_prefix("file://") {
@@ -908,7 +908,7 @@ impl Table {
                 .map(|p| p.batch.get_array_memory_size())
                 .sum();
 
-            let cache_gb: usize = std::env::var("BSDB_CACHE_GB")
+            let cache_gb: usize = std::env::var("BDB_CACHE_GB")
                 .unwrap_or_else(|_| "1".to_string())
                 .parse()
                 .unwrap_or(1);

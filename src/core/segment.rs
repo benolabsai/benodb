@@ -1968,7 +1968,7 @@ impl HybridSegmentWriter {
 /// physical bytes read per query. Values below 1 KiB are ignored so a typo
 /// cannot produce a pathological page index.
 fn data_page_size_limit() -> usize {
-    std::env::var("BSDB_PARQUET_PAGE_BYTES")
+    std::env::var("BDB_PARQUET_PAGE_BYTES")
         .ok()
         .and_then(|raw| raw.trim().parse::<usize>().ok())
         .filter(|bytes| *bytes >= 1024)
@@ -1982,7 +1982,7 @@ fn data_page_size_limit() -> usize {
 /// id is 136 bytes, so 3_942_449 rows lands near 512 MB; the ablation script
 /// converts from bytes when it needs a specific size.
 fn row_group_rows() -> usize {
-    std::env::var("BSDB_PARQUET_ROW_GROUP_ROWS")
+    std::env::var("BDB_PARQUET_ROW_GROUP_ROWS")
         .ok()
         .and_then(|raw| raw.trim().parse::<usize>().ok())
         .filter(|rows| *rows >= 1_000)

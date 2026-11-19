@@ -184,7 +184,7 @@ async fn list_namespaces(
     ax_lib::extract::Path(prefix): ax_lib::extract::Path<String>,
 ) -> impl IntoResponse {
     println!("Catalog prefix: {}", prefix);
-    let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
+    let uri = std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
     let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
@@ -228,7 +228,7 @@ async fn list_tables(
     ax_lib::extract::Path((prefix, namespace)): ax_lib::extract::Path<(String, String)>,
 ) -> impl IntoResponse {
     println!("Catalog prefix: {}, namespace: {}", prefix, namespace);
-    let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
+    let uri = std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
     let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
@@ -283,7 +283,7 @@ async fn get_table(
         String,
     )>,
 ) -> impl IntoResponse {
-    let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
+    let uri = std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
     println!(
         "Prefix: {}, Getting metadata for {}.{} (Storage: {})",
         prefix, namespace, table, uri
@@ -390,7 +390,7 @@ async fn create_table(
 ) -> impl IntoResponse {
     println!("Creating table {}.{}.{}", prefix, namespace, payload.name);
 
-    let base_uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
+    let base_uri = std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
 
     // Determine location
     let location = payload.location.unwrap_or_else(|| {
@@ -403,23 +403,22 @@ async fn create_table(
     });
 
     // Convert schema
-    let arrow_schema =
-        match benodb::core::iceberg::iceberg_json_to_arrow_schema(&payload.schema) {
-            Ok(s) => s,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": {
-                            "message": format!("Invalid schema: {}", e),
-                            "type": "BadRequestException",
-                            "code": 400
-                        }
-                    })),
-                )
-                    .into_response();
-            }
-        };
+    let arrow_schema = match benodb::core::iceberg::iceberg_json_to_arrow_schema(&payload.schema) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": {
+                        "message": format!("Invalid schema: {}", e),
+                        "type": "BadRequestException",
+                        "code": 400
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // Create table
     match benodb::Table::create_async(location.clone(), arrow_schema.clone()).await {
@@ -671,7 +670,7 @@ async fn update_table(
         payload.updates.len()
     );
 
-    let uri = std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
+    let uri = std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp".to_string());
     let store = match benodb::core::storage::create_object_store(&uri) {
         Ok(s) => s,
         Err(e) => {
@@ -822,9 +821,7 @@ async fn update_table(
 
                     if let Ok(get_res) = res {
                         let bytes = get_res.bytes().await.unwrap_or_default();
-                        if let Ok(list) =
-                            benodb::core::iceberg::read_manifest_list(&bytes[..])
-                        {
+                        if let Ok(list) = benodb::core::iceberg::read_manifest_list(&bytes[..]) {
                             let mut snapshot_data_entries = Vec::new();
                             let mut snapshot_delete_entries = Vec::new();
 
@@ -946,8 +943,7 @@ async fn update_table(
                         .and_then(|v| v.as_i64())
                         .map(|v| v as i32)
                         .unwrap_or(current_manifest.schemas.len() as i32 + 1);
-                    let new_schema =
-                        benodb::core::manifest::Schema::from_arrow(&arrow_schema, id);
+                    let new_schema = benodb::core::manifest::Schema::from_arrow(&arrow_schema, id);
 
                     let mut schemas = current_manifest.schemas.clone();
                     schemas.push(new_schema);
@@ -1039,11 +1035,7 @@ async fn update_table(
                                 meta.properties = committed_manifest.properties.clone();
                                 meta.last_updated_ms =
                                     meta.last_updated_ms.max(committed_manifest.timestamp_ms);
-                                Ok(
-                                    benodb::core::metadata::MetadataUpdateOutcome::Updated(
-                                        meta,
-                                    ),
-                                )
+                                Ok(benodb::core::metadata::MetadataUpdateOutcome::Updated(meta))
                             }
                             None => Ok(
                                 benodb::core::metadata::MetadataUpdateOutcome::AlreadyCurrent(

@@ -122,10 +122,10 @@ pub const DEFAULT_MEMORY_BUDGET_GB: f64 = 8.0;
 
 /// Resolve the RSS trim budget in bytes.
 ///
-/// A positive `BSDB_INGEST_MEMORY_BUDGET_GB` overrides `default_gb`; otherwise
+/// A positive `BDB_INGEST_MEMORY_BUDGET_GB` overrides `default_gb`; otherwise
 /// `default_gb` applies. The budget is always active.
 pub fn memory_budget_bytes(default_gb: f64) -> u64 {
-    let gb = std::env::var("BSDB_INGEST_MEMORY_BUDGET_GB")
+    let gb = std::env::var("BDB_INGEST_MEMORY_BUDGET_GB")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|g| *g > 0.0)
@@ -172,13 +172,13 @@ impl HeapTrimPolicy {
     }
 
     /// Resolve a policy from an explicit budget or the
-    /// `BSDB_INGEST_MEMORY_BUDGET_GB` environment variable, falling back to the
+    /// `BDB_INGEST_MEMORY_BUDGET_GB` environment variable, falling back to the
     /// memory-derived default. Trimming is always active.
     pub fn from_budget_or_env(budget_bytes: Option<u64>) -> Self {
         if let Some(b) = budget_bytes {
             return Self::new(b);
         }
-        if let Some(gb) = std::env::var("BSDB_INGEST_MEMORY_BUDGET_GB")
+        if let Some(gb) = std::env::var("BDB_INGEST_MEMORY_BUDGET_GB")
             .ok()
             .and_then(|s| s.parse::<f64>().ok())
             .filter(|g| *g > 0.0)
@@ -267,7 +267,7 @@ mod tests {
     fn policy_from_env_or_default_is_always_active() {
         // No explicit budget and (in the test env) no override: the policy must
         // still carry a positive, memory-derived budget rather than disabling.
-        if std::env::var("BSDB_INGEST_MEMORY_BUDGET_GB").is_err() {
+        if std::env::var("BDB_INGEST_MEMORY_BUDGET_GB").is_err() {
             let p = HeapTrimPolicy::from_budget_or_env(None);
             assert!(p.budget_bytes() > 0);
         }

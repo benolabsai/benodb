@@ -1010,7 +1010,7 @@ async fn s3_multi_writer_differential_matches_model() -> Result<()> {
     }
 
     let bucket =
-        std::env::var("BSDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
+        std::env::var("BDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
     let prefix = format!(
         "mw-diff-{}",
         std::time::SystemTime::now()

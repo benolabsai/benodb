@@ -82,7 +82,7 @@ default build is CPU-only and Python/JVM-free.
   - **Search gateway (server connector)** — schemas are provisioned on the
     backend and the gateway **never creates a schema**. With no policy it is
     read-only (reads allowed; **no** writable schema) and logs a startup warning
-    (`BSDB_SEARCH_REQUIRE_POLICY=1` makes it refuse to start instead). With a
+    (`BDB_SEARCH_REQUIRE_POLICY=1` makes it refuse to start instead). With a
     policy, writes are allowed only to schemas listed `read-write` (there is no
     default `scratch` namespace) and reads are the read-only floor / policy
     allowlist. A `no_access_schemas` list denies **both** read and write. This is

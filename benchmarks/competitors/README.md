@@ -44,7 +44,7 @@ python benchmarks/competitors/run_competitor.py \
 
 `--cores` sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS`; `--ram-gb` sets
 `RLIMIT_AS` so an over-budget run fails loudly. The BenoDB side is
-constrained by `RAYON_NUM_THREADS`, `BSDB_MAX_CONCURRENCY`, etc. (see the plan,
+constrained by `RAYON_NUM_THREADS`, `BDB_MAX_CONCURRENCY`, etc. (see the plan,
 §5). **Match `--cores`/`--ram-gb` on both sides or the comparison is invalid.**
 
 ## Docker: one hardware profile for everyone

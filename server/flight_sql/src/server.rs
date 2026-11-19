@@ -46,11 +46,11 @@ struct TransactionState {
 
 /// Whether the Flight SQL server must refuse writes.
 ///
-/// `BSDB_FLIGHT_READ_ONLY` is a boolean switch: `1` or `true` enables it.
-/// Bare presence is deliberately not enough, so `BSDB_FLIGHT_READ_ONLY=0`
+/// `BDB_FLIGHT_READ_ONLY` is a boolean switch: `1` or `true` enables it.
+/// Bare presence is deliberately not enough, so `BDB_FLIGHT_READ_ONLY=0`
 /// still allows DDL/DML and ingest.
 fn flight_read_only() -> bool {
-    std::env::var("BSDB_FLIGHT_READ_ONLY")
+    std::env::var("BDB_FLIGHT_READ_ONLY")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -172,7 +172,7 @@ impl BenoStreamFlightSqlService {
             .await
             .map_err(|e| Status::internal(format!("Error executing statement: {}", e)))?;
 
-        let max_rows = std::env::var("BSDB_FLIGHT_MAX_ROWS")
+        let max_rows = std::env::var("BDB_FLIGHT_MAX_ROWS")
             .unwrap_or_else(|_| "100000".to_string())
             .parse::<usize>()
             .unwrap_or(100000);
@@ -565,10 +565,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         let endpoint = FlightEndpoint::new().with_ticket(ticket);
 
         let mut builder = SqlInfoDataBuilder::new();
-        builder.append(
-            SqlInfo::FlightSqlServerName,
-            "BenoDB Flight SQL Server",
-        );
+        builder.append(SqlInfo::FlightSqlServerName, "BenoDB Flight SQL Server");
         builder.append(SqlInfo::FlightSqlServerVersion, "1");
         builder.append(SqlInfo::FlightSqlServerArrowVersion, "1.3");
         let sql_info_data = builder
@@ -639,12 +636,12 @@ impl FlightSqlService for BenoStreamFlightSqlService {
 
         let schema = df.schema().inner().clone();
 
-        let max_rows = std::env::var("BSDB_FLIGHT_MAX_ROWS")
+        let max_rows = std::env::var("BDB_FLIGHT_MAX_ROWS")
             .unwrap_or_else(|_| "100000".to_string())
             .parse::<usize>()
             .unwrap_or(100000);
 
-        // `saturating_add`: a pathological BSDB_FLIGHT_MAX_ROWS value must not
+        // `saturating_add`: a pathological BDB_FLIGHT_MAX_ROWS value must not
         // overflow the plan limit.
         df = df
             .limit(0, Some(max_rows.saturating_add(1)))
@@ -679,7 +676,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
             .map_err(|e| Status::internal(format!("Error planning query: {}", e)))?;
         let schema = df.schema().inner().clone();
 
-        let max_rows = std::env::var("BSDB_FLIGHT_MAX_ROWS")
+        let max_rows = std::env::var("BDB_FLIGHT_MAX_ROWS")
             .unwrap_or_else(|_| "100000".to_string())
             .parse::<usize>()
             .unwrap_or(100000);
@@ -806,10 +803,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         _request: Request<Ticket>,
     ) -> Result<Response<BoxStream<'static, Result<FlightData, Status>>>, Status> {
         let mut data_builder = SqlInfoDataBuilder::new();
-        data_builder.append(
-            SqlInfo::FlightSqlServerName,
-            "BenoDB Flight SQL Server",
-        );
+        data_builder.append(SqlInfo::FlightSqlServerName, "BenoDB Flight SQL Server");
         data_builder.append(SqlInfo::FlightSqlServerVersion, "1");
         data_builder.append(SqlInfo::FlightSqlServerArrowVersion, "1.3");
         let sql_info_data = data_builder

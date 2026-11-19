@@ -48,8 +48,7 @@ async fn test_recover_indexes_after_unindexed_ingest() -> anyhow::Result<()> {
     table.wait_for_background_tasks_async().await?;
 
     // Verify index files exist initially
-    let manager =
-        benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
+    let manager = benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &table.uri);
     let (_manifest, mut all_entries, _) = manager.load_latest_full().await?;
     assert!(!all_entries.is_empty());
     assert!(

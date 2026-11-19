@@ -211,7 +211,7 @@ impl TableBuilder {
             data_store: None,
             label_pattern: crate::core::table::LabelPattern::default(),
             wal_dir: None,
-            durability: std::env::var("BSDB_WAL_DURABILITY")
+            durability: std::env::var("BDB_WAL_DURABILITY")
                 .ok()
                 .as_deref()
                 .map(|v| match v.to_ascii_lowercase().as_str() {
@@ -219,21 +219,21 @@ impl TableBuilder {
                     _ => crate::core::table::WalDurability::Sync,
                 })
                 .unwrap_or_default(),
-            streaming_flush_interval: std::env::var("BSDB_STREAMING_FLUSH_INTERVAL_SECS")
+            streaming_flush_interval: std::env::var("BDB_STREAMING_FLUSH_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .map(std::time::Duration::from_secs),
-            // Always active: an explicit `BSDB_MAX_INGEST_RAM_GB` wins, otherwise
+            // Always active: an explicit `BDB_MAX_INGEST_RAM_GB` wins, otherwise
             // the high-water mark is 80% of the memory actually available to the
             // process (the container's cgroup limit when set, else host RAM).
             max_ingest_ram_gb: Some(
-                std::env::var("BSDB_MAX_INGEST_RAM_GB")
+                std::env::var("BDB_MAX_INGEST_RAM_GB")
                     .ok()
                     .and_then(|v| v.parse::<f64>().ok())
                     .filter(|gb| *gb > 0.0)
                     .unwrap_or_else(crate::core::resources::default_max_ingest_ram_gb),
             ),
-            auto_warmup: std::env::var("BSDB_AUTO_WARMUP")
+            auto_warmup: std::env::var("BDB_AUTO_WARMUP")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
         }
@@ -369,7 +369,7 @@ impl TableBuilder {
         // Initialize WAL
         let wal_dir = if let Some(dir) = self.wal_dir {
             dir
-        } else if let Ok(env_dir) = std::env::var("BSDB_WAL_DIR") {
+        } else if let Ok(env_dir) = std::env::var("BDB_WAL_DIR") {
             std::path::PathBuf::from(env_dir)
         } else if uri.starts_with("file://") {
             let path = uri.strip_prefix("file://").unwrap_or(&uri);
@@ -382,7 +382,7 @@ impl TableBuilder {
             // must see in production logs.
             tracing::warn!(
                 "Table initialized with remote URI '{}' using default WAL directory '{}'. \
-                For persistent machine-loss durability, configure a persistent WAL path using with_wal_dir() or BSDB_WAL_DIR.",
+                For persistent machine-loss durability, configure a persistent WAL path using with_wal_dir() or BDB_WAL_DIR.",
                 uri,
                 dir.display()
             );

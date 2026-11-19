@@ -99,7 +99,7 @@ enum TableCommands {
         #[arg(long, default_value_t = false)]
         compact: bool,
         /// Return freed heap pages to the OS after a unit once RSS exceeds this
-        /// budget (GB). Falls back to BSDB_INGEST_MEMORY_BUDGET_GB when unset.
+        /// budget (GB). Falls back to BDB_INGEST_MEMORY_BUDGET_GB when unset.
         #[arg(long)]
         memory_budget_gb: Option<f64>,
         /// Multi-machine mode: claim units from a shared object-store lease

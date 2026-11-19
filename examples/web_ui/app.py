@@ -32,8 +32,8 @@ from contextlib import contextmanager
 # Serving default: the engine's 1 GB index-cache cannot hold whole-site segment
 # indexes (69 segments x ~300 MB TQ8 graphs), so every query would evict and
 # re-deserialize them. Size it to 40 GB unless the operator set it explicitly.
-# On smaller hosts lower it via BSDB_CACHE_GB, or use the pruned dataset.
-os.environ.setdefault("BSDB_CACHE_GB", "40")
+# On smaller hosts lower it via BDB_CACHE_GB, or use the pruned dataset.
+os.environ.setdefault("BDB_CACHE_GB", "40")
 
 import shutil
 import time
@@ -44,10 +44,10 @@ import streamlit as st
 import benodb
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DB = os.environ.get("BSDB_DEMO_DB", os.path.join(REPO, "data", "wiki_graph_db"))
+DB = os.environ.get("BDB_DEMO_DB", os.path.join(REPO, "data", "wiki_graph_db"))
 EDGES_URI = f"file://{os.path.join(DB, 'edges')}"
 NODES_URI = f"file://{os.path.join(DB, 'nodes')}"
-EMBED_MODEL = os.environ.get("BSDB_DEMO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+EMBED_MODEL = os.environ.get("BDB_DEMO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
 st.set_page_config(page_title="BenoStreamDB — Wikipedia Graph RAG", layout="wide")
 st.title("BenoStreamDB — Wikipedia Graph RAG")
@@ -80,7 +80,7 @@ def llm_config():
 
 
 def llm_available() -> bool:
-    return os.environ.get("BSDB_DEMO_LLM", "1") != "0"
+    return os.environ.get("BDB_DEMO_LLM", "1") != "0"
 
 
 def llm_chat(messages, temperature: float = 0.0, json_mode: bool = False) -> str:

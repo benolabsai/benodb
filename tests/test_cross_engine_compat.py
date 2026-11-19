@@ -31,8 +31,8 @@ TEST_DIR.mkdir(exist_ok=True)
 # `Iceberg Interop (JVM)` workflow sets both variables below to turn the skips
 # into hard failures and to fetch the Iceberg Spark runtime from Maven:
 #
-#   BSDB_REQUIRE_JVM_INTEROP=1
-#   BSDB_SPARK_ICEBERG_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.11.0
+#   BDB_REQUIRE_JVM_INTEROP=1
+#   BDB_SPARK_ICEBERG_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.11.0
 #
 # The Iceberg runtime artifact is keyed by Spark *minor series*, and Maven
 # Central publishes exactly: 3.4, 3.5, 4.0, 4.1 (each `_2.12` and `_2.13`).
@@ -40,9 +40,9 @@ TEST_DIR.mkdir(exist_ok=True)
 # Iceberg build — pin 3.5.2 (+ `3.5_2.12`) or 4.0/4.1 (+ `_2.13`). Iceberg 1.11
 # is used rather than 1.6 because V3 deletion vectors and row lineage need a
 # recent runtime.
-REQUIRE_JVM_INTEROP = os.environ.get("BSDB_REQUIRE_JVM_INTEROP") == "1"
+REQUIRE_JVM_INTEROP = os.environ.get("BDB_REQUIRE_JVM_INTEROP") == "1"
 SPARK_ICEBERG_PACKAGES = os.environ.get(
-    "BSDB_SPARK_ICEBERG_PACKAGES",
+    "BDB_SPARK_ICEBERG_PACKAGES",
     "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.11.0",
 )
 
@@ -103,7 +103,7 @@ class TestSparkCompatibility:
         if not _spark_submit_available():
             _require_or_skip("spark-submit not available")
         # The pip-installed pyspark lacks the Iceberg JAR, so plain CI skips.
-        # The interop workflow sets BSDB_REQUIRE_JVM_INTEROP=1 and lets
+        # The interop workflow sets BDB_REQUIRE_JVM_INTEROP=1 and lets
         # spark-submit fetch the runtime from Maven via --packages.
         if not REQUIRE_JVM_INTEROP and (
             os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")

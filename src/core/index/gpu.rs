@@ -1816,14 +1816,14 @@ pub fn context_from_device_str(device: &str) -> ComputeContext {
     })
 }
 
-/// Resolve the GPU device from `BSDB_GPU_DEVICE` and set the process GPU
+/// Resolve the GPU device from `BDB_GPU_DEVICE` and set the process GPU
 /// context. Returns the resolved device string, or `None` when the variable is
 /// unset (leaving the context untouched).
 ///
 /// Called at startup by the Flight and MCP servers so a deployment can pin a
 /// device without any per-query plumbing.
 pub fn apply_gpu_context_from_env() -> Option<String> {
-    let device = std::env::var("BSDB_GPU_DEVICE")
+    let device = std::env::var("BDB_GPU_DEVICE")
         .ok()
         .filter(|s| !s.trim().is_empty())?;
 
@@ -2019,7 +2019,7 @@ mod tests {
         // dev). Skip cleanly if neither is available.
         if crate::core::index::nvrtc::resolve_nvrtc().is_none() {
             if let Some(p) = crate::core::index::nvrtc::dev_repo_venv_nvrtc() {
-                std::env::set_var("BSDB_NVRTC_PATH", &p);
+                std::env::set_var("BDB_NVRTC_PATH", &p);
             }
         }
         if crate::core::index::nvrtc::resolve_nvrtc().is_none() {
@@ -2075,7 +2075,7 @@ mod tests {
             // so point the resolver at a repo-local venv if one exists.
             if crate::core::index::nvrtc::resolve_nvrtc().is_none() {
                 if let Some(p) = crate::core::index::nvrtc::dev_repo_venv_nvrtc() {
-                    std::env::set_var("BSDB_NVRTC_PATH", &p);
+                    std::env::set_var("BDB_NVRTC_PATH", &p);
                 }
             }
             if let Ok(b) = CudaBackend::new(0) {

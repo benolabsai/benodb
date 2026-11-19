@@ -75,7 +75,8 @@ Repository = "https://github.com/benolabsai/benodb"
 
 [project.scripts]
 benodb = "benodb.cli:main"
-bsdb = "benodb.cli:main"
+bdb = "benodb.cli:main"
+bsql = "benodb.cli:sql_main"
 
 
 [tool.maturin]

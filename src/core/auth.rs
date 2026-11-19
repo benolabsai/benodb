@@ -4,13 +4,13 @@
 //!
 //! Two modes, both of which avoid maintaining a user database:
 //!
-//! * **API key** — a shared secret compared in constant time (`BSDB_API_KEY`).
+//! * **API key** — a shared secret compared in constant time (`BDB_API_KEY`).
 //! * **JWT** — a bearer token verified against a shared secret (HS256,
-//!   `BSDB_JWT_SECRET`) or an RSA public key (RS256, `BSDB_JWT_PUBLIC_KEY`,
+//!   `BDB_JWT_SECRET`) or an RSA public key (RS256, `BDB_JWT_PUBLIC_KEY`,
 //!   PEM). This is the "delegate to your IdP" path: the IdP signs, we only
 //!   verify the signature and read `exp`/`nbf`/`aud`/`iss`/`sub` claims.
 //!
-//! When neither is configured the guard is a no-op; set `BSDB_AUTH_REQUIRED=1`
+//! When neither is configured the guard is a no-op; set `BDB_AUTH_REQUIRED=1`
 //! to fail closed instead.
 
 use base64::Engine as _;
@@ -41,30 +41,23 @@ pub struct AuthConfig {
 impl AuthConfig {
     /// Build from environment variables.
     pub fn from_env() -> Self {
-        let truthy = |k: &str| {
-            matches!(
-                std::env::var(k).as_deref(),
-                Ok("1") | Ok("true") | Ok("yes")
-            )
-        };
+        let env_get = |name: &str| std::env::var(format!("BDB_{name}"));
+        let truthy =
+            |name: &str| matches!(env_get(name).as_deref(), Ok("1") | Ok("true") | Ok("yes"));
         Self {
-            api_key: std::env::var("BSDB_API_KEY").ok().filter(|s| !s.is_empty()),
-            jwt_secret: std::env::var("BSDB_JWT_SECRET")
+            api_key: env_get("API_KEY").ok().filter(|s| !s.is_empty()),
+            jwt_secret: env_get("JWT_SECRET")
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.into_bytes()),
-            jwt_public_key: std::env::var("BSDB_JWT_PUBLIC_KEY")
+            jwt_public_key: env_get("JWT_PUBLIC_KEY")
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.into_bytes()),
-            jwt_audience: std::env::var("BSDB_JWT_AUDIENCE")
-                .ok()
-                .filter(|s| !s.is_empty()),
-            jwt_issuer: std::env::var("BSDB_JWT_ISSUER")
-                .ok()
-                .filter(|s| !s.is_empty()),
-            required: truthy("BSDB_AUTH_REQUIRED"),
-            metrics_public: truthy("BSDB_METRICS_PUBLIC"),
+            jwt_audience: env_get("JWT_AUDIENCE").ok().filter(|s| !s.is_empty()),
+            jwt_issuer: env_get("JWT_ISSUER").ok().filter(|s| !s.is_empty()),
+            required: truthy("AUTH_REQUIRED"),
+            metrics_public: truthy("METRICS_PUBLIC"),
         }
     }
 
@@ -142,14 +135,14 @@ impl AuthConfig {
                 let secret = self
                     .jwt_secret
                     .as_ref()
-                    .ok_or_else(|| "HS256 token but no BSDB_JWT_SECRET".to_string())?;
+                    .ok_or_else(|| "HS256 token but no BDB_JWT_SECRET".to_string())?;
                 verify_hs256(secret, signing_input.as_bytes(), &signature)?;
             }
             "RS256" => {
                 let pem = self
                     .jwt_public_key
                     .as_ref()
-                    .ok_or_else(|| "RS256 token but no BSDB_JWT_PUBLIC_KEY".to_string())?;
+                    .ok_or_else(|| "RS256 token but no BDB_JWT_PUBLIC_KEY".to_string())?;
                 verify_rs256(pem, signing_input.as_bytes(), &signature)?;
             }
             other => return Err(format!("unsupported JWT alg '{other}'")),
@@ -354,9 +347,7 @@ mod tests {
             + 60;
         let ok = hs256_token(
             secret,
-            &format!(
-                r#"{{"sub":"a","exp":{future},"aud":"benodb","iss":"https://idp.example"}}"#
-            ),
+            &format!(r#"{{"sub":"a","exp":{future},"aud":"benodb","iss":"https://idp.example"}}"#),
         );
         assert!(cfg.verify(&ok).is_ok());
         let bad_aud = hs256_token(

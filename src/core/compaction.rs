@@ -744,7 +744,7 @@ mod tests {
         // GC-vs-writer grace period (default 60s) would protect the just-written
         // files, so disable it for the test. This is the only vacuum test in the
         // lib, so the process-global env var is safe here.
-        std::env::set_var("BSDB_VACUUM_MIN_FILE_AGE_SECS", "0");
+        std::env::set_var("BDB_VACUUM_MIN_FILE_AGE_SECS", "0");
 
         let temp_dir = tempfile::tempdir()?;
         let uri = format!("file://{}", temp_dir.path().to_str().unwrap());

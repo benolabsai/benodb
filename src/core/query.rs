@@ -613,7 +613,7 @@ pub async fn execute_vector_search_with_config(
     let effective_refine = request
         .refine_factor
         .or_else(|| {
-            std::env::var("BSDB_REFINE_FACTOR")
+            std::env::var("BDB_REFINE_FACTOR")
                 .ok()
                 .and_then(|s| s.parse().ok())
         })

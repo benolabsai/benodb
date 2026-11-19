@@ -25,7 +25,7 @@ without it, and without the embedder.
 > No env-var prefixes needed: the engine self-tunes glibc malloc arenas at
 > import (`mallopt(M_ARENA_MAX, 2)`), and the load stage writes the nodes table
 > in **fresh-process chunks** whose size auto-scales from available RAM
-> (`--load-chunk-rows` / `BSDB_LOAD_CHUNK_ROWS` to override) — in-process
+> (`--load-chunk-rows` / `BDB_LOAD_CHUNK_ROWS` to override) — in-process
 > HNSW/TQ8 builders strand freed memory in glibc's main heap (~4.5 GB per
 > million rows measured), so a new process per chunk resets the high-water
 > mark. On this 128 GB box: 10M-row chunks ≈ 30 GB peak at 12.6k rows/s; an
@@ -57,7 +57,7 @@ are skipped. Stages:
    neighborhood; `--embed-model BAAI/bge-large-en-v1.5` costs ~4× more) on GPU
    if present. Writes
    `data/embeddings/part-NNN.parquet` shards of 5M rows
-   (`BSDB_EMBED_SHARD_ROWS`; 51.8M pages → 11 shards ≈ 36 GB). The skip check is
+   (`BDB_EMBED_SHARD_ROWS`; 51.8M pages → 11 shards ≈ 36 GB). The skip check is
    all-or-nothing: if an interrupted run left shards behind, delete
    `data/embeddings/` and rerun. `--embed-dims 256/128` MRL-truncates.
 5. **load** — builds the two persistent BenoStreamDB tables under
@@ -137,21 +137,21 @@ export OPENAI_MODEL=qwen/qwen3.8-27b:free
 
 Alternatively, put the same keys under `[llm]` in the repo-root
 `.streamlit/secrets.toml`. Toggle the LLM off in the sidebar (or
-`BSDB_DEMO_LLM=0`) to run purely engine-side.
+`BDB_DEMO_LLM=0`) to run purely engine-side.
 
 ### Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BSDB_DEMO_DB` | `data/wiki_graph_db` | location of the prepared tables |
-| `BSDB_DEMO_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | must match the model used in the embed stage |
-| `BSDB_DEMO_LLM` | `1` | `0` disables LLM features by default |
+| `BDB_DEMO_DB` | `data/wiki_graph_db` | location of the prepared tables |
+| `BDB_DEMO_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | must match the model used in the embed stage |
+| `BDB_DEMO_LLM` | `1` | `0` disables LLM features by default |
 | `OPENAI_BASE_URL` | `http://127.0.0.1:18020/v1` | any OpenAI-compatible endpoint (e.g. `https://openrouter.ai/api/v1`) |
 | `OPENAI_API_KEY` | `empty` | provider key (OpenRouter: `sk-or-v1-…`) |
 | `OPENAI_MODEL` | `qwen3.8-27b` | e.g. `qwen/qwen3.8-27b:free` on OpenRouter |
 | `MALLOC_ARENA_MAX` | engine sets 2 at import | override only if you know better |
-| `BSDB_EMBED_SHARD_ROWS` | `5000000` | embed-stage shard rotation size |
-| `BSDB_LOAD_CHUNK_ROWS` | auto (from RAM) | load chunk size; `--load-chunk-rows` flag wins over this |
+| `BDB_EMBED_SHARD_ROWS` | `5000000` | embed-stage shard rotation size |
+| `BDB_LOAD_CHUNK_ROWS` | auto (from RAM) | load chunk size; `--load-chunk-rows` flag wins over this |
 
 ## Timings & system stats (measured on this machine)
 
@@ -255,7 +255,7 @@ pruned path share the same app and engine APIs — only scale differs.
   config (fixed: the config persists in the manifest and is restored on open).
   `--stage compact` rewrites and re-indexes them.
 - **Queries slow despite indexes** → the engine's index cache defaults to 1 GB;
-  the app sets `BSDB_CACHE_GB=40` (69 segment indexes ≈ 20 GB). Set it
+  the app sets `BDB_CACHE_GB=40` (69 segment indexes ≈ 20 GB). Set it
   for any other client too.
 - **Load stage RAM climbs into tens of GB** → expected only if you forced
   `--load-chunk-rows 0`; the default fresh-process chunking exists precisely
@@ -270,7 +270,7 @@ pruned path share the same app and engine APIs — only scale differs.
   CPU. To enable the GPU build path: symlink `libnvrtc.so → libnvrtc.so.13` in
   `site-packages/nvidia/cu13/lib/` and add that directory to `LD_LIBRARY_PATH`.
 - **Semantic tab warns “Embedder unavailable”** → `pip install sentence-transformers`,
-  and ensure `BSDB_DEMO_EMBED_MODEL` matches the embed stage model.
+  and ensure `BDB_DEMO_EMBED_MODEL` matches the embed stage model.
 - **DRIFT tab fails on huge regions** → lower *Region seeds*; the region is a
   1-hop induced subgraph around the query's top pages.
 - **Out of disk** → the pipeline needs ~200 GB free (dumps 48 GB, intermediates

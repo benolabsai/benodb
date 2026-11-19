@@ -39,11 +39,11 @@ The local-move and refinement phases are identical to the UDF versions; only the
 
 ## G2 — Default DataFusion memory limit
 
-**Status: implemented.** [`default_datafusion_memory_bytes`](https://github.com/benolabsai/benodb/blob/main/src/core/resources.rs#L222) derives the limit from `DATAFUSION_MEMORY_FRACTION` (0.5) of the effective memory, overridable with `BSDB_DATAFUSION_MEMORY_GB`, and it is applied to both `Session` and `Table.execute_sql`.
+**Status: implemented.** [`default_datafusion_memory_bytes`](https://github.com/benolabsai/benodb/blob/main/src/core/resources.rs#L222) derives the limit from `DATAFUSION_MEMORY_FRACTION` (0.5) of the effective memory, overridable with `BDB_DATAFUSION_MEMORY_GB`, and it is applied to both `Session` and `Table.execute_sql`.
 
 **Problem.** [`BenoStreamSession::new(None)`](https://github.com/benolabsai/benodb/blob/main/src/core/sql/session.rs#L27) sets no limit, and that is what [`bsdb.rs:122`](https://github.com/benolabsai/benodb/blob/main/src/bin/bsdb.rs#L122) and [`graph.rs:58`](https://github.com/benolabsai/benodb/blob/main/src/python/graph.rs#L58) use — so SQL sorts/joins/aggregations never spill.
 
-**Design.** When `memory_limit_bytes` is `None`, default it to `effective_memory_bytes() * 0.5` (leaving headroom for the ingest buffer and index builds). Add `BSDB_DATAFUSION_MEMORY_GB` to override. This turns on DataFusion's disk spilling for the SQL path.
+**Design.** When `memory_limit_bytes` is `None`, default it to `effective_memory_bytes() * 0.5` (leaving headroom for the ingest buffer and index builds). Add `BDB_DATAFUSION_MEMORY_GB` to override. This turns on DataFusion's disk spilling for the SQL path.
 
 **Acceptance.** A large `ORDER BY`/join spills to disk instead of OOMing.
 
@@ -67,10 +67,10 @@ subsystem can be tuned to the actual workload. The individual overrides stand:
 
 | Subsystem | Override |
 |-----------|----------|
-| Ingest high-water mark | `BSDB_MAX_INGEST_RAM_GB` |
-| Heap-trim budget | `BSDB_INGEST_MEMORY_BUDGET_GB` |
-| DataFusion query limit | `BSDB_DATAFUSION_MEMORY_GB` |
-| Index-build fan-out | `BSDB_INDEX_BUILD_CONCURRENCY` |
+| Ingest high-water mark | `BDB_MAX_INGEST_RAM_GB` |
+| Heap-trim budget | `BDB_INGEST_MEMORY_BUDGET_GB` |
+| DataFusion query limit | `BDB_DATAFUSION_MEMORY_GB` |
+| Index-build fan-out | `BDB_INDEX_BUILD_CONCURRENCY` |
 
 **What was kept.** The DataFusion limit is *bounded and configurable*: it
 defaults to `DATAFUSION_MEMORY_FRACTION` (50%) of the effective memory, and

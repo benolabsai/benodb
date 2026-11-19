@@ -8,20 +8,20 @@ ground-truth model kept in Python.
 
 Run with the server listening on ``grpc://localhost:50051``::
 
-    BSDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
+    BDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
     pytest -v server/flight_sql/tests/test_flight_randomized_workload.py
 
 Environment:
-    BSDB_WORKLOAD_STEPS  number of randomized steps (default 100)
-    BSDB_WORKLOAD_SEED   LCG seed (default 12345)
+    BDB_WORKLOAD_STEPS  number of randomized steps (default 100)
+    BDB_WORKLOAD_SEED   LCG seed (default 12345)
 """
 
 import os
 
 import adbc_driver_flightsql.dbapi as flight_sql
 
-STEPS = int(os.environ.get("BSDB_WORKLOAD_STEPS", "100"))
-SEED = int(os.environ.get("BSDB_WORKLOAD_SEED", "12345"))
+STEPS = int(os.environ.get("BDB_WORKLOAD_STEPS", "100"))
+SEED = int(os.environ.get("BDB_WORKLOAD_SEED", "12345"))
 
 TABLE = "mydb.myschema.workload"
 

@@ -41,10 +41,10 @@ mkdir -p "$OUT"
 build_and_measure() {
   local arm=$1 db=$2 page=$3 rg=$4 refine=$5
   echo "[phase-c] $arm build, refine=$refine"
-  BSDB_PARQUET_PAGE_BYTES="$page" \
-  BSDB_PARQUET_ROW_GROUP_ROWS="$rg" \
-  BSDB_READER_SKIP=1 \
-  BSDB_BENCH_EVICT=query \
+  BDB_PARQUET_PAGE_BYTES="$page" \
+  BDB_PARQUET_ROW_GROUP_ROWS="$rg" \
+  BDB_READER_SKIP=1 \
+  BDB_BENCH_EVICT=query \
   "$PY" "$HARNESS" \
     --profile local --dataset 10m --limit "$LIMIT" \
     --modes "$MODES" --grid "$GRID" \
@@ -55,10 +55,10 @@ build_and_measure() {
 query_only() {
   local arm=$1 db=$2 page=$3 rg=$4 refine=$5 skip=$6
   echo "[phase-c] $arm reuse, refine=$refine, skip=$skip"
-  BSDB_PARQUET_PAGE_BYTES="$page" \
-  BSDB_PARQUET_ROW_GROUP_ROWS="$rg" \
-  BSDB_READER_SKIP="$skip" \
-  BSDB_BENCH_EVICT=query \
+  BDB_PARQUET_PAGE_BYTES="$page" \
+  BDB_PARQUET_ROW_GROUP_ROWS="$rg" \
+  BDB_READER_SKIP="$skip" \
+  BDB_BENCH_EVICT=query \
   "$PY" "$HARNESS" query \
     --profile local --dataset 10m --limit "$LIMIT" \
     --modes "$MODES" --grid "$GRID" \

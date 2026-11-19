@@ -23,7 +23,7 @@ communicate only through on-disk artifacts.
 1. Produce fixtures with the engine (this test is `#[ignore]`d):
 
    ```bash
-   BSDB_FIXTURE_DIR=/tmp/bsdb_oracle_fixture \
+   BDB_FIXTURE_DIR=/tmp/bsdb_oracle_fixture \
      cargo test --test oracle_fixture -- --ignored --nocapture
    ```
 
@@ -34,18 +34,18 @@ communicate only through on-disk artifacts.
 2. Point the oracle at a table:
 
    ```bash
-   BSDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v2 \
-   BSDB_ORACLE_SUITE=v2 BSDB_ORACLE_EXPECT_IDS=1,2 \
+   BDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v2 \
+   BDB_ORACLE_SUITE=v2 BDB_ORACLE_EXPECT_IDS=1,2 \
      cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
    ```
 
    ```bash
-   BSDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v3 \
-   BSDB_ORACLE_SUITE=v3 BSDB_ORACLE_EXPECT_IDS=1,2 \
+   BDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v3 \
+   BDB_ORACLE_SUITE=v3 BDB_ORACLE_EXPECT_IDS=1,2 \
      cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
    ```
 
-With no `BSDB_ORACLE_URI` set the test prints a `SKIPPED` line and passes, so an
+With no `BDB_ORACLE_URI` set the test prints a `SKIPPED` line and passes, so an
 unconfigured run never looks like a green conformance result.
 
 ## What it asserts
@@ -55,7 +55,7 @@ unconfigured run never looks like a green conformance result.
 | `metadata.format_version()` matches the suite | The reader infers V2/V3 from the metadata, not from our code path |
 | V3: `metadata.next_row_id() > 0` | Row lineage must be published at the table level |
 | V3: `current_snapshot().first_row_id().is_some()` | Each snapshot must record its row range, or no reader can assign stable `_row_id`s |
-| Scanned `id` values equal `BSDB_ORACLE_EXPECT_IDS` | Proves manifests, bounds, and deletes (including V3 deletion vectors) are applied by a foreign engine |
+| Scanned `id` values equal `BDB_ORACLE_EXPECT_IDS` | Proves manifests, bounds, and deletes (including V3 deletion vectors) are applied by a foreign engine |
 
 `_row_id` and `_last_updated_sequence_number` are *metadata* columns and are
 deliberately absent from `current_schema()`, so the oracle checks lineage through

@@ -27,19 +27,13 @@ fn compute_brute_force(
         .map(|(i, v)| {
             let d = match metric {
                 VectorMetric::L2 => benodb::core::index::distance::l2_distance(query, v),
-                VectorMetric::Cosine => {
-                    benodb::core::index::distance::cosine_distance(query, v)
-                }
+                VectorMetric::Cosine => benodb::core::index::distance::cosine_distance(query, v),
                 VectorMetric::InnerProduct => {
                     (1.0 - benodb::core::index::distance::dot_product(query, v)).max(0.0)
                 }
                 VectorMetric::L1 => benodb::core::index::distance::l1_distance(query, v),
-                VectorMetric::Hamming => {
-                    benodb::core::index::distance::hamming_distance(query, v)
-                }
-                VectorMetric::Jaccard => {
-                    benodb::core::index::distance::jaccard_distance(query, v)
-                }
+                VectorMetric::Hamming => benodb::core::index::distance::hamming_distance(query, v),
+                VectorMetric::Jaccard => benodb::core::index::distance::jaccard_distance(query, v),
             };
             (i, d)
         })

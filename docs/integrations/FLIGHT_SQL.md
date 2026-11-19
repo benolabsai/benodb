@@ -32,9 +32,9 @@ Client Application (JDBC / ODBC / ADBC / Go / C++ / BI tools)
 
 ## ⚠️ Security & Authentication
 
-* **Stateless Authentication**: The server supports stateless authentication via static API keys (`BSDB_API_KEY`) and JWT tokens (HS256 shared secret or RS256 IdP public keys). Tokens are transmitted via the gRPC `authorization: Bearer <token>` metadata header.
+* **Stateless Authentication**: The server supports stateless authentication via static API keys (`BDB_API_KEY`) and JWT tokens (HS256 shared secret or RS256 IdP public keys). Tokens are transmitted via the gRPC `authorization: Bearer <token>` metadata header.
 * **No Native TLS**: The server binary does **not** terminate TLS natively. When exposed across network boundaries, deploy behind a reverse proxy (e.g., Envoy, NGINX, AWS ALB) that handles TLS termination and certificates.
-* **Binding**: Defaults to `127.0.0.1:50051`. For hardened environments, set `BSDB_AUTH_REQUIRED=true` to fail closed if unauthenticated requests arrive.
+* **Binding**: Defaults to `127.0.0.1:50051`. For hardened environments, set `BDB_AUTH_REQUIRED=true` to fail closed if unauthenticated requests arrive.
 
 ---
 
@@ -44,18 +44,18 @@ Configure the server via environment variables:
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_FLIGHT_BIND` | Bind address for gRPC listener | `127.0.0.1` |
-| `BSDB_FLIGHT_PORT` | Port for Flight SQL listener | `50051` |
-| `BSDB_FLIGHT_MAX_ROWS` | Row cap applied to Arrow Flight result sets | `100000` |
-| `BSDB_FLIGHT_READ_ONLY` | Refuse DDL, DML, and ingest. Set to `1`/`true` | Unset (writes enabled) |
-| `BSDB_WAREHOUSE` | Default storage warehouse for created tables | `./data` |
-| `BSDB_CONFIG` | Path to catalog configuration TOML | Unset |
-| `BSDB_API_KEY` | Shared secret API key for client auth | Unset |
-| `BSDB_JWT_SECRET` | Secret for HMAC-SHA256 JWT tokens | Unset |
-| `BSDB_AUTH_REQUIRED` | Fail closed on unauthenticated requests | `false` |
-| `BSDB_METRICS_BIND` | HTTP metrics listener address | `127.0.0.1` |
-| `BSDB_METRICS_PORT` | HTTP Prometheus metrics port | `9090` |
-| `BSDB_GPU_DEVICE` | GPU device or comma-separated pool (`cuda:0,cuda:1`); pool assigns devices per worker thread | unset (`auto`) |
+| `BDB_FLIGHT_BIND` | Bind address for gRPC listener | `127.0.0.1` |
+| `BDB_FLIGHT_PORT` | Port for Flight SQL listener | `50051` |
+| `BDB_FLIGHT_MAX_ROWS` | Row cap applied to Arrow Flight result sets | `100000` |
+| `BDB_FLIGHT_READ_ONLY` | Refuse DDL, DML, and ingest. Set to `1`/`true` | Unset (writes enabled) |
+| `BDB_WAREHOUSE` | Default storage warehouse for created tables | `./data` |
+| `BDB_CONFIG` | Path to catalog configuration TOML | Unset |
+| `BDB_API_KEY` | Shared secret API key for client auth | Unset |
+| `BDB_JWT_SECRET` | Secret for HMAC-SHA256 JWT tokens | Unset |
+| `BDB_AUTH_REQUIRED` | Fail closed on unauthenticated requests | `false` |
+| `BDB_METRICS_BIND` | HTTP metrics listener address | `127.0.0.1` |
+| `BDB_METRICS_PORT` | HTTP Prometheus metrics port | `9090` |
+| `BDB_GPU_DEVICE` | GPU device or comma-separated pool (`cuda:0,cuda:1`); pool assigns devices per worker thread | unset (`auto`) |
 
 ---
 
@@ -71,8 +71,8 @@ Or run via Docker:
 
 ```bash
 docker run -p 50051:50051 -p 9090:9090 \
-  -e BSDB_API_KEY="your-secret-key" \
-  -e BSDB_WAREHOUSE="s3://my-bucket/warehouse" \
+  -e BDB_API_KEY="your-secret-key" \
+  -e BDB_WAREHOUSE="s3://my-bucket/warehouse" \
   benodb-flight:latest
 ```
 

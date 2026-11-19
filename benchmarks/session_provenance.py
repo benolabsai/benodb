@@ -28,7 +28,7 @@ Usage
     python benchmarks/session_provenance.py verify     # exit 1 on mixed sessions
     python benchmarks/session_provenance.py show
 
-`BSDB_BENCH_SESSION_LEDGER` overrides the ledger path (tests, CI).
+`BDB_BENCH_SESSION_LEDGER` overrides the ledger path (tests, CI).
 """
 
 from __future__ import annotations
@@ -420,7 +420,7 @@ def calibration() -> dict[str, Any]:
 
 
 def ledger_path() -> str:
-    return os.environ.get("BSDB_BENCH_SESSION_LEDGER", DEFAULT_LEDGER)
+    return os.environ.get("BDB_BENCH_SESSION_LEDGER", DEFAULT_LEDGER)
 
 
 def load_ledger(path: str | None = None) -> dict[str, Any]:

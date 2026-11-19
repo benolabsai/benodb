@@ -9,7 +9,7 @@
 //!
 //! [`GraphMode`] is the shared "in-memory vs out-of-core" selector, and
 //! [`graph_memory_budget_bytes`] is the single budget knob
-//! (`BSDB_DRIFT_MEMORY_MB`, else the engine's derived memory budget).
+//! (`BDB_DRIFT_MEMORY_MB`, else the engine's derived memory budget).
 //!
 //! [`GraphAccumulatorBase`] is the shared state that every graph-algorithm UDAF
 //! accumulator embeds: it collects `(source, target)` edge rows from Arrow
@@ -371,11 +371,11 @@ pub enum GraphMode {
 
 /// Byte budget for the in-memory graph.
 ///
-/// `BSDB_DRIFT_MEMORY_MB` overrides; otherwise the engine's derived memory
+/// `BDB_DRIFT_MEMORY_MB` overrides; otherwise the engine's derived memory
 /// budget (cgroup limit or host RAM × 0.8) applies — the same knob the ingest
 /// and DataFusion budgets use.
 pub fn graph_memory_budget_bytes() -> u64 {
-    if let Some(mb) = std::env::var("BSDB_DRIFT_MEMORY_MB")
+    if let Some(mb) = std::env::var("BDB_DRIFT_MEMORY_MB")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|mb| *mb > 0)

@@ -37,13 +37,13 @@ def test_process_kill_recovery():
     os.makedirs(data_dir)
 
     env = os.environ.copy()
-    env["BSDB_SEARCH_STORAGE_URI"] = f"file://{data_dir}"
-    env["BSDB_SEARCH_BIND"] = "127.0.0.1"
-    env["BSDB_SEARCH_PORT"] = "9200"
-    env["BSDB_QDRANT_BIND"] = "127.0.0.1"
-    env["BSDB_QDRANT_PORT"] = "6333"
-    env["BSDB_AUTH_REQUIRED"] = "1"
-    env["BSDB_API_KEY"] = "test-key"
+    env["BDB_SEARCH_STORAGE_URI"] = f"file://{data_dir}"
+    env["BDB_SEARCH_BIND"] = "127.0.0.1"
+    env["BDB_SEARCH_PORT"] = "9200"
+    env["BDB_QDRANT_BIND"] = "127.0.0.1"
+    env["BDB_QDRANT_PORT"] = "6333"
+    env["BDB_AUTH_REQUIRED"] = "1"
+    env["BDB_API_KEY"] = "test-key"
 
     # Start the server
     print("Starting bsdb-search...")

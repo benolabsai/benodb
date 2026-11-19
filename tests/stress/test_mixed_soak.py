@@ -27,7 +27,7 @@ def _table(offset: int):
 
 
 def test_mixed_workload_soak(monkeypatch, table_uri, rows_of, rss_gb, rss_ceiling_gb, soak_seconds):
-    monkeypatch.setenv("BSDB_INDEX_BUILD_CONCURRENCY", "2")
+    monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "2")
 
     table = bsdb.Table.create(
         table_uri,

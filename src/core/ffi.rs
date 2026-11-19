@@ -2862,12 +2862,7 @@ pub extern "system" fn Java_com_benodb_spark_jni_BenoDBJNIBridge_createTable(
     table_uri: JString,
     schema_json: JString,
 ) -> jboolean {
-    Java_com_benodb_trino_BenoDBJNIBridge_createTable(
-        env,
-        class,
-        table_uri,
-        schema_json,
-    )
+    Java_com_benodb_trino_BenoDBJNIBridge_createTable(env, class, table_uri, schema_json)
 }
 
 #[no_mangle]

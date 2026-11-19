@@ -96,7 +96,7 @@ impl MmapCsrGraph {
     /// Total resident bytes of the three CSR arrays (offsets + edges + dict).
     ///
     /// Used as the cache weigher so the graph cache respects the global
-    /// `BSDB_CACHE_GB` budget.
+    /// `BDB_CACHE_GB` budget.
     pub fn size_in_bytes(&self) -> usize {
         self.offsets.as_slice().len() + self.edges.as_slice().len() + self.dict.as_slice().len()
     }

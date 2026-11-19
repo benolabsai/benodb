@@ -23,10 +23,10 @@ fn is_already_exists(err: &object_store::Error) -> bool {
 ///
 /// This is the safety margin that closes the GC-vs-writer race: a file uploaded
 /// by a concurrent writer is young, so it is never reaped before the writer's
-/// commit becomes visible. Override with `BSDB_VACUUM_MIN_FILE_AGE_SECS`
+/// commit becomes visible. Override with `BDB_VACUUM_MIN_FILE_AGE_SECS`
 /// (default 60s; `0` disables the grace period).
 fn vacuum_min_file_age_secs() -> i64 {
-    std::env::var("BSDB_VACUUM_MIN_FILE_AGE_SECS")
+    std::env::var("BDB_VACUUM_MIN_FILE_AGE_SECS")
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
         .filter(|v| *v >= 0)
@@ -44,7 +44,7 @@ fn vacuum_min_file_age_secs() -> i64 {
 /// single (chunked) manifest file and resets the list. This bounds read cost
 /// while still amortizing the common burst of small appends.
 fn max_manifest_files_before_consolidation() -> usize {
-    std::env::var("BSDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION")
+    std::env::var("BDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|v| *v > 0)

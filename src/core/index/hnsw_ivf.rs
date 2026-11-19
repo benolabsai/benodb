@@ -41,9 +41,9 @@ use rayon::prelude::*;
 /// concurrent queries. 256 pins every cluster of a segment; the memory cost is
 /// `clusters × vectors_per_cluster × dim × bytes_per_coord`, roughly 49 MB per
 /// segment at 128 dims and 294 MB at 768 dims. Override with
-/// `BSDB_CLUSTER_CACHE_CAPACITY` when the cache budget cannot absorb that.
+/// `BDB_CLUSTER_CACHE_CAPACITY` when the cache budget cannot absorb that.
 fn cluster_cache_capacity() -> u64 {
-    std::env::var("BSDB_CLUSTER_CACHE_CAPACITY")
+    std::env::var("BDB_CLUSTER_CACHE_CAPACITY")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&n| n > 0)
@@ -2497,10 +2497,10 @@ impl HnswIvfIndex {
         // For InnerProduct the graph ranks by its own safe, non-negative distance
         // (cosine for the `Dot` variants). Widen the candidate pool so the exact
         // raw `-dot` rescore has enough candidates to re-rank.
-        // Escape hatch for A/B benchmarking: set BSDB_DISABLE_IP_RESCORE=1 to
+        // Escape hatch for A/B benchmarking: set BDB_DISABLE_IP_RESCORE=1 to
         // fall back to the graph's own distance ordering for InnerProduct.
         let rescore = self.metric == VectorMetric::InnerProduct
-            && std::env::var_os("BSDB_DISABLE_IP_RESCORE").is_none();
+            && std::env::var_os("BDB_DISABLE_IP_RESCORE").is_none();
         let cluster_k = if rescore {
             base_cluster_k.max(k.saturating_mul(self.rescore_oversample))
         } else {

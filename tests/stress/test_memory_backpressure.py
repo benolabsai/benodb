@@ -3,7 +3,7 @@
 """Memory saturation: a low ingest RAM high-water mark must pause, not OOM.
 
 Regression guard for the OOM that killed the Wikipedia load: writers must
-back-pressure on `BSDB_MAX_INGEST_RAM_GB` and resume once background index builds
+back-pressure on `BDB_MAX_INGEST_RAM_GB` and resume once background index builds
 release memory, rather than growing RSS until the OS kills the process.
 """
 
@@ -32,9 +32,9 @@ def test_low_ram_limit_pauses_without_oom(monkeypatch, table_uri, rows_of, rss_g
     # Bound the fail-open grace so the test is deterministic: if RSS is stuck
     # above the cap from memory this process already held (previous tests in the
     # same session), the writer must fail open quickly rather than block.
-    monkeypatch.setenv("BSDB_MAX_INGEST_RAM_GB", "0.5")
-    monkeypatch.setenv("BSDB_INDEX_BUILD_CONCURRENCY", "1")
-    monkeypatch.setenv("BSDB_INGEST_BACKPRESSURE_GRACE_SECS", "10")
+    monkeypatch.setenv("BDB_MAX_INGEST_RAM_GB", "0.5")
+    monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "1")
+    monkeypatch.setenv("BDB_INGEST_BACKPRESSURE_GRACE_SECS", "10")
 
     table = bsdb.Table.create(
         table_uri,

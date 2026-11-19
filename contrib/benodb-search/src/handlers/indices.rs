@@ -544,8 +544,7 @@ mod tests {
         let mock_cat = Arc::new(MockCatalog::default());
         let mut policy = benodb::core::catalog::CatalogPolicy::new();
         policy.readwrite_schemas = Some(vec!["*".to_string()]);
-        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy)
-            .unwrap();
+        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy).unwrap();
         let state = AppState::with_catalog(
             root,
             "test-cluster".into(),
@@ -664,8 +663,7 @@ mod tests {
         // The policy file must exist before the state resolves permissions.
         let mut policy = benodb::core::catalog::CatalogPolicy::new();
         policy.readwrite_schemas = Some(vec!["scratch".to_string(), "analytics".to_string()]);
-        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy)
-            .unwrap();
+        benodb::core::catalog::set_catalog_policy(tmp.path().to_str().unwrap(), &policy).unwrap();
 
         let root = format!("file://{}", tmp.path().display());
         let state = AppState::new(root, "test-cluster".into());

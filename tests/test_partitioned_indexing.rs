@@ -1371,8 +1371,8 @@ async fn partitioned_merge_compaction_vacuum_schema_evolution_and_memory_uri() -
 
     // ── Subtest B: Partitioned Compaction + Vacuum Preserving Live Hive Indexes ──
     {
-        let prev_vacuum_age = std::env::var("BSDB_VACUUM_MIN_FILE_AGE_SECS").ok();
-        std::env::set_var("BSDB_VACUUM_MIN_FILE_AGE_SECS", "0");
+        let prev_vacuum_age = std::env::var("BDB_VACUUM_MIN_FILE_AGE_SECS").ok();
+        std::env::set_var("BDB_VACUUM_MIN_FILE_AGE_SECS", "0");
 
         let res: Result<()> = async {
             let dir = tempdir()?;
@@ -1476,8 +1476,8 @@ async fn partitioned_merge_compaction_vacuum_schema_evolution_and_memory_uri() -
         .await;
 
         match prev_vacuum_age {
-            Some(v) => std::env::set_var("BSDB_VACUUM_MIN_FILE_AGE_SECS", v),
-            None => std::env::remove_var("BSDB_VACUUM_MIN_FILE_AGE_SECS"),
+            Some(v) => std::env::set_var("BDB_VACUUM_MIN_FILE_AGE_SECS", v),
+            None => std::env::remove_var("BDB_VACUUM_MIN_FILE_AGE_SECS"),
         }
         res?;
     }

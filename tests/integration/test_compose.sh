@@ -7,9 +7,9 @@ set -ex
 # and tears it down.
 # ---------------------------------------------------------------------------
 
-export BSDB_API_KEY="test-key-123"
-export BSDB_SEARCH_PORT="9200"
-export BSDB_QDRANT_PORT="6333"
+export BDB_API_KEY="test-key-123"
+export BDB_SEARCH_PORT="9200"
+export BDB_QDRANT_PORT="6333"
 export FLIGHT_PORT="50051"
 export AWS_ACCESS_KEY_ID="test"
 export AWS_SECRET_ACCESS_KEY="test"
@@ -34,7 +34,7 @@ done
 '
 
 echo "Running authenticated query on search service..."
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $BSDB_API_KEY" http://localhost:$BSDB_SEARCH_PORT/_cluster/health)
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $BDB_API_KEY" http://localhost:$BDB_SEARCH_PORT/_cluster/health)
 if [ "$HTTP_STATUS" -ne 200 ]; then
     echo "Authenticated query failed with status $HTTP_STATUS"
     docker compose -f docker-compose.production.yml logs
@@ -43,7 +43,7 @@ if [ "$HTTP_STATUS" -ne 200 ]; then
 fi
 
 echo "Running unauthenticated query on search service (should fail)..."
-HTTP_STATUS_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$BSDB_SEARCH_PORT/_cluster/health)
+HTTP_STATUS_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$BDB_SEARCH_PORT/_cluster/health)
 if [ "$HTTP_STATUS_UNAUTH" -ne 401 ]; then
     echo "Unauthenticated query returned $HTTP_STATUS_UNAUTH instead of 401"
     docker compose -f docker-compose.production.yml logs

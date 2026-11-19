@@ -37,9 +37,9 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 # Dumps (full wiki parquets) live on the 14 TB HDD by default; override with
-# --dumps-dir or BSDB_DATA.
+# --dumps-dir or BDB_DATA.
 DEFAULT_DUMPS = os.environ.get(
-    "BSDB_DATA",
+    "BDB_DATA",
     os.path.join(os.path.expanduser("~"), "data", "benodb"),
 )
 

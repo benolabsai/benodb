@@ -43,29 +43,29 @@ async fn main() -> Result<()> {
                 --no-embeddings                 Disable embedding generation entirely\n    \
                 -h, --help                      Print this help message\n\n\
             ENVIRONMENT VARIABLES:\n    \
-                BSDB_WAREHOUSE                  Local warehouse path\n    \
-                BSDB_READWRITE_SCHEMAS          Comma-separated list of writable schemas\n    \
-                BSDB_READONLY_SCHEMAS           Comma-separated list of read-only schemas\n    \
-                BSDB_DEFAULT_WRITE_SCHEMA       Default schema for writes\n    \
-                BSDB_EPHEMERAL                  Set to 1 or true for ephemeral mode\n    \
-                BSDB_MCP_CONFIG                 JSON string with full server configuration\n    \
-                BSDB_EMBEDDING_PROVIDER         local | http | none\n    \
-                BSDB_EMBEDDING_MODEL            Hugging Face model id (default: BAAI/bge-small-en-v1.5)\n    \
-                BSDB_EMBEDDING_CACHE_DIR        Private model cache directory\n    \
-                BSDB_EMBEDDING_URL              HTTP embedding endpoint\n    \
-                BSDB_EMBEDDING_API_KEY          Bearer token for the HTTP endpoint\n    \
-                BSDB_EMBEDDING_BATCH_SIZE       Candle batch size\n    \
-                BSDB_EMBEDDING_MAX_LENGTH       Tokenizer truncation length\n    \
-                BSDB_EMBEDDING_QUERY_PREFIX     Override the query instruction prefix\n    \
-                BSDB_EMBEDDING_DOCUMENT_PREFIX  Override the document instruction prefix\n"
+                BDB_WAREHOUSE                  Local warehouse path\n    \
+                BDB_READWRITE_SCHEMAS          Comma-separated list of writable schemas\n    \
+                BDB_READONLY_SCHEMAS           Comma-separated list of read-only schemas\n    \
+                BDB_DEFAULT_WRITE_SCHEMA       Default schema for writes\n    \
+                BDB_EPHEMERAL                  Set to 1 or true for ephemeral mode\n    \
+                BDB_MCP_CONFIG                 JSON string with full server configuration\n    \
+                BDB_EMBEDDING_PROVIDER         local | http | none\n    \
+                BDB_EMBEDDING_MODEL            Hugging Face model id (default: BAAI/bge-small-en-v1.5)\n    \
+                BDB_EMBEDDING_CACHE_DIR        Private model cache directory\n    \
+                BDB_EMBEDDING_URL              HTTP embedding endpoint\n    \
+                BDB_EMBEDDING_API_KEY          Bearer token for the HTTP endpoint\n    \
+                BDB_EMBEDDING_BATCH_SIZE       Candle batch size\n    \
+                BDB_EMBEDDING_MAX_LENGTH       Tokenizer truncation length\n    \
+                BDB_EMBEDDING_QUERY_PREFIX     Override the query instruction prefix\n    \
+                BDB_EMBEDDING_DOCUMENT_PREFIX  Override the document instruction prefix\n"
         );
         return Ok(());
     }
 
     // Transport flags are consumed here (not by the config resolver): they are
     // server-level, not warehouse/embedding settings.
-    let transport = arg_or_env(&args, "--transport", "BSDB_MCP_TRANSPORT", "stdio");
-    let bind = arg_or_env(&args, "--bind", "BSDB_MCP_BIND", "127.0.0.1:8080");
+    let transport = arg_or_env(&args, "--transport", "BDB_MCP_TRANSPORT", "stdio");
+    let bind = arg_or_env(&args, "--bind", "BDB_MCP_BIND", "127.0.0.1:8080");
     let config_args: Vec<String> = strip_transport_args(&args);
 
     let mut config = McpServerConfig::resolve_from_args_and_env(&config_args)?;

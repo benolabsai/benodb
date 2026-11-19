@@ -10,9 +10,9 @@ metrics regardless of how the engine is deployed.
 
 | Deployment mode | Metrics endpoint | Health |
 |---|---|---|
-| **Embedded library** (Python / Rust) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`), enabled by the `observability` feature | `/health`, `/readyz` |
-| **Flight SQL server** (`benodb-flight`) | `http://<BSDB_METRICS_BIND>:<BSDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
-| **Search gateway** (`bsdb-search`) | `http://<BSDB_SEARCH_BIND>:<BSDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
+| **Embedded library** (Python / Rust) | `http://<BDB_METRICS_BIND>:<BDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`), enabled by the `observability` feature | `/health`, `/readyz` |
+| **Flight SQL server** (`benodb-flight`) | `http://<BDB_METRICS_BIND>:<BDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
+| **Search gateway** (`bsdb-search`) | `http://<BDB_SEARCH_BIND>:<BDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
 | **Gateway / Iceberg REST bins** | `GET /metrics` (gateway), `GET /v1/metrics` (iceberg_rest) | `GET /health`, `GET /v1/health` |
 | **Spark / Trino connectors** | `BenoDBJNIBridge.gatherMetrics()` / `BenoDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
 
@@ -24,10 +24,10 @@ process.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_METRICS_BIND` | Bind address for the embedded/Flight metrics HTTP listener. | `127.0.0.1` |
-| `BSDB_METRICS_PORT` | Port for the embedded/Flight metrics HTTP listener. | `9090` |
+| `BDB_METRICS_BIND` | Bind address for the embedded/Flight metrics HTTP listener. | `127.0.0.1` |
+| `BDB_METRICS_PORT` | Port for the embedded/Flight metrics HTTP listener. | `9090` |
 
-> The listener defaults to **localhost**. Set `BSDB_METRICS_BIND=0.0.0.0` only
+> The listener defaults to **localhost**. Set `BDB_METRICS_BIND=0.0.0.0` only
 > when a scraper runs on another host, and front it with auth/TLS.
 >
 > **⚠️ Security:** none of these endpoints authenticate. Run every BenoDB

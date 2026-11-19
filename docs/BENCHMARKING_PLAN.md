@@ -203,11 +203,11 @@ harness sets the BenoDB knobs from `--cores` / `--ram-gb`:
 | Env var | Value | Purpose |
 |---|---|---|
 | `RAYON_NUM_THREADS` | `cores` | data-parallel CPU |
-| `BSDB_MAX_CONCURRENCY` | `cores` | query concurrency cap |
-| `BSDB_INDEX_BUILD_CONCURRENCY` | `cores` | index build fan-out |
-| `BSDB_MAX_INGEST_RAM_GB` | `0.8 * ram_gb` | ingest memory ceiling |
-| `BSDB_INGEST_MEMORY_BUDGET_GB` | `0.8 * ram_gb` | ingest working set |
-| `BSDB_DATAFUSION_MEMORY_GB` | `0.5 * ram_gb` | SQL operator memory |
+| `BDB_MAX_CONCURRENCY` | `cores` | query concurrency cap |
+| `BDB_INDEX_BUILD_CONCURRENCY` | `cores` | index build fan-out |
+| `BDB_MAX_INGEST_RAM_GB` | `0.8 * ram_gb` | ingest memory ceiling |
+| `BDB_INGEST_MEMORY_BUDGET_GB` | `0.8 * ram_gb` | ingest working set |
+| `BDB_DATAFUSION_MEMORY_GB` | `0.5 * ram_gb` | SQL operator memory |
 
 For the competitor, enforce the same envelope with the process's cgroup, or
 `docker run --cpus=<cores> --memory=<ram_gb>g`, or the library's own pool size.

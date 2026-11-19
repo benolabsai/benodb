@@ -47,7 +47,7 @@ where
 
 const GIB: u64 = 1024 * 1024 * 1024;
 
-/// Default on-disk budget for [`DiskCache`] when `BSDB_DISK_CACHE_GB` is unset.
+/// Default on-disk budget for [`DiskCache`] when `BDB_DISK_CACHE_GB` is unset.
 ///
 /// The disk cache exists to keep *remote* objects (S3/Azure/GCS) off the
 /// network. It is not scratch space: with no budget it grows without bound, and
@@ -57,11 +57,11 @@ pub const DEFAULT_DISK_CACHE_BUDGET_GB: u64 = 16;
 
 /// Whether the secondary [`DiskCache`] is enabled at all.
 ///
-/// `BSDB_DISK_CACHE=off|0|false|no` and `BSDB_DISK_CACHE_GB=0` both disable it.
+/// `BDB_DISK_CACHE=off|0|false|no` and `BDB_DISK_CACHE_GB=0` both disable it.
 /// Local (`file://`) stores are always served in place regardless — see
 /// [`DiskCache::new`].
 fn disk_cache_enabled() -> bool {
-    if let Ok(v) = std::env::var("BSDB_DISK_CACHE") {
+    if let Ok(v) = std::env::var("BDB_DISK_CACHE") {
         if matches!(
             v.trim().to_ascii_lowercase().as_str(),
             "0" | "off" | "false" | "no"
@@ -72,15 +72,15 @@ fn disk_cache_enabled() -> bool {
     disk_cache_budget_bytes() > 0
 }
 
-/// On-disk budget for [`DiskCache`], from `BSDB_DISK_CACHE_GB` (default 16 GiB).
+/// On-disk budget for [`DiskCache`], from `BDB_DISK_CACHE_GB` (default 16 GiB).
 pub fn disk_cache_budget_bytes() -> u64 {
-    match std::env::var("BSDB_DISK_CACHE_GB") {
+    match std::env::var("BDB_DISK_CACHE_GB") {
         Ok(v) => match v.trim().parse::<u64>() {
             Ok(gb) => gb.saturating_mul(GIB),
             Err(_) => {
                 tracing::warn!(
                     value = %v,
-                    "BSDB_DISK_CACHE_GB is not a number; using the default budget"
+                    "BDB_DISK_CACHE_GB is not a number; using the default budget"
                 );
                 DEFAULT_DISK_CACHE_BUDGET_GB * GIB
             }
@@ -253,7 +253,7 @@ pub static DISK_CACHE_DIR: Lazy<Option<PathBuf>> = Lazy::new(|| {
         return None;
     }
 
-    let dir = std::env::var("BSDB_DISK_CACHE_DIR")
+    let dir = std::env::var("BDB_DISK_CACHE_DIR")
         .ok()
         .filter(|p| !p.trim().is_empty())
         .map(PathBuf::from)
@@ -585,7 +585,7 @@ pub static INDEX_CACHE: Lazy<Cache<String, Arc<RoaringBitmap>>> = Lazy::new(|| {
 });
 
 pub static BYTE_CACHE: Lazy<Cache<String, Arc<Vec<u8>>>> = Lazy::new(|| {
-    let cache_gb: u64 = std::env::var("BSDB_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
@@ -619,7 +619,7 @@ pub static BYTE_CACHE: Lazy<Cache<String, Arc<Vec<u8>>>> = Lazy::new(|| {
 /// larger files are read through `ParquetObjectReader`, which fetches only the
 /// needed column chunks.
 pub static PARQUET_BYTES_CACHE: Lazy<Cache<String, bytes::Bytes>> = Lazy::new(|| {
-    let cache_gb: u64 = std::env::var("BSDB_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
@@ -650,7 +650,7 @@ pub static HNSW_CACHE: Lazy<Cache<String, Arc<Hnsw<f32, DistL2>>>> = Lazy::new(|
 /// These are more memory-efficient than plain HNSW since they only load needed clusters
 pub static HNSW_IVF_CACHE: Lazy<Cache<String, Arc<HnswIvfIndex>>> = Lazy::new(|| {
     // Default to 1GB cache if not set
-    let cache_gb: u64 = std::env::var("BSDB_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
@@ -675,10 +675,10 @@ pub static HNSW_IVF_CACHE: Lazy<Cache<String, Arc<HnswIvfIndex>>> = Lazy::new(||
 /// The loose-sidecar path mmap'd the three CSR files directly; the Puffin path
 /// reads the blobs into owned bytes, so caching the decoded graph avoids
 /// re-reading and re-copying the bundle on every `load_graph_index` call.
-/// Budgeted from `BSDB_CACHE_GB` (25% of the global cache, like the inverted
+/// Budgeted from `BDB_CACHE_GB` (25% of the global cache, like the inverted
 /// index cache).
 pub static CSR_GRAPH_CACHE: Lazy<Cache<String, Arc<MmapCsrGraph>>> = Lazy::new(|| {
-    let cache_gb: u64 = std::env::var("BSDB_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
@@ -702,7 +702,7 @@ pub static CSR_GRAPH_CACHE: Lazy<Cache<String, Arc<MmapCsrGraph>>> = Lazy::new(|
 });
 
 pub static INVERTED_INDEX_CACHE: Lazy<Cache<String, Arc<Vec<RecordBatch>>>> = Lazy::new(|| {
-    let cache_gb: u64 = std::env::var("BSDB_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
@@ -797,7 +797,7 @@ pub static EQUALITY_DELETE_CACHE: Lazy<
 /// Bypasses Parquet decoding/decompression for frequently accessed blocks.
 pub static BLOCK_CACHE: Lazy<Cache<String, Arc<RecordBatch>>> = Lazy::new(|| {
     // Default to 1GB cache if not set
-    let cache_gb: u64 = std::env::var("BSDB_BLOCK_CACHE_GB")
+    let cache_gb: u64 = std::env::var("BDB_BLOCK_CACHE_GB")
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);

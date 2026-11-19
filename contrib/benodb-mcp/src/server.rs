@@ -47,26 +47,26 @@ fn vector_dim_from_string(value: &str) -> Option<usize> {
 }
 
 /// Derives the default warehouse directory path.
-/// If `BSDB_WAREHOUSE` is already set, returns its value.
-/// If `BSDB_EPHEMERAL` is set or `--ephemeral` argument is present, generates a fresh directory under the system temp directory.
-/// In unit tests (`cfg!(test)`), defaults to ephemeral unless `BSDB_WAREHOUSE` is explicitly configured.
+/// If `BDB_WAREHOUSE` is already set, returns its value.
+/// If `BDB_EPHEMERAL` is set or `--ephemeral` argument is present, generates a fresh directory under the system temp directory.
+/// In unit tests (`cfg!(test)`), defaults to ephemeral unless `BDB_WAREHOUSE` is explicitly configured.
 /// Otherwise, returns a persistent warehouse path under `$XDG_DATA_HOME/benodb/mcp_warehouse` or `~/.benodb/mcp_warehouse`.
 pub fn resolve_default_warehouse() -> String {
     let is_test = cfg!(test);
     let is_ephemeral = is_test
-        || std::env::var("BSDB_EPHEMERAL")
+        || std::env::var("BDB_EPHEMERAL")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
         || std::env::args().any(|arg| arg == "--ephemeral");
 
     if !is_test {
-        if let Ok(w) = std::env::var("BSDB_WAREHOUSE") {
+        if let Ok(w) = std::env::var("BDB_WAREHOUSE") {
             if !w.trim().is_empty() {
-                if validate_local_path(&w, "BSDB_WAREHOUSE").is_ok() {
+                if validate_local_path(&w, "BDB_WAREHOUSE").is_ok() {
                     let _ = std::fs::create_dir_all(&w);
                     return w;
                 } else {
-                    error!("Ignoring remote or non-local BSDB_WAREHOUSE: {}", w);
+                    error!("Ignoring remote or non-local BDB_WAREHOUSE: {}", w);
                 }
             }
         }
@@ -90,9 +90,7 @@ pub fn resolve_default_warehouse() -> String {
     } else {
         let base_dir = std::env::var("XDG_DATA_HOME")
             .map(std::path::PathBuf::from)
-            .or_else(|_| {
-                std::env::var("HOME").map(|h| std::path::PathBuf::from(h).join(".benodb"))
-            })
+            .or_else(|_| std::env::var("HOME").map(|h| std::path::PathBuf::from(h).join(".benodb")))
             .unwrap_or_else(|_| std::env::temp_dir().join(".benodb"));
         let warehouse_dir = base_dir.join("mcp_warehouse");
         let _ = std::fs::create_dir_all(&warehouse_dir);
@@ -260,7 +258,7 @@ impl SchemaPermissions {
     }
 
     pub fn from_env() -> Self {
-        let readwrite_schemas = if let Ok(val) = std::env::var("BSDB_READWRITE_SCHEMAS") {
+        let readwrite_schemas = if let Ok(val) = std::env::var("BDB_READWRITE_SCHEMAS") {
             let list: Vec<String> = val
                 .split(',')
                 .map(|s| s.trim().to_ascii_lowercase())
@@ -275,7 +273,7 @@ impl SchemaPermissions {
             vec![SCRATCH_SCHEMA.to_string()]
         };
 
-        let readonly_schemas = if let Ok(val) = std::env::var("BSDB_READONLY_SCHEMAS") {
+        let readonly_schemas = if let Ok(val) = std::env::var("BDB_READONLY_SCHEMAS") {
             let list: Vec<String> = val
                 .split(',')
                 .map(|s| s.trim().to_ascii_lowercase())
@@ -290,7 +288,7 @@ impl SchemaPermissions {
             vec!["default".to_string()]
         };
 
-        let default_write_schema = std::env::var("BSDB_DEFAULT_WRITE_SCHEMA")
+        let default_write_schema = std::env::var("BDB_DEFAULT_WRITE_SCHEMA")
             .ok()
             .map(|s| s.trim().to_ascii_lowercase())
             .filter(|s| !s.is_empty())
@@ -371,17 +369,17 @@ pub struct McpServerConfig {
 impl McpServerConfig {
     pub fn from_env() -> Self {
         let mut config = Self::default();
-        if let Ok(json_str) = std::env::var("BSDB_MCP_CONFIG") {
+        if let Ok(json_str) = std::env::var("BDB_MCP_CONFIG") {
             if let Ok(parsed) = serde_json::from_str::<Self>(&json_str) {
                 config = parsed;
             }
         }
-        if let Ok(w) = std::env::var("BSDB_WAREHOUSE") {
+        if let Ok(w) = std::env::var("BDB_WAREHOUSE") {
             if !w.trim().is_empty() {
                 config.warehouse = Some(w);
             }
         }
-        if let Ok(rw) = std::env::var("BSDB_READWRITE_SCHEMAS") {
+        if let Ok(rw) = std::env::var("BDB_READWRITE_SCHEMAS") {
             let list: Vec<String> = rw
                 .split(',')
                 .map(|s| s.trim().to_ascii_lowercase())
@@ -391,7 +389,7 @@ impl McpServerConfig {
                 config.readwrite_schemas = Some(list);
             }
         }
-        if let Ok(ro) = std::env::var("BSDB_READONLY_SCHEMAS") {
+        if let Ok(ro) = std::env::var("BDB_READONLY_SCHEMAS") {
             let list: Vec<String> = ro
                 .split(',')
                 .map(|s| s.trim().to_ascii_lowercase())
@@ -401,15 +399,15 @@ impl McpServerConfig {
                 config.readonly_schemas = Some(list);
             }
         }
-        if let Ok(dw) = std::env::var("BSDB_DEFAULT_WRITE_SCHEMA") {
+        if let Ok(dw) = std::env::var("BDB_DEFAULT_WRITE_SCHEMA") {
             if !dw.trim().is_empty() {
                 config.default_write_schema = Some(dw.trim().to_ascii_lowercase());
             }
         }
-        if let Ok(e) = std::env::var("BSDB_EPHEMERAL") {
+        if let Ok(e) = std::env::var("BDB_EPHEMERAL") {
             config.ephemeral = Some(e == "1" || e.eq_ignore_ascii_case("true"));
         }
-        // Always materialize the effective embedding config so BSDB_EMBEDDING_*
+        // Always materialize the effective embedding config so BDB_EMBEDDING_*
         // overrides apply to defaults, JSON config, and CLI flags consistently.
         let mut embedding = config.embedding.take().unwrap_or_default();
         embedding.apply_env();
@@ -1909,7 +1907,7 @@ impl McpServer {
                         let prompt_text = "BenoDB Agent Memory Workflow:\n\
                         1. Whenever you discover key facts, architectural decisions, or user preferences, call `store_memory` with a descriptive `key`, `content`, and relevant `tags`.\n\
                         2. At the start of complex tasks or when unsure about context, call `recall_memory` with your current task or query.\n\
-                        3. Memories are stored in `scratch.agent_memories` and are indexed with dense vectors (if BSDB_EMBEDDING_URL is active) and BM25 text search.";
+                        3. Memories are stored in `scratch.agent_memories` and are indexed with dense vectors (if BDB_EMBEDDING_URL is active) and BM25 text search.";
                         Ok(json!({
                             "description": "Agent Memory Guide",
                             "messages": [
@@ -2252,7 +2250,7 @@ impl McpServer {
                     },
                     {
                         "name": "store_memory",
-                        "description": "Stores an agent memory, context note, or code insight into the persistent scratch table 'scratch.agent_memories'. Embeddings are auto-generated if BSDB_EMBEDDING_URL is set.",
+                        "description": "Stores an agent memory, context note, or code insight into the persistent scratch table 'scratch.agent_memories'. Embeddings are auto-generated if BDB_EMBEDDING_URL is set.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -4370,9 +4368,7 @@ mod tests {
             .await
             .unwrap();
         let prompts = list_res["prompts"].as_array().unwrap();
-        assert!(prompts
-            .iter()
-            .any(|p| p["name"] == "benodb_sql_expert"));
+        assert!(prompts.iter().any(|p| p["name"] == "benodb_sql_expert"));
         assert!(prompts.iter().any(|p| p["name"] == "agent_memory_guide"));
         assert!(prompts.iter().any(|p| p["name"] == "code_rag_strategy"));
 

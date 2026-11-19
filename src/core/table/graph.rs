@@ -212,7 +212,7 @@ impl Table {
     /// Read a CSR graph packed inside a Puffin compound bundle into memory.
     ///
     /// The decoded graph is cached in [`crate::core::cache::CSR_GRAPH_CACHE`]
-    /// (budgeted from `BSDB_CACHE_GB`) so repeated `load_graph_index` calls do
+    /// (budgeted from `BDB_CACHE_GB`) so repeated `load_graph_index` calls do
     /// not re-read and re-copy the bundle.
     async fn load_csr_from_puffin(
         &self,

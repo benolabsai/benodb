@@ -632,7 +632,7 @@ def _write_batched(table, df, name: str, batch: int) -> None:
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    default_data_dir = os.environ.get("BSDB_DATA", os.path.expanduser("~/data/benodb"))
+    default_data_dir = os.environ.get("BDB_DATA", os.path.expanduser("~/data/benodb"))
 
     ap = argparse.ArgumentParser(description="3-tier Wikipedia Graph-RAG pipeline")
     ap.add_argument("--stages", default=",".join(ALL_STAGES),
@@ -654,14 +654,14 @@ def main():
     args.data_dir = os.path.abspath(args.data_dir)
     if args.out_dir is None:
         args.out_dir = os.environ.get(
-            "BSDB_THREE_TIER_OUT",
+            "BDB_THREE_TIER_OUT",
             os.path.join(args.data_dir, "three_tier"),
         )
     args.out_dir = os.path.abspath(args.out_dir)
 
     if args.table_dir is None:
         args.table_dir = os.environ.get(
-            "BSDB_TABLE_DIR",
+            "BDB_TABLE_DIR",
             os.path.join(repo_root, "data", "three_tier_db"),
         )
     args.table_dir = os.path.abspath(args.table_dir)

@@ -70,9 +70,9 @@ fn count_vector_index_files(dir: &std::path::Path) -> usize {
             } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                 if name.ends_with(".puffin") {
                     if let Ok(bytes) = std::fs::read(&path) {
-                        if let Ok(reader) = benodb::core::puffin::PuffinReader::new(
-                            std::io::Cursor::new(bytes),
-                        ) {
+                        if let Ok(reader) =
+                            benodb::core::puffin::PuffinReader::new(std::io::Cursor::new(bytes))
+                        {
                             if reader
                                 .footer()
                                 .blobs

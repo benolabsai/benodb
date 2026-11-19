@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri =
-        std::env::var("BSDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp/test_table".to_string());
+        std::env::var("BDB_STORAGE_URI").unwrap_or_else(|_| "file:///tmp/test_table".to_string());
 
     // Clean up previous run
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join("test_table"));

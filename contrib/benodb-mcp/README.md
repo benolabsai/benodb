@@ -58,8 +58,8 @@ On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
         "--readonly-schemas", "default,finance_raw"
       ],
       "env": {
-        "BSDB_GPU_DEVICE": "auto",
-        "BSDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5"
+        "BDB_GPU_DEVICE": "auto",
+        "BDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5"
       }
     }
   }
@@ -79,8 +79,8 @@ You can configure options directly via CLI flags, environment variables, or inli
         "--config", "{\"warehouse\":\"/path/to/warehouse\",\"readwrite_schemas\":[\"scratch\",\"analytics\"],\"readonly_schemas\":[\"default\",\"raw\"]}"
       ],
       "env": {
-        "BSDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5",
-        "BSDB_EMBEDDING_CACHE_DIR": "/home/me/.benodb/models"
+        "BDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5",
+        "BDB_EMBEDDING_CACHE_DIR": "/home/me/.benodb/models"
       }
     }
   }
@@ -124,19 +124,19 @@ vector space matches the table:
       "command": "uvx",
       "args": ["benodb-mcp", "--warehouse", "/data/warehouse"],
       "env": {
-        "BSDB_EMBEDDING_PROVIDER": "local",
-        "BSDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5"
+        "BDB_EMBEDDING_PROVIDER": "local",
+        "BDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5"
       }
     },
     "benostream-openai": {
       "command": "uvx",
       "args": ["benodb-mcp", "--warehouse", "/data/warehouse"],
       "env": {
-        "BSDB_EMBEDDING_PROVIDER": "http",
-        "BSDB_EMBEDDING_URL": "https://api.openai.com/v1/embeddings",
-        "BSDB_EMBEDDING_MODEL": "text-embedding-3-small",
-        "BSDB_EMBEDDING_DIM": "1536",
-        "BSDB_EMBEDDING_API_KEY": "${env:OPENAI_API_KEY}"
+        "BDB_EMBEDDING_PROVIDER": "http",
+        "BDB_EMBEDDING_URL": "https://api.openai.com/v1/embeddings",
+        "BDB_EMBEDDING_MODEL": "text-embedding-3-small",
+        "BDB_EMBEDDING_DIM": "1536",
+        "BDB_EMBEDDING_API_KEY": "${env:OPENAI_API_KEY}"
       }
     }
   }
@@ -234,24 +234,24 @@ session.set_schema_access("finance_raw", true)?;
 
 | CLI Option | Environment Variable | JSON Key | Description | Default |
 |:---|:---|:---|:---|:---|
-| `--warehouse <PATH>` | `BSDB_WAREHOUSE` | `"warehouse"` | Local directory path for persistent Iceberg table storage. | System temp dir / `resolve_default_warehouse()` |
-| `--readwrite-schemas <S>` | `BSDB_READWRITE_SCHEMAS` | `"readwrite_schemas"` | Comma-separated or JSON array of schemas allowing writes. | `["scratch"]` |
-| `--readonly-schemas <S>` | `BSDB_READONLY_SCHEMAS` | `"readonly_schemas"` | Comma-separated or JSON array of schemas locked as read-only. | `["default", "public"]` |
-| `--default-write-schema <S>`| `BSDB_DEFAULT_WRITE_SCHEMA`| `"default_write_schema"`| Default schema for unqualified table creations. | `"scratch"` |
-| `--ephemeral` | `BSDB_EPHEMERAL` | `"ephemeral"` | If true (`1`), uses an ephemeral temporary directory for the session. | `false` |
-| `--config <JSON>` | `BSDB_MCP_CONFIG` | N/A | Full JSON configuration string. | None |
+| `--warehouse <PATH>` | `BDB_WAREHOUSE` | `"warehouse"` | Local directory path for persistent Iceberg table storage. | System temp dir / `resolve_default_warehouse()` |
+| `--readwrite-schemas <S>` | `BDB_READWRITE_SCHEMAS` | `"readwrite_schemas"` | Comma-separated or JSON array of schemas allowing writes. | `["scratch"]` |
+| `--readonly-schemas <S>` | `BDB_READONLY_SCHEMAS` | `"readonly_schemas"` | Comma-separated or JSON array of schemas locked as read-only. | `["default", "public"]` |
+| `--default-write-schema <S>`| `BDB_DEFAULT_WRITE_SCHEMA`| `"default_write_schema"`| Default schema for unqualified table creations. | `"scratch"` |
+| `--ephemeral` | `BDB_EPHEMERAL` | `"ephemeral"` | If true (`1`), uses an ephemeral temporary directory for the session. | `false` |
+| `--config <JSON>` | `BDB_MCP_CONFIG` | N/A | Full JSON configuration string. | None |
 | `--config-file <PATH>` | N/A | N/A | Path to a `.json` configuration file. | None |
-| N/A | `BSDB_GPU_DEVICE` | N/A | Hardware acceleration target or pool for vector indexes (`auto`, `cpu`, `cuda[:N]`, `mps`, `cuda:0,cuda:1`). | `auto` |
-| `--embedding-model <HF_ID>` | `BSDB_EMBEDDING_MODEL` | `"embedding": {"model": "..."}` | Hugging Face BERT-family embedding model. | `BAAI/bge-small-en-v1.5` |
-| `--embedding-provider <P>` | `BSDB_EMBEDDING_PROVIDER` | `"embedding": {"provider": "..."}` | `local` (in-process Candle), `http`, or `none`. | `local` unless `url` is set |
-| `--embedding-cache-dir <PATH>` | `BSDB_EMBEDDING_CACHE_DIR` | `"embedding": {"cache_dir": "..."}` | Private model cache; reused after the first download. | `<data-dir>/models` |
-| `--embedding-url <URL>` | `BSDB_EMBEDDING_URL` | `"embedding": {"url": "..."}` | Ollama / OpenAI-compatible / TEI endpoint. | None |
-| `--embedding-api-key <KEY>` | `BSDB_EMBEDDING_API_KEY` | `"embedding": {"api_key": "..."}` | Bearer token for the HTTP endpoint. | None |
-| `--embedding-batch-size <N>` | `BSDB_EMBEDDING_BATCH_SIZE` | `"embedding": {"batch_size": N}` | Candle inference batch size. | `16` |
-| `--embedding-max-length <N>` | `BSDB_EMBEDDING_MAX_LENGTH` | `"embedding": {"max_length": N}` | Tokenizer truncation length. | `512` |
-| `--embedding-dim <N>` | `BSDB_EMBEDDING_DIM` | `"embedding": {"dim": N}` | Optional dimension override (MRL truncation). Otherwise read from the model config. | Model default |
-| N/A | `BSDB_EMBEDDING_QUERY_PREFIX` | `"embedding": {"query_prefix": "..."}` | Override the query instruction prefix. Empty string disables it. | Model default |
-| N/A | `BSDB_EMBEDDING_DOCUMENT_PREFIX` | `"embedding": {"document_prefix": "..."}` | Override the document instruction prefix. Empty string disables it. | Model default |
+| N/A | `BDB_GPU_DEVICE` | N/A | Hardware acceleration target or pool for vector indexes (`auto`, `cpu`, `cuda[:N]`, `mps`, `cuda:0,cuda:1`). | `auto` |
+| `--embedding-model <HF_ID>` | `BDB_EMBEDDING_MODEL` | `"embedding": {"model": "..."}` | Hugging Face BERT-family embedding model. | `BAAI/bge-small-en-v1.5` |
+| `--embedding-provider <P>` | `BDB_EMBEDDING_PROVIDER` | `"embedding": {"provider": "..."}` | `local` (in-process Candle), `http`, or `none`. | `local` unless `url` is set |
+| `--embedding-cache-dir <PATH>` | `BDB_EMBEDDING_CACHE_DIR` | `"embedding": {"cache_dir": "..."}` | Private model cache; reused after the first download. | `<data-dir>/models` |
+| `--embedding-url <URL>` | `BDB_EMBEDDING_URL` | `"embedding": {"url": "..."}` | Ollama / OpenAI-compatible / TEI endpoint. | None |
+| `--embedding-api-key <KEY>` | `BDB_EMBEDDING_API_KEY` | `"embedding": {"api_key": "..."}` | Bearer token for the HTTP endpoint. | None |
+| `--embedding-batch-size <N>` | `BDB_EMBEDDING_BATCH_SIZE` | `"embedding": {"batch_size": N}` | Candle inference batch size. | `16` |
+| `--embedding-max-length <N>` | `BDB_EMBEDDING_MAX_LENGTH` | `"embedding": {"max_length": N}` | Tokenizer truncation length. | `512` |
+| `--embedding-dim <N>` | `BDB_EMBEDDING_DIM` | `"embedding": {"dim": N}` | Optional dimension override (MRL truncation). Otherwise read from the model config. | Model default |
+| N/A | `BDB_EMBEDDING_QUERY_PREFIX` | `"embedding": {"query_prefix": "..."}` | Override the query instruction prefix. Empty string disables it. | Model default |
+| N/A | `BDB_EMBEDDING_DOCUMENT_PREFIX` | `"embedding": {"document_prefix": "..."}` | Override the document instruction prefix. Empty string disables it. | Model default |
 | `--no-embeddings` | N/A | `"embedding": {"provider": "none"}` | Disable embedding generation entirely. | Off |
 
 > Legacy JSON keys `model_path`, `device`, `quantized`, `intra_threads`, `pooling`, and
@@ -262,7 +262,7 @@ session.set_schema_access("finance_raw", true)?;
 > `local` is the default and needs no API key or daemon. The first embedding call downloads
 > `config.json`, `tokenizer.json`, and `model.safetensors` into the BenoDB private cache
 > (`~/.benodb/models` by default) and reuses it on every subsequent start.
-> `BSDB_EMBEDDING_URL` switches to HTTP automatically when `provider` is not set, preserving the
+> `BDB_EMBEDDING_URL` switches to HTTP automatically when `provider` is not set, preserving the
 > previous Ollama/OpenAI-compatible workflow.
 
 #### Embedding configuration
@@ -294,7 +294,7 @@ ALTER TABLE doc_chunks SET TBLPROPERTIES (
 ```
 
 Set the dimension explicitly for unknown or custom OpenAI-compatible model ids. API keys are never
-written to table properties; use `BSDB_EMBEDDING_API_KEY` or `embedding.api_key`.
+written to table properties; use `BDB_EMBEDDING_API_KEY` or `embedding.api_key`.
 
 The contract is table-scoped. Different tables can use different providers, and within a table
 `provider` and `endpoint` can change while the model and dimension stay the same. One MCP process
@@ -303,7 +303,7 @@ pipeline) when you need multiple providers at the same time. For different model
 embedding space; properties are not column-scoped.
 
 Credentials are per process, not per table. Table properties never contain API keys. Give each MCP
-instance its own `BSDB_EMBEDDING_API_KEY`/`embedding.api_key`, or front multiple providers with a
+instance its own `BDB_EMBEDDING_API_KEY`/`embedding.api_key`, or front multiple providers with a
 credential-multiplexing gateway and point MCP at that gateway. Prefer the env var over a literal key
 in JSON config.
 
@@ -325,13 +325,13 @@ Embedding generation is automatic once a provider is configured (local is the de
 - `BAAI/bge-small-en-v1.5` is retrieval-tuned, 384-d, and runs as F32 safetensors through Candle.
 - Embeddings use CLS pooling followed by L2 normalization. Documents are embedded plain; queries get
   `Represent this sentence for searching relevant passages: `. The prefix is applied automatically.
-  Override it with `query_prefix` / `BSDB_EMBEDDING_QUERY_PREFIX` only if the model expects
+  Override it with `query_prefix` / `BDB_EMBEDDING_QUERY_PREFIX` only if the model expects
   something different.
 - The vector dimension is inferred from the model: the curated id map supplies it before load, and
   `config.json` (`hidden_size`) is authoritative once the model is loaded. Set `dim` only to
   truncate a Matryoshka (MRL) model.
 - The model is downloaded once into `~/.benodb/models` (or `$XDG_DATA_HOME/benodb/models`)
-  and reused. Set `cache_dir` / `BSDB_EMBEDDING_CACHE_DIR` to move it.
+  and reused. Set `cache_dir` / `BDB_EMBEDDING_CACHE_DIR` to move it.
 - Loading is lazy: the first embedding call pays the model load; `initialize` and SQL-only sessions
   do not.
 - Candle runs on CPU in the published build; CUDA/Metal backends are not enabled in the wheel.
@@ -381,10 +381,10 @@ than the JSON file):
       "command": "benodb-mcp",
       "args": ["--warehouse", "/path/to/warehouse"],
       "env": {
-        "BSDB_EMBEDDING_PROVIDER": "http",
-        "BSDB_EMBEDDING_MODEL": "text-embedding-3-small",
-        "BSDB_EMBEDDING_URL": "https://api.openai.com/v1/embeddings",
-        "BSDB_EMBEDDING_API_KEY": "sk-..."
+        "BDB_EMBEDDING_PROVIDER": "http",
+        "BDB_EMBEDDING_MODEL": "text-embedding-3-small",
+        "BDB_EMBEDDING_URL": "https://api.openai.com/v1/embeddings",
+        "BDB_EMBEDDING_API_KEY": "sk-..."
       }
     }
   }
@@ -392,7 +392,7 @@ than the JSON file):
 ```
 
 The local model is not loaded and the model cache is unused when `provider` is `http`. The
-`embedding` object and the `BSDB_EMBEDDING_*` variables are equivalent; use whichever your MCP client
+`embedding` object and the `BDB_EMBEDDING_*` variables are equivalent; use whichever your MCP client
 supports.
 
 Ollama:
@@ -434,7 +434,7 @@ from Spark/Trino). The engine derives `dim` from a known model id (BGE, E5, Nomi
 a `FixedSizeList` column when you do not set it, so only custom models and MRL truncation need an
 explicit `dim`. Model identity itself is not recoverable from a vector, so a client that rewrites vectors
 outside the table is out of scope. Fixed-size vector columns are checked from the schema on every
-write; set `BSDB_VALIDATE_EMBEDDINGS=strict` to also scan list/stringified vectors row by row. Recreate
+write; set `BDB_VALIDATE_EMBEDDINGS=strict` to also scan list/stringified vectors row by row. Recreate
 or re-ingest the table when the model changes so query and document vectors never mix spaces.
 `provider: "none"` disables embedding generation entirely and avoids all model work.
 

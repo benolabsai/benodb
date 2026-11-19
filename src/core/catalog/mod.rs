@@ -25,9 +25,9 @@ use async_trait::async_trait;
 ///
 /// Bound both the connect and the whole request. A stalled catalog now
 /// surfaces as an ordinary error instead of an indefinite hang.
-/// Override with `BSDB_CATALOG_TIMEOUT_SECS`.
+/// Override with `BDB_CATALOG_TIMEOUT_SECS`.
 pub(crate) fn catalog_http_client() -> reqwest::Client {
-    let secs = std::env::var("BSDB_CATALOG_TIMEOUT_SECS")
+    let secs = std::env::var("BDB_CATALOG_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .filter(|s| *s > 0)
@@ -219,7 +219,7 @@ pub async fn create_catalog_async(
     catalog_type: CatalogType,
     config: std::collections::HashMap<String, String>,
 ) -> Result<Box<dyn Catalog>> {
-    // SSRF guard (always on; `BSDB_SSRF_ALLOW_HOSTS` can allow specific
+    // SSRF guard (always on; `BDB_SSRF_ALLOW_HOSTS` can allow specific
     // loopback hosts for tests): catalog endpoints are user-supplied and
     // fetched server-side. Reject internal/loopback hosts before constructing
     // any client.

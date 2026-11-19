@@ -40,13 +40,13 @@ the process — and then layered so that *admission*, *reclamation*, and
 
 ```mermaid
 flowchart TD
-    W["write_async(batch)"] --> G{"RSS ≥ 0.8·M ?<br/>(BSDB_MAX_INGEST_RAM_GB)"}
+    W["write_async(batch)"] --> G{"RSS ≥ 0.8·M ?<br/>(BDB_MAX_INGEST_RAM_GB)"}
     G -- "no" --> BUF["write buffer<br/>memtable + WAL"]
     G -- "yes" --> PARK["writer parks<br/>tokio::Notify + 250 ms poll"]
     PARK -. "memory_reclaimed" .-> G
 
-    BUF -- "flush<br/>(BSDB_CACHE_GB, default 1 GB)" --> SEG["segment write<br/>data parquet + stats"]
-    SEG -- "spawn one build per segment" --> GATE["index-build gate<br/>clamp(M / 8 GiB, 1, nproc)<br/>(BSDB_INDEX_BUILD_CONCURRENCY)"]
+    BUF -- "flush<br/>(BDB_CACHE_GB, default 1 GB)" --> SEG["segment write<br/>data parquet + stats"]
+    SEG -- "spawn one build per segment" --> GATE["index-build gate<br/>clamp(M / 8 GiB, 1, nproc)<br/>(BDB_INDEX_BUILD_CONCURRENCY)"]
     GATE -- "permit (bounded concurrency)" --> BUILD["build HNSW / TQ4·TQ8 / BM25 / CSR"]
     BUILD -- "release permit" --> NOTIFY["notify(memory_reclaimed)"]
     NOTIFY -. "wakes parked writer" .-> PARK
@@ -93,10 +93,10 @@ Let `M = effective_memory_bytes()` and `F = MEMORY_BUDGET_FRACTION = 0.8`.
 
 | Knob | Default | Role |
 | --- | --- | --- |
-| `BSDB_MAX_INGEST_RAM_GB` | `F × M` (decimal GB) | **Admission.** `write_async` blocks before accepting more batches while RSS ≥ this. |
-| `BSDB_INGEST_MEMORY_BUDGET_GB` | `F × M` (bytes) | **Reclamation.** At each committed ingest unit, if RSS ≥ this, the heap is trimmed and blocked writers are notified. |
-| `BSDB_INDEX_BUILD_CONCURRENCY` | `clamp(M / 8 GiB, 1, nproc)` | **Concurrency.** Caps how many segment index builds run at once, which caps peak RSS. |
-| `BSDB_DATAFUSION_MEMORY_GB` | `DATAFUSION_MEMORY_FRACTION × M` (0.5) | **Query.** Caps DataFusion's working set for SQL sorts/joins/aggregations, which then spill to disk. Applied to `Table.execute_sql` (the graph-UDF path) and to `Session`. |
+| `BDB_MAX_INGEST_RAM_GB` | `F × M` (decimal GB) | **Admission.** `write_async` blocks before accepting more batches while RSS ≥ this. |
+| `BDB_INGEST_MEMORY_BUDGET_GB` | `F × M` (bytes) | **Reclamation.** At each committed ingest unit, if RSS ≥ this, the heap is trimmed and blocked writers are notified. |
+| `BDB_INDEX_BUILD_CONCURRENCY` | `clamp(M / 8 GiB, 1, nproc)` | **Concurrency.** Caps how many segment index builds run at once, which caps peak RSS. |
+| `BDB_DATAFUSION_MEMORY_GB` | `DATAFUSION_MEMORY_FRACTION × M` (0.5) | **Query.** Caps DataFusion's working set for SQL sorts/joins/aggregations, which then spill to disk. Applied to `Table.execute_sql` (the graph-UDF path) and to `Session`. |
 
 Each knob is independent: there is deliberately **no fixed percentage split**
 across the subsystems, so an operator can tune one to the actual workload
@@ -116,7 +116,7 @@ They reference the same `M`, so they move together:
 - **Concurrency vs. admission.** The build gate bounds how many builds are in
   flight, and therefore how fast RSS climbs toward the high-water mark. On a
   small container the gate is `1`, so a single build's working set is the whole
-  budget; on a large host it fans out. Raising `BSDB_INDEX_BUILD_CONCURRENCY`
+  budget; on a large host it fans out. Raising `BDB_INDEX_BUILD_CONCURRENCY`
   without raising the high-water mark just makes writers park more often.
 - **Explicit overrides win.** Any of the three can be set independently; a
   non-positive value is ignored (the derived default applies) so a guard can
@@ -124,7 +124,7 @@ They reference the same `M`, so they move together:
 
 ### 3. Worked examples
 
-| Environment | `M` | `BSDB_MAX_INGEST_RAM_GB` | `BSDB_INGEST_MEMORY_BUDGET_GB` | `BSDB_INDEX_BUILD_CONCURRENCY` |
+| Environment | `M` | `BDB_MAX_INGEST_RAM_GB` | `BDB_INGEST_MEMORY_BUDGET_GB` | `BDB_INDEX_BUILD_CONCURRENCY` |
 | --- | --- | --- | --- | --- |
 | 4 GB container | 4 GiB | ~3.4 GB | ~3.4 GB | 1 |
 | 16 GB container | 16 GiB | ~13.7 GB | ~13.7 GB | 2 |
@@ -135,10 +135,10 @@ They reference the same `M`, so they move together:
 
 | Knob | Default | Effect |
 | --- | --- | --- |
-| `BSDB_MAX_INGEST_RAM_GB` | `0.8 × effective memory` | Ingest RAM high-water mark. When RSS exceeds it, `write_async` blocks before accepting more batches and resumes the instant a background task frees memory (a segment index build finishing, or an ingest heap trim) — woken by `tokio::sync::Notify` with a 250 ms bounded fallback poll. |
-| `BSDB_INGEST_MEMORY_BUDGET_GB` | `0.8 × effective memory` | Heap-trim budget. Returning freed pages to the OS is an allocator concern, so see `core::memory` for the rationale. Also settable per ingest via `IngestOptions::memory_budget_bytes` / `bsdb table ingest --memory-budget-gb`. |
-| `BSDB_INDEX_BUILD_CONCURRENCY` | `clamp(effective memory / 8 GiB, 1, nproc)` | Maximum concurrent segment index builds. Each build holds its segment's vectors plus the HNSW/IVF/quantizer structures — several GB at a 1 GB flush size. Unbounded, the runtime fans out one build per worker thread, which is what OOM-killed the Wikipedia load at 105 GB RSS. Always bounded; a non-positive value is ignored. |
-| `BSDB_DATAFUSION_MEMORY_GB` | `0.5 × effective memory` | DataFusion query memory limit. SQL operators spill to disk at this limit instead of OOMing. Applied to `Table.execute_sql` — where the `subgraph`, `communities`, and BFS UDFs run — and to `Session` (which also accepts an explicit `limit_bytes`). Independent of the ingest budget; a non-positive value is ignored. |
+| `BDB_MAX_INGEST_RAM_GB` | `0.8 × effective memory` | Ingest RAM high-water mark. When RSS exceeds it, `write_async` blocks before accepting more batches and resumes the instant a background task frees memory (a segment index build finishing, or an ingest heap trim) — woken by `tokio::sync::Notify` with a 250 ms bounded fallback poll. |
+| `BDB_INGEST_MEMORY_BUDGET_GB` | `0.8 × effective memory` | Heap-trim budget. Returning freed pages to the OS is an allocator concern, so see `core::memory` for the rationale. Also settable per ingest via `IngestOptions::memory_budget_bytes` / `bsdb table ingest --memory-budget-gb`. |
+| `BDB_INDEX_BUILD_CONCURRENCY` | `clamp(effective memory / 8 GiB, 1, nproc)` | Maximum concurrent segment index builds. Each build holds its segment's vectors plus the HNSW/IVF/quantizer structures — several GB at a 1 GB flush size. Unbounded, the runtime fans out one build per worker thread, which is what OOM-killed the Wikipedia load at 105 GB RSS. Always bounded; a non-positive value is ignored. |
+| `BDB_DATAFUSION_MEMORY_GB` | `0.5 × effective memory` | DataFusion query memory limit. SQL operators spill to disk at this limit instead of OOMing. Applied to `Table.execute_sql` — where the `subgraph`, `communities`, and BFS UDFs run — and to `Session` (which also accepts an explicit `limit_bytes`). Independent of the ingest budget; a non-positive value is ignored. |
 
 Observability: `benostreamdb_ingest_rss_bytes`,
 `benostreamdb_ingest_backpressure_pauses_total`,
@@ -150,7 +150,7 @@ build gate, not the CPU, is the throughput limit.
 
 | Knob | Default | Effect |
 | --- | --- | --- |
-| `BSDB_MIN_FREE_DISK_GB` | `1` | Free-space admission threshold for local (`file://`) tables. A write is refused with a descriptive error when the target filesystem is below it, so the failure happens *before* any bytes are written rather than mid-segment. Fail-open: if the free space cannot be queried, the write proceeds. A non-positive value is ignored. |
+| `BDB_MIN_FREE_DISK_GB` | `1` | Free-space admission threshold for local (`file://`) tables. A write is refused with a descriptive error when the target filesystem is below it, so the failure happens *before* any bytes are written rather than mid-segment. Fail-open: if the free space cannot be queried, the write proceeds. A non-positive value is ignored. |
 
 Observability: `benostreamdb_free_disk_bytes`, sampled at each flush.
 
@@ -165,7 +165,7 @@ runtime's worker count:
 
 | Site | Bound |
 | --- | --- |
-| Segment index builds | `BSDB_INDEX_BUILD_CONCURRENCY` (`Table::index_build_gate`) |
+| Segment index builds | `BDB_INDEX_BUILD_CONCURRENCY` (`Table::index_build_gate`) |
 | Parallel segment reads during a vector search | `auto_detect_parallel_readers` semaphore (`core::query`) |
 | Native bulk ingest | `IngestOptions::parallelism` (default 4) |
 | Vector aggregation / GPU dispatches | one block per row, fixed block size (no unbounded grid) |
@@ -174,10 +174,10 @@ runtime's worker count:
 
 | Knob | Default | Effect |
 | --- | --- | --- |
-| `BSDB_DRIFT_MEMORY_MB` | derived memory budget | Memory budget for drift search (`graph_view`). |
-| `BSDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` | `32` | Append-only manifest files accumulated before a full-rewrite consolidation. Bounds read cost while amortizing small appends. |
-| `BSDB_VACUUM_MIN_FILE_AGE_SECS` | `60` | Grace period before vacuum may delete an unreferenced file; closes the GC-vs-writer race. `0` disables the grace period. |
-| `BSDB_NVRTC_PATH` | auto-discovered | Explicit path (file or directory) to the CUDA NVRTC library for GPU index builds. |
+| `BDB_DRIFT_MEMORY_MB` | derived memory budget | Memory budget for drift search (`graph_view`). |
+| `BDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` | `32` | Append-only manifest files accumulated before a full-rewrite consolidation. Bounds read cost while amortizing small appends. |
+| `BDB_VACUUM_MIN_FILE_AGE_SECS` | `60` | Grace period before vacuum may delete an unreferenced file; closes the GC-vs-writer race. `0` disables the grace period. |
+| `BDB_NVRTC_PATH` | auto-discovered | Explicit path (file or directory) to the CUDA NVRTC library for GPU index builds. |
 
 ## Containers
 
@@ -185,7 +185,7 @@ The engine reads the container's cgroup limit directly, so no configuration is
 needed to run in a 4 GB container — the defaults above are already sized for it.
 `docker-compose.production.yml` sets `SEARCH_MEMORY`/`FLIGHT_MEMORY` (default
 `4G`) and `SEARCH_CPUS` (default `2.0`); the engine's derived defaults follow
-those limits. To pin a value explicitly, set the corresponding `BSDB_*` variable
+those limits. To pin a value explicitly, set the corresponding `BDB_*` variable
 in the service's `environment:` block.
 
 ## Validation

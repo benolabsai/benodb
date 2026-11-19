@@ -3,8 +3,8 @@
 // Verifies a BenoStreamDB table with the upstream `apache/iceberg-rust` reader.
 //
 // Run with:
-//   BSDB_ORACLE_URI=file:///tmp/tbl BSDB_ORACLE_SUITE=v3 \
-//   BSDB_ORACLE_EXPECT_IDS=1,2 \
+//   BDB_ORACLE_URI=file:///tmp/tbl BDB_ORACLE_SUITE=v3 \
+//   BDB_ORACLE_EXPECT_IDS=1,2 \
 //   cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
 //
 // Nothing here imports `benodb`: the oracle shares no code with the writer,
@@ -24,7 +24,7 @@ fn latest_metadata_file(table_root: &Path) -> Result<PathBuf> {
     let metadata_dir = table_root.join("metadata");
     let entries = std::fs::read_dir(&metadata_dir).with_context(|| {
         format!(
-            "no `metadata/` directory under {} — is BSDB_ORACLE_URI a table root?",
+            "no `metadata/` directory under {} — is BDB_ORACLE_URI a table root?",
             table_root.display()
         )
     })?;
@@ -88,8 +88,8 @@ async fn upstream_reader_agrees_with_the_writer() -> Result<()> {
         // Not configured: this harness is opt-in (it needs network for crates and
         // an externally-produced table). Say so loudly rather than passing silently.
         eprintln!(
-            "SKIPPED: set BSDB_ORACLE_URI (and optionally BSDB_ORACLE_SUITE / \
-             BSDB_ORACLE_EXPECT_IDS) to run the iceberg-rust oracle"
+            "SKIPPED: set BDB_ORACLE_URI (and optionally BDB_ORACLE_SUITE / \
+             BDB_ORACLE_EXPECT_IDS) to run the iceberg-rust oracle"
         );
         return Ok(());
     };

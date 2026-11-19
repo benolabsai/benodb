@@ -372,7 +372,7 @@ jobs:
       - name: Run pytest (${{ matrix.shard }})
         timeout-minutes: ${{ matrix.timeout || 20 }}
         env:
-          BSDB_AWS_EMULATOR_CACHE: ${{ runner.temp }}/aws-emulator-cache
+          BDB_AWS_EMULATOR_CACHE: ${{ runner.temp }}/aws-emulator-cache
         run: pytest -v ${{ matrix.target }} ${{ matrix.extra }}
 
   # Stable aggregate check. Branch protection and the release workflow gate on
@@ -484,7 +484,7 @@ jobs:
       - name: Start Flight SQL server
         run: |
           mkdir -p /tmp/bsdb-warehouse
-          BSDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
+          BDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
           for _ in $(seq 1 30); do
             if (exec 3<>/dev/tcp/127.0.0.1/50051) 2>/dev/null; then exec 3>&-; break; fi
             sleep 1
@@ -673,19 +673,19 @@ jobs:
           workspaces: ". -> target\ntests/iceberg_rust_oracle -> tests/iceberg_rust_oracle/target"
       - name: Generate V2/V3 fixtures with the engine
         run: |
-          BSDB_FIXTURE_DIR="$RUNNER_TEMP/bsdb_oracle_fixture" \
+          BDB_FIXTURE_DIR="$RUNNER_TEMP/bsdb_oracle_fixture" \
             cargo test --test oracle_fixture -- --ignored --nocapture
       - name: Verify with apache/iceberg-rust (V2)
         run: |
-          BSDB_ORACLE_URI="file://$RUNNER_TEMP/bsdb_oracle_fixture/v2" \
-          BSDB_ORACLE_SUITE=v2 \
-          BSDB_ORACLE_EXPECT_IDS=1,2 \
+          BDB_ORACLE_URI="file://$RUNNER_TEMP/bsdb_oracle_fixture/v2" \
+          BDB_ORACLE_SUITE=v2 \
+          BDB_ORACLE_EXPECT_IDS=1,2 \
             cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
       - name: Verify with apache/iceberg-rust (V3)
         run: |
-          BSDB_ORACLE_URI="file://$RUNNER_TEMP/bsdb_oracle_fixture/v3" \
-          BSDB_ORACLE_SUITE=v3 \
-          BSDB_ORACLE_EXPECT_IDS=1,2 \
+          BDB_ORACLE_URI="file://$RUNNER_TEMP/bsdb_oracle_fixture/v3" \
+          BDB_ORACLE_SUITE=v3 \
+          BDB_ORACLE_EXPECT_IDS=1,2 \
             cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
 
   #########################

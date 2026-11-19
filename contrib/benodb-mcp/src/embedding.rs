@@ -123,57 +123,57 @@ impl EmbeddingConfig {
 
     /// Overlay environment variables onto this config.
     pub fn apply_env(&mut self) {
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_PROVIDER") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_PROVIDER") {
             self.provider = parse_provider(&v).or(self.provider);
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_MODEL") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_MODEL") {
             if !v.trim().is_empty() {
                 self.model = v.trim().to_string();
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_DIM") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_DIM") {
             if let Ok(d) = v.trim().parse::<usize>() {
                 if d > 0 {
                     self.dim = Some(d);
                 }
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_CACHE_DIR") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_CACHE_DIR") {
             if !v.trim().is_empty() {
                 self.cache_dir = PathBuf::from(v.trim());
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_BATCH_SIZE") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_BATCH_SIZE") {
             if let Ok(n) = v.trim().parse::<usize>() {
                 if n > 0 {
                     self.batch_size = n;
                 }
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_MAX_LENGTH") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_MAX_LENGTH") {
             if let Ok(n) = v.trim().parse::<usize>() {
                 if n > 0 {
                     self.max_length = n;
                 }
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_QUERY_PREFIX") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_QUERY_PREFIX") {
             self.query_prefix = Some(v);
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_DOCUMENT_PREFIX") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_DOCUMENT_PREFIX") {
             self.document_prefix = Some(v);
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_URL") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_URL") {
             if !v.trim().is_empty() {
                 self.url = Some(v.trim().to_string());
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_API_KEY") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_API_KEY") {
             if !v.trim().is_empty() {
                 self.api_key = Some(v.trim().to_string());
             }
         }
-        if let Ok(v) = std::env::var("BSDB_EMBEDDING_SHOW_DOWNLOAD_PROGRESS") {
+        if let Ok(v) = std::env::var("BDB_EMBEDDING_SHOW_DOWNLOAD_PROGRESS") {
             self.show_download_progress = parse_bool(&v).unwrap_or(self.show_download_progress);
         }
     }

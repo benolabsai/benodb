@@ -40,7 +40,7 @@ def _from_cargo() -> str | None:
 def _detect() -> str:
     # Explicit release override wins: the release workflow sets this so a PyPI
     # repack can be <base>.postN while crates.io stays at <base>.
-    forced = os.environ.get("BSDB_RELEASE_VERSION")
+    forced = os.environ.get("BDB_RELEASE_VERSION")
     if forced:
         return forced
     # Building from source: the repo Cargo.toml is authoritative.

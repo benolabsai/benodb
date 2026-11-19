@@ -2,7 +2,7 @@
 
 **Status (2026-11-11, targeting `v0.16.0`): Developer Preview, M2, catalog parity, and CI/soak gates passed; Iceberg V3 Deletion Vectors, the `iceberg-rust` oracle, and the post-Preview scale/enterprise tracks remain open.**
 
-WS1 (`test_differential_index_oracle.rs`, `test_randomized_differential_workload.rs` calibrated to `BSDB_WORKLOAD_STEPS=400`), WS2 (`test_crash_injection_sweep.rs`, `test_m2_commit_state_machine.rs`, `fuzz/fuzz_targets/wal_segment.rs`), WS3 (`test_multi_writer_concurrency.rs` 16-writer + `FaultyStore` + S3/RustFS, `test_multi_writer_differential.rs`), WS4 (`test_iceberg_conformance.rs`, PyIceberg V2), WS5 (`test_maintenance_invariant.rs`, `tests/soak.rs`, local 180s/stage `pre_release_soak.sh`), [`ADR-008`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_008_PENDING_COMMIT_STATE_MACHINE.md), catalog parity & CAS hardening ([`ADR-009`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_009_CATALOG_PARITY_AND_CAS_HARDENING.md)), stateless API-key/JWT/RBAC auth (`src/core/auth.rs`), and partitioned indexing/routing conformance (fix set, recorded in the changelog) are shipped.
+WS1 (`test_differential_index_oracle.rs`, `test_randomized_differential_workload.rs` calibrated to `BDB_WORKLOAD_STEPS=400`), WS2 (`test_crash_injection_sweep.rs`, `test_m2_commit_state_machine.rs`, `fuzz/fuzz_targets/wal_segment.rs`), WS3 (`test_multi_writer_concurrency.rs` 16-writer + `FaultyStore` + S3/RustFS, `test_multi_writer_differential.rs`), WS4 (`test_iceberg_conformance.rs`, PyIceberg V2), WS5 (`test_maintenance_invariant.rs`, `tests/soak.rs`, local 180s/stage `pre_release_soak.sh`), [`ADR-008`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_008_PENDING_COMMIT_STATE_MACHINE.md), catalog parity & CAS hardening ([`ADR-009`](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_009_CATALOG_PARITY_AND_CAS_HARDENING.md)), stateless API-key/JWT/RBAC auth (`src/core/auth.rs`), and partitioned indexing/routing conformance (fix set, recorded in the changelog) are shipped.
 
 **Remaining open items:**
 1. **Live-object-store soak in CI:** `wal_segment` is now in the [`.github/workflows/fuzz.yml`](https://github.com/benolabsai/benodb/blob/main/.github/workflows/fuzz.yml) matrix and `test_multi_writer_differential` is step 5/5 of [`scripts/pre_release_soak.sh`](https://github.com/benolabsai/benodb/blob/main/scripts/pre_release_soak.sh). **Still open:** wiring live RustFS (`AWS_ENDPOINT_URL`) into CI so `s3_multi_writer_*` executes instead of skipping locally.
@@ -243,7 +243,7 @@ found three more bugs, all in the maintenance/manifest path:
    deleted out from under its live snapshot. Fixed by (a) collecting deletion
    *candidates* first, (b) re-validating against the latest manifest before
    deleting, and (c) a configurable grace period
-   (`BSDB_VACUUM_MIN_FILE_AGE_SECS`, default 60s) so a just-uploaded artifact is
+   (`BDB_VACUUM_MIN_FILE_AGE_SECS`, default 60s) so a just-uploaded artifact is
    never reaped before its commit is visible.
 
 3. **Partition-spec update dropped all data.**
@@ -351,7 +351,7 @@ visibility, snapshot rollback, and full-column reads after a range delete +
 compaction. The longer `maintenance_churn_soak` in
 [`tests/soak.rs`](https://github.com/benolabsai/benodb/blob/main/tests/soak.rs#L1) runs the full matrix
 (insert/delete/reinsert/compaction/index-rebuild/snapshot-rollback/time-travel)
-for `BSDB_SOAK_SECONDS` and is wired into the weekly
+for `BDB_SOAK_SECONDS` and is wired into the weekly
 [`.github/workflows/soak.yml`](https://github.com/benolabsai/benodb/blob/main/.github/workflows/soak.yml#L1).
 
 ### 2.7 Randomized differential workload — two more bugs, one open hang
@@ -472,7 +472,7 @@ and the dedicated multi-writer union-model differential suite
 `4/4` tests covering V2 union recall, V3 strict OCC `_row_id` uniqueness, and
 `ToggleFaultyStore`) are **shipped**, and a local `180s`/stage
 [`pre_release_soak.sh`](https://github.com/benolabsai/benodb/blob/main/scripts/pre_release_soak.sh)
-sweep (`BSDB_WORKLOAD_STEPS=400`) passed cleanly.
+sweep (`BDB_WORKLOAD_STEPS=400`) passed cleanly.
 **Remaining:** wire `test_multi_writer_differential` into
 [`scripts/pre_release_soak.sh`](https://github.com/benolabsai/benodb/blob/main/scripts/pre_release_soak.sh) /
 [`.github/workflows/soak.yml`](https://github.com/benolabsai/benodb/blob/main/.github/workflows/soak.yml)
@@ -547,10 +547,10 @@ review's GC-vs-reader race.
   connectors ([`docs/integrations/`](https://github.com/benolabsai/benodb/tree/main/docs/integrations)),
   and supported platforms ([`SUPPORT_MATRIX.md`](https://www.benostreamdb.org/guides/support_matrix.html));
   V3 DV + multi-catalog automation is recorded in [ADR-010](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md).
-- **Security (untrusted network)** — static API key (`BSDB_API_KEY`),
+- **Security (untrusted network)** — static API key (`BDB_API_KEY`),
   HS256/RS256 JWT + RBAC claim extraction ([`src/core/auth.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/auth.rs#L1)),
   fail-closed non-loopback network binding on `bsdb-search` and `benodb-flight`,
-  and `BSDB_SSRF_GUARD=1` are **shipped**. Remaining post-Preview scope:
+  and `BDB_SSRF_GUARD=1` are **shipped**. Remaining post-Preview scope:
   native TLS termination, external IdP sync, per-table/per-column RBAC,
   query/payload quotas, and auth audit logging.
 - **Operational tooling** — recovery runbook, Prometheus/OTLP metrics, and
@@ -729,7 +729,7 @@ path.
 
 **Consolidation bound.** Each append adds one manifest file, so an unbounded
 list would make reads O(number of commits). Once the list reaches
-`BSDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` (default 32) the next commit
+`BDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` (default 32) the next commit
 falls back to the full rewrite, which re-encodes the live entries into a single
 chunked manifest file and resets the list. Commits that carry removes
 (compaction, index-attach, vacuum) always take the full-rewrite path.

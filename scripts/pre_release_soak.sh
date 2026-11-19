@@ -13,7 +13,7 @@
 #   ./scripts/pre_release_soak.sh            # default 30-minute soak
 #   ./scripts/pre_release_soak.sh 5          # 5-minute soak
 #   ./scripts/pre_release_soak.sh --quick    # 1-minute smoke run
-#   BSDB_SOAK_SECONDS=600 ./scripts/pre_release_soak.sh   # explicit seconds
+#   BDB_SOAK_SECONDS=600 ./scripts/pre_release_soak.sh   # explicit seconds
 #
 # Exit code is non-zero if any step fails, so it can gate a release. A
 # publishable markdown report is written to `soak-report.md` (override with
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 # First positional arg is the soak duration in minutes (default 30).
-# `--quick` is a 1-minute smoke run. `BSDB_SOAK_SECONDS` (seconds) wins if set.
+# `--quick` is a 1-minute smoke run. `BDB_SOAK_SECONDS` (seconds) wins if set.
 SOAK_MINUTES="${1:-30}"
 if [[ "${SOAK_MINUTES}" == "--quick" ]]; then
     SOAK_MINUTES=1
@@ -31,8 +31,8 @@ if ! [[ "${SOAK_MINUTES}" =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
-if [[ -n "${BSDB_SOAK_SECONDS:-}" ]]; then
-    SOAK_SECONDS="${BSDB_SOAK_SECONDS}"
+if [[ -n "${BDB_SOAK_SECONDS:-}" ]]; then
+    SOAK_SECONDS="${BDB_SOAK_SECONDS}"
 else
     SOAK_SECONDS=$(( SOAK_MINUTES * 60 ))
 fi
@@ -41,7 +41,7 @@ REPORT="${SOAK_REPORT:-soak-report.md}"
 
 export SKIP_GPU_TESTS="${SKIP_GPU_TESTS:-1}"
 export RUST_LOG="${RUST_LOG:-error}"
-export BSDB_SOAK_SECONDS="${SOAK_SECONDS}"
+export BDB_SOAK_SECONDS="${SOAK_SECONDS}"
 
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "=== Pre-release soak gate (soak=${SOAK_SECONDS}s / ${SOAK_MINUTES}m) ==="

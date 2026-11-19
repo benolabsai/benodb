@@ -52,15 +52,15 @@ cargo run -p benodb-flight
 
 | Variable | Purpose |
 |---|---|
-| `BSDB_WAREHOUSE` | Base location for `CREATE TABLE` when no `LOCATION` is given. Tables land at `<warehouse>/<schema>/<table>`. |
-| `BSDB_CATALOG_NAME` | DataFusion catalog name to bind the external catalog to (default: the catalog type, e.g. `rest`). |
-| `BSDB_CONFIG` | Path to a catalog config TOML (Nessie / REST / Glue / Hive / Unity / JDBC). Falls back to `./benostream.toml` then `~/.benostream/config.toml`. |
-| `BSDB_FLIGHT_BIND` | Bind address for the Flight SQL gRPC listener. | `127.0.0.1` |
-| `BSDB_FLIGHT_PORT` | Port for the Flight SQL gRPC listener. | `50051` |
-| `BSDB_METRICS_BIND` | Bind address for the observability HTTP listener. | `127.0.0.1` |
-| `BSDB_METRICS_PORT` | Port for the observability HTTP listener. | `9090` |
+| `BDB_WAREHOUSE` | Base location for `CREATE TABLE` when no `LOCATION` is given. Tables land at `<warehouse>/<schema>/<table>`. |
+| `BDB_CATALOG_NAME` | DataFusion catalog name to bind the external catalog to (default: the catalog type, e.g. `rest`). |
+| `BDB_CONFIG` | Path to a catalog config TOML (Nessie / REST / Glue / Hive / Unity / JDBC). Falls back to `./benostream.toml` then `~/.benostream/config.toml`. |
+| `BDB_FLIGHT_BIND` | Bind address for the Flight SQL gRPC listener. | `127.0.0.1` |
+| `BDB_FLIGHT_PORT` | Port for the Flight SQL gRPC listener. | `50051` |
+| `BDB_METRICS_BIND` | Bind address for the observability HTTP listener. | `127.0.0.1` |
+| `BDB_METRICS_PORT` | Port for the observability HTTP listener. | `9090` |
 
-Without a warehouse or catalog config, the server still serves queries against tables registered in-process, but `CREATE TABLE` requires either `BSDB_WAREHOUSE` or an explicit `LOCATION`.
+Without a warehouse or catalog config, the server still serves queries against tables registered in-process, but `CREATE TABLE` requires either `BDB_WAREHOUSE` or an explicit `LOCATION`.
 
 ### Authentication
 
@@ -70,12 +70,12 @@ token is read from the gRPC `authorization: Bearer <token>` metadata.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_API_KEY` | Shared secret (API key). | unset |
-| `BSDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
-| `BSDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
-| `BSDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
-| `BSDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
-| `BSDB_AUTH_REQUIRED` | Fail closed (`UNAUTHENTICATED`) when no credential is configured. | `false` |
+| `BDB_API_KEY` | Shared secret (API key). | unset |
+| `BDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
+| `BDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
+| `BDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
+| `BDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
+| `BDB_AUTH_REQUIRED` | Fail closed (`UNAUTHENTICATED`) when no credential is configured. | `false` |
 
 ```python
 # ADBC with a bearer token
@@ -94,7 +94,7 @@ via systemd `LoadCredential=`/`EnvironmentFile=` (mode `0600`).
 ### Observability
 
 The server exposes an HTTP observability surface on
-`BSDB_METRICS_BIND:BSDB_METRICS_PORT` (default `127.0.0.1:9090`):
+`BDB_METRICS_BIND:BDB_METRICS_PORT` (default `127.0.0.1:9090`):
 
 | Endpoint | Purpose |
 |---|---|
@@ -176,7 +176,7 @@ TRUNCATE TABLE mydb.myschema.t;
 
 - The table is created as a real BenoStreamDB/Iceberg table (genesis manifest +
   metadata), not a DataFusion in-memory table.
-- Location resolution order: explicit `LOCATION` → `BSDB_WAREHOUSE`-derived
+- Location resolution order: explicit `LOCATION` → `BDB_WAREHOUSE`-derived
   (`<warehouse>/<schema>/<table>`) → error.
 - `WITH (format_version = N)` sets the Iceberg format version.
 - `WITH (sort_order = 'col1, col2')` sets the write sort order.

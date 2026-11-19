@@ -41,7 +41,7 @@ Register it with your MCP client (Claude Desktop, Cursor, Antigravity) using `uv
     "benodb": {
       "command": "uvx",
       "args": ["benodb-mcp"],
-      "env": { "BSDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BSDB_GPU_DEVICE": "auto" }
+      "env": { "BDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BDB_GPU_DEVICE": "auto" }
     }
   }
 }
@@ -57,7 +57,7 @@ cargo build --release --manifest-path contrib/benodb-mcp/Cargo.toml
   "mcpServers": {
     "benodb": {
       "command": "/path/to/benodb-mcp",
-      "env": { "BSDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BSDB_GPU_DEVICE": "auto" }
+      "env": { "BDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BDB_GPU_DEVICE": "auto" }
     }
   }
 }
@@ -116,6 +116,6 @@ let hits = table.vector_search("embedding", &[1.0, 0.0, 0.0, 0.0], 2).await?;
 
 ## GPU
 
-Pin the device with `BSDB_GPU_DEVICE` (Flight/MCP), `spark.benostream.gpu.device`
+Pin the device with `BDB_GPU_DEVICE` (Flight/MCP), `spark.benostream.gpu.device`
 (Spark), `benostream.gpu-device` (Trino), the dbt profile `gpu_device`, or
 `benodb.set_gpu_device(...)` (Python).

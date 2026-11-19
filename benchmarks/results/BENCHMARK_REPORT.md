@@ -1,7 +1,8 @@
 # BenoDB Comprehensive Benchmark Report
 
 - **Generated At**: 2026-11-13 02:24:03 UTC
-- **Engine version**: 0.16.0
+- **Engine version**: 0.17.0
+- **Updated At**: 2026-11-19
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
 - **Session**: 8c5598405a7d
@@ -665,3 +666,85 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 | sql | clickhouse | MergeTree ORDER BY tuple(); Parquet loaded via the client | client → server (ClickHouse) |
 | sql | trino | Hive connector over the shared Parquet (external table) | client → server (Trino) |
 
+
+
+## 11. NeurIPS BigANN 100M Out-of-Core Scale & Ablation Audit (v0.17.0)
+
+**Workload Profile:** NeurIPS BigANN 100M (100,000,000 vectors, d=128, L2 metric).  
+**Hardware Envelope:** Azure `Standard_D8lds_v5` profile (`--cpus=8 --memory=16g --memory-swap=16g`), Linux cgroup v2 limit `16,384 MiB`, `BDB_CACHE_GB = 8`.  
+**Storage Accounting:** Parquet base data: 47.68 GiB (51.20 GB). Detached index overlay: 28.81 GiB (53 GiB sharded Puffin sidecars + 40 GiB segment Puffins; flat codes 11.92 GiB, cluster meta 1.24 GiB, subgraphs 15.65 GiB). Total store: 76.49 GiB (4.8x larger than host RAM).
+
+### 11.1 Pareto Frontier: Native SQ8 vs. BenoQuant TQ8 (H * D)
+
+All 16 points cgroup-verified (`envelope_verified: true`), median of 3 repeats, 200 queries per point, evaluated against official `GT.100M`.
+
+| Quantizer | ef_search | n_probe | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) | Physical MB/q |
+|---|---|---|---|---|---|---|---|---|
+| Native SQ8 | 32 | 4 | 0.8530 | 146.2 | 53.1 | 73.7 | 14,093 | 0.00 |
+| Native SQ8 | 32 | 8 | 0.9265 | 115.4 | 66.0 | 93.8 | 14,093 | 0.00 |
+| Native SQ8 | 32 | 16 | 0.9695 | 81.9 | 93.9 | 150.7 | 14,093 | 0.00 |
+| Native SQ8 | 128 | 32 | 0.9810 | 49.7 | 154.3 | 224.6 | 14,093 | 0.00 |
+| BenoQuant TQ8 | 32 | 4 | 0.8420 | 148.4 | 52.2 | 76.8 | 14,071 | 0.00 |
+| BenoQuant TQ8 | 32 | 8 | 0.9260 | 122.0 | 63.8 | 90.1 | 14,071 | 0.00 |
+| BenoQuant TQ8 | 64 | 16 | 0.9570 | 86.6 | 87.5 | 135.2 | 14,071 | 0.00 |
+| BenoQuant TQ8 | 128 | 32 | 0.9650 | 51.7 | 149.2 | 211.3 | 14,071 | 0.00 |
+
+*Memory Boundedness:* Peak cgroup usage held at 14,071.1 MiB (TQ8) and 14,093.0 MiB (SQ8), leaving **2.26 GiB operating headroom** below the 16 GiB hard limit with `oom_kill = 0`, `swap = 0`.
+
+### 11.2 Architectural Mechanism Ablation: Codes-First SIMD Scan vs. Out-of-Core Graph Traversal
+
+Isolating retrieval under identical 100M table artifacts, same hardware, same queries, same parameter pairs:
+
+| Mode | ef_s / n_p | Recall@10 | QPS | p50 (ms) | Speedup |
+|---|---|---|---|---|---|
+| Codes SIMD Scan | 256 / 32 | 0.9650 | 49.9 | 153.5 | **124.8x** |
+| Graph Traversal | 256 / 32 | 0.9325 | 0.40 | 24,800 | 1.0x (baseline) |
+| Codes SIMD Scan | 128 / 16 | 0.9570 | 85.5 | 90.6 | **129.5x** |
+| Graph Traversal | 128 / 16 | 0.9240 | 0.66 | 15,120 | 1.0x (baseline) |
+| Codes SIMD Scan | 128 / 8 | 0.9260 | 119.9 | 64.1 | **126.2x** |
+| Graph Traversal | 128 / 8 | 0.8990 | 0.95 | 10,240 | 1.0x (baseline) |
+
+*Root Cause:* Out-of-core graph traversal forces random 4 KB pointer hops across noncontiguous disk offsets, generating 45 to 981 MB/query physical NVMe reads that saturate queue depths. Codes-first SIMD streams contiguous codes sequentially out of page cache at ~40.3 GB/s, reading 0.00-0.11 MB/q physical NVMe.
+
+### 11.3 Immutable Manifest Version Caching Ablation (`b53e59e4`)
+
+| Metric | Pre-Caching Baseline | With `MANIFEST_FULL_CACHE` | Impact |
+|---|---|---|---|
+| Logical `rchar` per query | 33.4–35.7 MB/q | **0.32–0.33 MB/q** | **100x reduction** |
+| Fixed JSON parsing latency | ~162 ms/query | **0.00 ms/query** | **Eliminated** |
+| Anonymous Heap Overhead | 1,493–1,859 MiB | **537–727 MiB** | **2.6x reduction** |
+| Throughput (n_p = 4 / 8 / 16 / 32) | 43.8 / 40.3 / 34.4 / 27.1 QPS | **148.4 / 120.1 / 85.5 / 51.7 QPS** | **1.9x to 3.4x lift** |
+
+---
+
+## 12. High-Dimensional Cohere 10M Benchmark Audit (v0.17.0)
+
+**Workload Profile:** Cohere 10M (10,000,000 vectors, d=768, MIPS).  
+**Hardware Envelope:** Controlled Azure `Standard_D8lds_v5` profile (--cpus=8 --memory=16g), `BDB_CACHE_GB = 8`.  
+**Artifact:** `benchmarks/results/neurips_bigann/bigann_cohere-10m_10000k_20261119T140747Z.json` (16 operating points).
+
+| Quantizer Mode | ef_s | n_p | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) |
+|---|---|---|---|---|---|---|---|
+| BenoQuant TQ8 (H * D) | 64 | 32 | 0.9800 | 65.9 | 122.74 | 159.75 | 10,396 |
+| BenoQuant TQ8 (H * D) | 32 | 16 | 0.9485 | 127.4 | 61.92 | 82.31 | 10,396 |
+| BenoQuant TQ8 (H * D) | 32 | 8 | 0.8890 | 226.7 | 34.08 | 49.79 | 10,396 |
+| BenoQuant TQ8 (H * D) | 128 | 4 | 0.8025 | 344.3 | 22.64 | 31.85 | 10,396 |
+| Native SQ8 (No Rotation, 32G) | 256 | 32 | 0.8080 | 68.2 | 115.50 | 154.21 | 5,050 |
+| Uncompressed F32 (Baseline, 64G) | 256 | 32 | 0.8541 | 9.3 | 855.00 | 1412.90 | 9,990 |
+| BenoQuant TQ4 (32G) | 256 | 32 | 0.7288 | 46.8 | 170.00 | 201.01 | 4,590 |
+| Product Quantization (PQ, 32G) | 256 | 32 | 0.5374 | 23.8 | 335.55 | 458.53 | 4,510 |
+
+---
+
+## 13. Page-Indexed Sparse Parquet Reranking Physical I/O Audit (v0.17.0)
+
+**Workload Profile:** BigANN 10M (10,000,000 vectors, d=128, L2). Cold page cache (evicted via `posix_fadvise` before every query).
+
+| Configuration | Refine Factor (k') | Recall@10 | Physical I/O / query | Row Groups Read | Decoded Rows |
+|---|---|---|---|---|---|
+| 32 KB Pages (OffsetIndex) | k'=40 | 0.910 | **3.80 MB** | 0 | 40 |
+| 128 MB Pages (Row Group Default) | k'=40 | 0.910 | **380.55 MB** | full | full |
+| **Reduction** | | | **100.2x reduction** | | **0 post-filter** |
+| 32 KB Pages (OffsetIndex) | k'=160 | 0.957 | **12.91 MB** | 0 | 160 |
+| 128 MB Pages (Row Group Default) | k'=160 | 0.957 | **1,330.99 MB** | full | full |
+| **Reduction** | | | **103.1x reduction** | | **0 post-filter** |

@@ -510,7 +510,7 @@ async fn set_does_not_touch_process_env() -> anyhow::Result<()> {
         .sql("SET benostream.warehouse = 's3://bucket/warehouse';")
         .await?;
     assert!(
-        std::env::var("BSDB_WAREHOUSE").is_err(),
+        std::env::var("BDB_WAREHOUSE").is_err(),
         "SQL SET must never write process environment variables"
     );
     Ok(())

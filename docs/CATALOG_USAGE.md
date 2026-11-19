@@ -197,7 +197,7 @@ catalog = bsdb.create_catalog("rest", {
 table = catalog.load_table("production", "campaign_results")
 ```
 
-All `benodb` engines and servers (`benodb-search`, `benodb-flight`, and Python bindings) also accept catalog parameters from `benostream.toml` or `BSDB_SEARCH_CATALOG_*` / `BSDB_CATALOG_*` environment variables (`TYPE`, `URL`/`URI`, `TOKEN`, `CREDENTIAL`, `PREFIX`, `ID`, `REGION`, `WAREHOUSE`, `MODE`, `AUTH`, `SERVICE`, `SCOPE`). For OAuth2 credentials, the engine executes `/v1/oauth/tokens` exchanges and caches bearer tokens, refreshing automatically within 60 seconds of expiration.
+All `benodb` engines and servers (`benodb-search`, `benodb-flight`, and Python bindings) also accept catalog parameters from `benostream.toml` or `BDB_SEARCH_CATALOG_*` / `BDB_CATALOG_*` environment variables (`TYPE`, `URL`/`URI`, `TOKEN`, `CREDENTIAL`, `PREFIX`, `ID`, `REGION`, `WAREHOUSE`, `MODE`, `AUTH`, `SERVICE`, `SCOPE`). For OAuth2 credentials, the engine executes `/v1/oauth/tokens` exchanges and caches bearer tokens, refreshing automatically within 60 seconds of expiration.
 
 ### Static Token (Tabular / Nessie REST)
 ```python
@@ -271,14 +271,14 @@ Configure `benodb-search` using environment variables or a `benostream.toml` con
 
 ```bash
 # Storage location for Parquet data and Iceberg metadata
-export BSDB_SEARCH_STORAGE_URI=s3://my-lakehouse-bucket/tables
+export BDB_SEARCH_STORAGE_URI=s3://my-lakehouse-bucket/tables
 
 # Polaris Iceberg REST catalog configuration
-export BSDB_SEARCH_CATALOG_TYPE=rest
-export BSDB_SEARCH_CATALOG_URL=https://polaris.example.com/api/catalog/v1
-export BSDB_SEARCH_CATALOG_CREDENTIAL="<POLARIS_CLIENT_ID>:<POLARIS_CLIENT_SECRET>"
-export BSDB_SEARCH_CATALOG_PREFIX="my_warehouse"
-export BSDB_SEARCH_CATALOG_NAMESPACE="production"
+export BDB_SEARCH_CATALOG_TYPE=rest
+export BDB_SEARCH_CATALOG_URL=https://polaris.example.com/api/catalog/v1
+export BDB_SEARCH_CATALOG_CREDENTIAL="<POLARIS_CLIENT_ID>:<POLARIS_CLIENT_SECRET>"
+export BDB_SEARCH_CATALOG_PREFIX="my_warehouse"
+export BDB_SEARCH_CATALOG_NAMESPACE="production"
 ```
 
 ### Option B: `benostream.toml`

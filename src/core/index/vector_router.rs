@@ -58,11 +58,11 @@ impl Default for RoutingPolicy {
         // allocates a String, and `route()` sits on the per-query path.
         static DEFAULT_POLICY: OnceLock<RoutingPolicy> = OnceLock::new();
         *DEFAULT_POLICY.get_or_init(|| {
-            let factor = std::env::var("BSDB_ROUTING_ADAPTIVE_FACTOR")
+            let factor = std::env::var("BDB_ROUTING_ADAPTIVE_FACTOR")
                 .ok()
                 .and_then(|f| f.parse::<f32>().ok())
                 .unwrap_or(1.35);
-            match std::env::var("BSDB_ROUTING_MODE") {
+            match std::env::var("BDB_ROUTING_MODE") {
                 Ok(mode) => match mode.to_ascii_lowercase().as_str() {
                     "global" | "pruning" => RoutingPolicy::GlobalPruning,
                     "per_segment" | "targeting" => RoutingPolicy::PerSegmentTargeting,
@@ -180,12 +180,12 @@ fn segment_centroid_radius(
 /// cost of reaching it. Measured on Cohere-10M (25 segments, 20-point grid,
 /// `ef=128 n_probe=4`): recall@10 fell from 0.7019 to 0.0618 — a ratio of 0.088
 /// against a capped-segment fraction of 2/25 = 0.08. The sweep was reporting the
-/// cap, not the index. Set `BSDB_ROUTING_CAP_SEGMENTS=1` to opt in.
+/// cap, not the index. Set `BDB_ROUTING_CAP_SEGMENTS=1` to opt in.
 fn adaptive_segment_cap_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
         matches!(
-            std::env::var("BSDB_ROUTING_CAP_SEGMENTS")
+            std::env::var("BDB_ROUTING_CAP_SEGMENTS")
                 .map(|s| s.trim().to_ascii_lowercase())
                 .as_deref(),
             Ok("1") | Ok("true") | Ok("yes")
@@ -295,7 +295,7 @@ impl TableVectorRouter {
         }
     }
 
-    /// Route a query vector using the default routing policy (or `BSDB_ROUTING_MODE`).
+    /// Route a query vector using the default routing policy (or `BDB_ROUTING_MODE`).
     pub fn route(&self, query_f32: &[f32], total_probes: usize) -> VectorRoutingPlan {
         self.route_with_policy(query_f32, total_probes, RoutingPolicy::default())
     }

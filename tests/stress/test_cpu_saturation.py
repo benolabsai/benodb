@@ -2,7 +2,7 @@
 
 """CPU saturation: gated index builds must not starve concurrent reads.
 
-The `BSDB_INDEX_BUILD_CONCURRENCY` gate exists so the runtime cannot fan out
+The `BDB_INDEX_BUILD_CONCURRENCY` gate exists so the runtime cannot fan out
 `nproc` multi-GB index builds. This checks the other side of the bargain:
 while builds are gated and queued, queries still complete in bounded time
 rather than blocking indefinitely behind them.
@@ -31,7 +31,7 @@ def _table(offset: int):
 
 
 def test_gated_builds_do_not_starve_queries(monkeypatch, table_uri, rows_of):
-    monkeypatch.setenv("BSDB_INDEX_BUILD_CONCURRENCY", "2")
+    monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "2")
 
     table = bsdb.Table.create(
         table_uri,

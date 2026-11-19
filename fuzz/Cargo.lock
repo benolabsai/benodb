@@ -1098,23 +1098,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
-name = "benostream-gpu-ann"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "metal",
- "num_cpus",
- "rand 0.8.8",
- "rayon",
- "roaring",
- "thiserror 2.0.21",
- "tracing",
-]
-
-[[package]]
-name = "benostreamdb"
-version = "0.16.1"
+name = "benodb"
+version = "0.17.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1133,7 +1118,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "axum 0.7.9",
  "base64 0.22.1",
- "benostream-gpu-ann",
+ "benodb-gpu-ann",
  "bincode",
  "bytemuck",
  "bytes",
@@ -1206,26 +1191,41 @@ dependencies = [
 ]
 
 [[package]]
-name = "benostreamdb-fuzz"
+name = "benodb-fuzz"
 version = "0.0.0"
 dependencies = [
  "arrow",
- "benostreamdb",
- "benostreamdb-search",
+ "benodb",
+ "benodb-search",
  "libfuzzer-sys",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "benostreamdb-search"
-version = "0.16.1"
+name = "benodb-gpu-ann"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "metal",
+ "num_cpus",
+ "rand 0.8.8",
+ "rayon",
+ "roaring",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "benodb-search"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "arrow",
  "axum 0.7.9",
  "base64 0.22.1",
- "benostreamdb",
+ "benodb",
  "chrono",
  "dhat",
  "futures",

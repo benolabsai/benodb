@@ -8,38 +8,38 @@ BenoDB is designed to be highly configurable through environment variables, runt
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_CACHE_GB` | Memory limit for vector (HNSW-IVF), inverted, and byte caches in GB. | `1` |
-| `BSDB_BLOCK_CACHE_GB` | Memory limit for decoded RecordBatch Hot Row Cache in GB. | `1` |
-| `BSDB_DISK_CACHE_DIR` | Local disk directory used for caching remote index files. | `/tmp/hdb_cache` |
-| `BSDB_CACHE_DIR` | Local directory for the layered-index cache when reading external (REST-catalog) tables. | `$TMPDIR/benostream_cache` |
-| `BSDB_STORAGE_URI` | Default table/storage URI for the gateway and Iceberg REST binaries. | `file:///tmp` |
-| `BSDB_CONFIG` | Path to a centralized `benostream.toml` configuration file. | None |
-| `BSDB_MAX_CONCURRENCY` | Maximum concurrent segment reader threads per query. | Auto (min(cores, 64)) |
+| `BDB_CACHE_GB` | Memory limit for vector (HNSW-IVF), inverted, and byte caches in GB. | `1` |
+| `BDB_BLOCK_CACHE_GB` | Memory limit for decoded RecordBatch Hot Row Cache in GB. | `1` |
+| `BDB_DISK_CACHE_DIR` | Local disk directory used for caching remote index files. | `/tmp/hdb_cache` |
+| `BDB_CACHE_DIR` | Local directory for the layered-index cache when reading external (REST-catalog) tables. | `$TMPDIR/benostream_cache` |
+| `BDB_STORAGE_URI` | Default table/storage URI for the gateway and Iceberg REST binaries. | `file:///tmp` |
+| `BDB_CONFIG` | Path to a centralized `benostream.toml` configuration file. | None |
+| `BDB_MAX_CONCURRENCY` | Maximum concurrent segment reader threads per query. | Auto (min(cores, 64)) |
 | `RAYON_NUM_THREADS` | Global Rayon worker pool thread count for parallel index construction. | Auto (50% of CPU cores) |
-| `BSDB_DATAFUSION_MEMORY_GB` | DataFusion query memory limit in GB; SQL sorts/joins spill to disk past it. | Half the effective memory budget |
-| `BSDB_TARGET_PARTITIONS` | DataFusion target partition count for query execution. | Effective CPU budget (respects cgroup limits) |
-| `BSDB_INDEX_BUILD_CONCURRENCY` | Maximum concurrent background index builds. Non-positive values are ignored. | One build per ~8 GB RAM, capped at CPU count, min 1 |
-| `BSDB_MIN_FREE_DISK_GB` | Refuse a local flush that would drop free disk below this many GB. | `1.0` |
-| `BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS` | How many spill buckets the table level build reads, groups, and builds together. The graph build is the long pole and a 256 MB bucket holds only a handful of clusters, so one bucket at a time leaves most cores idle. Clamped to 1 through 8. | `3` |
-| `BSDB_CLUSTER_BUILD_TMPDIR` | Directory for the table level index build's bucket and shard spill. Point it at the storage volume: a 100M build passes about 90 GB through it, and the builder refuses to start when the filesystem cannot hold roughly twice the raw vector bytes. Spill directories older than six hours are removed at start, which is what a killed build leaves behind. | `$TMPDIR` |
-| `BSDB_CLUSTER_CACHE_KIB` | Unified byte budget (in KiB) for the table-level `ClusterIndex` cache holding flat `cluster-codes` blobs, winning `node_meta` tables, and fallback HNSW graphs. | `BSDB_CACHE_GB / 4` (or `262144` = 256 MiB) |
-| `BSDB_CLUSTER_SEARCH_MODE` | Controls table-level `ClusterIndex` query execution: `auto` (default) and `codes` scan flat `cluster-codes` blobs and selectively hydrate `node_meta` for winning clusters (falling back to HNSW graphs on legacy shards without `cluster-codes`); `graph` forces full HNSW graph traversal for A/B benchmarking. | `auto` |
+| `BDB_DATAFUSION_MEMORY_GB` | DataFusion query memory limit in GB; SQL sorts/joins spill to disk past it. | Half the effective memory budget |
+| `BDB_TARGET_PARTITIONS` | DataFusion target partition count for query execution. | Effective CPU budget (respects cgroup limits) |
+| `BDB_INDEX_BUILD_CONCURRENCY` | Maximum concurrent background index builds. Non-positive values are ignored. | One build per ~8 GB RAM, capped at CPU count, min 1 |
+| `BDB_MIN_FREE_DISK_GB` | Refuse a local flush that would drop free disk below this many GB. | `1.0` |
+| `BDB_CLUSTER_BUILD_PARALLEL_BUCKETS` | How many spill buckets the table level build reads, groups, and builds together. The graph build is the long pole and a 256 MB bucket holds only a handful of clusters, so one bucket at a time leaves most cores idle. Clamped to 1 through 8. | `3` |
+| `BDB_CLUSTER_BUILD_TMPDIR` | Directory for the table level index build's bucket and shard spill. Point it at the storage volume: a 100M build passes about 90 GB through it, and the builder refuses to start when the filesystem cannot hold roughly twice the raw vector bytes. Spill directories older than six hours are removed at start, which is what a killed build leaves behind. | `$TMPDIR` |
+| `BDB_CLUSTER_CACHE_KIB` | Unified byte budget (in KiB) for the table-level `ClusterIndex` cache holding flat `cluster-codes` blobs, winning `node_meta` tables, and fallback HNSW graphs. | `BDB_CACHE_GB / 4` (or `262144` = 256 MiB) |
+| `BDB_CLUSTER_SEARCH_MODE` | Controls table-level `ClusterIndex` query execution: `auto` (default) and `codes` scan flat `cluster-codes` blobs and selectively hydrate `node_meta` for winning clusters (falling back to HNSW graphs on legacy shards without `cluster-codes`); `graph` forces full HNSW graph traversal for A/B benchmarking. | `auto` |
 
-#### Concurrency Tuning: `BSDB_MAX_CONCURRENCY` vs `RAYON_NUM_THREADS`
+#### Concurrency Tuning: `BDB_MAX_CONCURRENCY` vs `RAYON_NUM_THREADS`
 
-`BSDB_MAX_CONCURRENCY` and `RAYON_NUM_THREADS` operate on different execution layers and should generally **not** be set to the same value:
+`BDB_MAX_CONCURRENCY` and `RAYON_NUM_THREADS` operate on different execution layers and should generally **not** be set to the same value:
 
 * **`RAYON_NUM_THREADS` (CPU-Bound Data Parallelism)**:
   * Governs Rayon's worker threadpool for compute-intensive tasks: AVX-512/NEON SIMD vector distance calculations, HNSW graph construction and deserialization, and Product Quantization (PQ) training.
   * **Rule**: Keep $\le$ physical CPU cores (typically `cores / 2` or `cores - 1`). Setting it higher causes OS thread context switching and CPU cache thrashing.
-* **`BSDB_MAX_CONCURRENCY` (I/O-Bound Async Stream Concurrency)**:
+* **`BDB_MAX_CONCURRENCY` (I/O-Bound Async Stream Concurrency)**:
   * Governs Tokio async task concurrency for opening and streaming Parquet segments from local disk or remote object storage (`s3://`, `gs://`).
   * Non-blocking I/O tasks spend most of their time awaiting network packets or disk blocks without consuming CPU.
   * **Rule**: Can be $2\times$ to $4\times$ CPU cores (e.g. 8–32) for fast parallel segment fetching, bounded only by RAM memory buffer headroom.
 
 ##### Sizing & Tuning Matrix
 
-| Deployment Profile | Machine Specs | `RAYON_NUM_THREADS` | `BSDB_MAX_CONCURRENCY` | Notes |
+| Deployment Profile | Machine Specs | `RAYON_NUM_THREADS` | `BDB_MAX_CONCURRENCY` | Notes |
 |:---|:---|:---|:---|:---|
 | **Benchmark / Container** | 4 Cores, 4 GB RAM | `2` – `4` | `4` – `8` | Stable profile used in 100k & 1M OpenSearch benchmark. |
 | **Production Server** | 16 Cores, 32 GB RAM | `8` – `14` | `16` – `32` | High throughput for mixed scalar + vector queries. |
@@ -55,13 +55,13 @@ API, the Qdrant API, and the Flight SQL gRPC service.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_API_KEY` | Shared secret. HTTP: `Authorization: Bearer <key>`, `Authorization: ApiKey <key>`, or `api-key: <key>` (Qdrant). Flight: `authorization: Bearer <key>`. | unset |
-| `BSDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
-| `BSDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
-| `BSDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
-| `BSDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
-| `BSDB_AUTH_REQUIRED` | Fail closed (`401`/`UNAUTHENTICATED`) when no credential is configured. | `false` |
-| `BSDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
+| `BDB_API_KEY` | Shared secret. HTTP: `Authorization: Bearer <key>`, `Authorization: ApiKey <key>`, or `api-key: <key>` (Qdrant). Flight: `authorization: Bearer <key>`. | unset |
+| `BDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
+| `BDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
+| `BDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
+| `BDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
+| `BDB_AUTH_REQUIRED` | Fail closed (`401`/`UNAUTHENTICATED`) when no credential is configured. | `false` |
+| `BDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
 
 Keep the secret in a secret manager (Vault, AWS/GCP/Azure Secrets Manager) or a
 `0600` file mounted at `/run/secrets/` (Docker/K8s) or
@@ -81,15 +81,15 @@ construction (`create_object_store` in `src/core/storage.rs`). `file://` and
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_SSRF_ALLOW_HOSTS` | Test-only escape hatch: comma-separated list of **loopback** hosts the guard may reach, e.g. `127.0.0.1,localhost,::1`. An entry that is not loopback (a private, link-local, or public address) is ignored, so the override can never reach an internal network. Every accepted host logs a warning naming this variable. Intended for integration tests that point a client at a local container. | unset |
+| `BDB_SSRF_ALLOW_HOSTS` | Test-only escape hatch: comma-separated list of **loopback** hosts the guard may reach, e.g. `127.0.0.1,localhost,::1`. An entry that is not loopback (a private, link-local, or public address) is ignored, so the override can never reach an internal network. Every accepted host logs a warning naming this variable. Intended for integration tests that point a client at a local container. | unset |
 
 ```bash
 # Point the Glue client at the AWS Emulator on loopback (test only).
-export BSDB_SSRF_ALLOW_HOSTS=127.0.0.1
+export BDB_SSRF_ALLOW_HOSTS=127.0.0.1
 export AWS_ENDPOINT_URL=https://127.0.0.1:9297
 ```
 
-Do not set `BSDB_SSRF_ALLOW_HOSTS` in production: it exists so the conformance
+Do not set `BDB_SSRF_ALLOW_HOSTS` in production: it exists so the conformance
 suite in `tests/python/test_catalog_real_services.py` can talk to a container,
 and it is scoped to loopback for that reason.
 
@@ -101,17 +101,17 @@ server and the Python helpers.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_VALIDATE_EMBEDDINGS` | `strict` (also `1`/`true`/`on`) scans every `List`/stringified vector row against the table's declared dimension. By default only `FixedSizeList` columns are checked, at schema level; model identity is never inferred from values. | off (schema checks only) |
-| `BSDB_EMBEDDING_PROVIDER` | `local` (in-process Candle), `http`, or `none`. | `local` unless `BSDB_EMBEDDING_URL` is set |
-| `BSDB_EMBEDDING_MODEL` | Hugging Face BERT-family model id that publishes `model.safetensors`. | `BAAI/bge-small-en-v1.5` |
-| `BSDB_EMBEDDING_CACHE_DIR` | Private model cache; reused after the first download. | `<data-dir>/models` |
-| `BSDB_EMBEDDING_URL` | Ollama / OpenAI-compatible / TEI embedding endpoint. | None |
-| `BSDB_EMBEDDING_API_KEY` | Bearer token for the HTTP endpoint. | None |
-| `BSDB_EMBEDDING_BATCH_SIZE` | Candle inference batch size. | `16` |
-| `BSDB_EMBEDDING_MAX_LENGTH` | Tokenizer truncation length. | `512` |
-| `BSDB_EMBEDDING_DIM` | Optional dimension override for MRL truncation. Known models supply it from the id map, and loaded models supply it from `config.json` (`hidden_size`). | Model default |
-| `BSDB_EMBEDDING_QUERY_PREFIX` | Override the query instruction prefix. Empty string disables it. | Model default |
-| `BSDB_EMBEDDING_DOCUMENT_PREFIX` | Override the document instruction prefix. Empty string disables it. | Model default |
+| `BDB_VALIDATE_EMBEDDINGS` | `strict` (also `1`/`true`/`on`) scans every `List`/stringified vector row against the table's declared dimension. By default only `FixedSizeList` columns are checked, at schema level; model identity is never inferred from values. | off (schema checks only) |
+| `BDB_EMBEDDING_PROVIDER` | `local` (in-process Candle), `http`, or `none`. | `local` unless `BDB_EMBEDDING_URL` is set |
+| `BDB_EMBEDDING_MODEL` | Hugging Face BERT-family model id that publishes `model.safetensors`. | `BAAI/bge-small-en-v1.5` |
+| `BDB_EMBEDDING_CACHE_DIR` | Private model cache; reused after the first download. | `<data-dir>/models` |
+| `BDB_EMBEDDING_URL` | Ollama / OpenAI-compatible / TEI embedding endpoint. | None |
+| `BDB_EMBEDDING_API_KEY` | Bearer token for the HTTP endpoint. | None |
+| `BDB_EMBEDDING_BATCH_SIZE` | Candle inference batch size. | `16` |
+| `BDB_EMBEDDING_MAX_LENGTH` | Tokenizer truncation length. | `512` |
+| `BDB_EMBEDDING_DIM` | Optional dimension override for MRL truncation. Known models supply it from the id map, and loaded models supply it from `config.json` (`hidden_size`). | Model default |
+| `BDB_EMBEDDING_QUERY_PREFIX` | Override the query instruction prefix. Empty string disables it. | Model default |
+| `BDB_EMBEDDING_DOCUMENT_PREFIX` | Override the document instruction prefix. Empty string disables it. | Model default |
 
 The Candle loader runs on CPU in the published build. The legacy `model_path`, `device`,
 `quantized`, `intra_threads`, `pooling`, and `show_download_progress` JSON keys are accepted for
@@ -121,25 +121,25 @@ backward compatibility but ignored.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_WAL_DIR` | Directory for the Write-Ahead Log (WAL) used for streaming recovery. | `{table_uri}/_wal` |
-| `BSDB_WAL_DURABILITY` | WAL flush durability policy (`sync` for `fdatasync`/`fsync` per batch before ack; `async` for worker batch/interval sync). | `sync` |
-| `BSDB_WAL_COMPACT_MB` | File size threshold in MB before triggering WAL log segment compaction. | `1024` (1 GB) |
-| `BSDB_WAL_SYNC_BATCH_SIZE`| Appended operations batch size before triggering a WAL sync flush. | `10` |
-| `BSDB_WAL_SYNC_INTERVAL_MS`| Maximum elapsed milliseconds between background WAL sync flushes. | `100` |
-| `BSDB_STREAMING_FLUSH_INTERVAL_SECS`| Background timer interval in seconds to automatically flush write buffers to Iceberg snapshots. | None |
-| `BSDB_MAX_INGEST_RAM_GB` | Ingest RAM high-water mark in GB; writers pause above it (with a fail-open grace) until background tasks reclaim memory. | 80% of available memory |
-| `BSDB_INGEST_MEMORY_BUDGET_GB` | Heap-trim budget during bulk ingest: RSS above it triggers `malloc_trim` at unit boundaries. | 80% of available memory |
-| `BSDB_INGEST_BACKPRESSURE_GRACE_SECS` | Fail-open grace before a stalled writer proceeds anyway. Non-positive or unparseable values fall back to the default. | `60` |
-| `BSDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` | Manifest files accumulated by the append-only fast path before a full consolidation commit. | `32` |
-| `BSDB_VACUUM_MIN_FILE_AGE_SECS` | Minimum age before vacuum deletes an unreferenced file. `0` disables the grace period. | `60` |
+| `BDB_WAL_DIR` | Directory for the Write-Ahead Log (WAL) used for streaming recovery. | `{table_uri}/_wal` |
+| `BDB_WAL_DURABILITY` | WAL flush durability policy (`sync` for `fdatasync`/`fsync` per batch before ack; `async` for worker batch/interval sync). | `sync` |
+| `BDB_WAL_COMPACT_MB` | File size threshold in MB before triggering WAL log segment compaction. | `1024` (1 GB) |
+| `BDB_WAL_SYNC_BATCH_SIZE`| Appended operations batch size before triggering a WAL sync flush. | `10` |
+| `BDB_WAL_SYNC_INTERVAL_MS`| Maximum elapsed milliseconds between background WAL sync flushes. | `100` |
+| `BDB_STREAMING_FLUSH_INTERVAL_SECS`| Background timer interval in seconds to automatically flush write buffers to Iceberg snapshots. | None |
+| `BDB_MAX_INGEST_RAM_GB` | Ingest RAM high-water mark in GB; writers pause above it (with a fail-open grace) until background tasks reclaim memory. | 80% of available memory |
+| `BDB_INGEST_MEMORY_BUDGET_GB` | Heap-trim budget during bulk ingest: RSS above it triggers `malloc_trim` at unit boundaries. | 80% of available memory |
+| `BDB_INGEST_BACKPRESSURE_GRACE_SECS` | Fail-open grace before a stalled writer proceeds anyway. Non-positive or unparseable values fall back to the default. | `60` |
+| `BDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION` | Manifest files accumulated by the append-only fast path before a full consolidation commit. | `32` |
+| `BDB_VACUUM_MIN_FILE_AGE_SECS` | Minimum age before vacuum deletes an unreferenced file. `0` disables the grace period. | `60` |
 
 ### Vector Index, Quantization & Voronoi Sharding
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_GPU_DEVICE` | Device or comma-separated pool for vector index builds and distance kernels: `auto`, `cpu`, `cuda[:N]`, `mps`, or `cuda:0,cuda:1`. A pool assigns one device per worker thread round-robin; a single HNSW search still runs on one device. | unset (`auto`) |
-| `BSDB_NVRTC_PATH` | NVRTC library file or directory used to compile GPU kernels. | Auto-discovery (CUDA home, Python site-packages, `LD_LIBRARY_PATH`) |
-| `BSDB_DRIFT_MEMORY_MB` | In-memory budget for graph-algorithm UDAF accumulators before they spill to the CSR index. | Engine memory budget |
+| `BDB_GPU_DEVICE` | Device or comma-separated pool for vector index builds and distance kernels: `auto`, `cpu`, `cuda[:N]`, `mps`, or `cuda:0,cuda:1`. A pool assigns one device per worker thread round-robin; a single HNSW search still runs on one device. | unset (`auto`) |
+| `BDB_NVRTC_PATH` | NVRTC library file or directory used to compile GPU kernels. | Auto-discovery (CUDA home, Python site-packages, `LD_LIBRARY_PATH`) |
+| `BDB_DRIFT_MEMORY_MB` | In-memory budget for graph-algorithm UDAF accumulators before they spill to the CSR index. | Engine memory budget |
 
 #### Out-of-Core Memory Management & Sharding APIs
 
@@ -153,12 +153,12 @@ For massive datasets exceeding RAM (such as 10M–100M+ vectors):
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_CATALOG_TYPE` | Catalog implementation: `rest`, `glue`, `hive`, `jdbc`, `nessie`, or `unity`. | Inferred from the URI scheme or `BSDB_CONFIG` |
-| `BSDB_CATALOG_URI` / `BSDB_CATALOG_URL` | Catalog endpoint. | None |
-| `BSDB_CATALOG_NAME` | Warehouse / catalog name to register. | None |
-| `BSDB_CATALOG_NAMESPACE` | Default namespace for unqualified tables. | None |
-| `BSDB_CATALOG_CREDENTIAL` | Vendor credential (`client_id:client_secret`, or the provider's equivalent). | None |
-| `BSDB_CATALOG_TOKEN` | Bearer token for catalog requests. | None |
+| `BDB_CATALOG_TYPE` | Catalog implementation: `rest`, `glue`, `hive`, `jdbc`, `nessie`, or `unity`. | Inferred from the URI scheme or `BDB_CONFIG` |
+| `BDB_CATALOG_URI` / `BDB_CATALOG_URL` | Catalog endpoint. | None |
+| `BDB_CATALOG_NAME` | Warehouse / catalog name to register. | None |
+| `BDB_CATALOG_NAMESPACE` | Default namespace for unqualified tables. | None |
+| `BDB_CATALOG_CREDENTIAL` | Vendor credential (`client_id:client_secret`, or the provider's equivalent). | None |
+| `BDB_CATALOG_TOKEN` | Bearer token for catalog requests. | None |
 
 See [Catalog Usage](CATALOG_USAGE.md) and `benostream.toml` below for the full
 catalog configuration surface.
@@ -167,13 +167,13 @@ catalog configuration surface.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_WAREHOUSE` | Local warehouse path exposed to the agent. | System temp dir |
-| `BSDB_READWRITE_SCHEMAS` | Comma-separated or JSON array of schemas that allow writes. | `["scratch"]` |
-| `BSDB_READONLY_SCHEMAS` | Comma-separated or JSON array of schemas locked read-only. | `["default", "public"]` |
-| `BSDB_DEFAULT_WRITE_SCHEMA` | Schema for unqualified table creation. | `scratch` |
-| `BSDB_EPHEMERAL` | Use a temporary warehouse for this session (`1`/`true`). | `false` |
-| `BSDB_MCP_CONFIG` | Full JSON configuration string. | None |
-| `BSDB_EMBEDDING_*` | Embedding generator settings (see [Embeddings](#embeddings)). | See above |
+| `BDB_WAREHOUSE` | Local warehouse path exposed to the agent. | System temp dir |
+| `BDB_READWRITE_SCHEMAS` | Comma-separated or JSON array of schemas that allow writes. | `["scratch"]` |
+| `BDB_READONLY_SCHEMAS` | Comma-separated or JSON array of schemas locked read-only. | `["default", "public"]` |
+| `BDB_DEFAULT_WRITE_SCHEMA` | Schema for unqualified table creation. | `scratch` |
+| `BDB_EPHEMERAL` | Use a temporary warehouse for this session (`1`/`true`). | `false` |
+| `BDB_MCP_CONFIG` | Full JSON configuration string. | None |
+| `BDB_EMBEDDING_*` | Embedding generator settings (see [Embeddings](#embeddings)). | See above |
 
 See [`contrib/benodb-mcp/README.md`](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-mcp/README.md)
 for the full CLI/JSON mapping.
@@ -181,7 +181,7 @@ for the full CLI/JSON mapping.
 ### Search Gateway (`benodb-search`)
 
 The OpenSearch/Qdrant gateway is a separate component with its own
-configuration surface (`BSDB_SEARCH_*`, `BSDB_QDRANT_BIND`, `BSDB_QDRANT_PORT`).
+configuration surface (`BDB_SEARCH_*`, `BDB_QDRANT_BIND`, `BDB_QDRANT_PORT`).
 See the
 [search gateway README](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/README.md)
 for the full table.
@@ -192,12 +192,12 @@ The Flight SQL server (`benodb-flight`) has its own variables:
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_FLIGHT_BIND` | gRPC bind address. | `127.0.0.1` |
-| `BSDB_FLIGHT_PORT` | gRPC port. | `50051` |
-| `BSDB_FLIGHT_MAX_ROWS` | Row cap applied to Arrow Flight results. | `100000` |
-| `BSDB_FLIGHT_READ_ONLY` | Refuse DDL, DML, and ingest. Set to `1`/`true`. | off |
-| `BSDB_WAREHOUSE` | Warehouse root for the server. | `./data` |
-| `BSDB_CATALOG_NAME` | Catalog name to expose. | From `benostream.toml` |
+| `BDB_FLIGHT_BIND` | gRPC bind address. | `127.0.0.1` |
+| `BDB_FLIGHT_PORT` | gRPC port. | `50051` |
+| `BDB_FLIGHT_MAX_ROWS` | Row cap applied to Arrow Flight results. | `100000` |
+| `BDB_FLIGHT_READ_ONLY` | Refuse DDL, DML, and ingest. Set to `1`/`true`. | off |
+| `BDB_WAREHOUSE` | Warehouse root for the server. | `./data` |
+| `BDB_CATALOG_NAME` | Catalog name to expose. | From `benostream.toml` |
 
 See the [Flight SQL README](https://github.com/benolabsai/benodb/blob/main/server/flight_sql/README.md).
 
@@ -208,13 +208,13 @@ See the [Flight SQL README](https://github.com/benolabsai/benodb/blob/main/serve
 |:---|:---|:---|
 | `AWS_ENDPOINT_URL` | Custom S3 endpoint URL (used for RustFS, LocalStack, Ceph). | AWS default |
 | `JAEGER_ENABLED` | Enable distributed OpenTelemetry tracing via Jaeger / OTLP. | `false` |
-| `BSDB_METRICS_BIND` | Bind address for the embedded/Flight metrics HTTP listener. | `127.0.0.1` |
-| `BSDB_METRICS_PORT` | Port for the embedded/Flight metrics HTTP listener. | `9090` |
-| `BSDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
-| `BSDB_OTLP_ENDPOINT` | OTLP/HTTP metrics endpoint (e.g. `http://localhost:4318`). The pusher appends `/v1/metrics` and is disabled when unset. | None |
-| `BSDB_OTLP_HEADERS` | Comma-separated `key=value` headers for the OTLP push (for example an auth token). | None |
-| `BSDB_OTLP_INTERVAL_SECS` | OTLP push period in seconds. | `15` |
-| `BSDB_SERVICE_NAME` | `service.name` resource attribute on exported metrics. | `benodb` |
+| `BDB_METRICS_BIND` | Bind address for the embedded/Flight metrics HTTP listener. | `127.0.0.1` |
+| `BDB_METRICS_PORT` | Port for the embedded/Flight metrics HTTP listener. | `9090` |
+| `BDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
+| `BDB_OTLP_ENDPOINT` | OTLP/HTTP metrics endpoint (e.g. `http://localhost:4318`). The pusher appends `/v1/metrics` and is disabled when unset. | None |
+| `BDB_OTLP_HEADERS` | Comma-separated `key=value` headers for the OTLP push (for example an auth token). | None |
+| `BDB_OTLP_INTERVAL_SECS` | OTLP push period in seconds. | `15` |
+| `BDB_SERVICE_NAME` | `service.name` resource attribute on exported metrics. | `benodb` |
 
 ### Development, Test & Benchmark Variables
 
@@ -223,22 +223,22 @@ packaging workflows in this repository.
 
 | Variable | Used by | Description |
 |:---|:---|:---|
-| `BSDB_ALLOW_DEBUG` | `scripts/bench_csr_subgraph.py` | Allow the CSR benchmark to run against a debug build (`1`). |
-| `BSDB_MAX_DEGREE` | `scripts/bench_csr_subgraph.py` | Degree cap for the generated subgraph. |
-| `BSDB_DATA` | `scripts/prepare_demo.py`, `scripts/build_three_tier.py`, `scripts/build_demo_dataset.py` | Input directory for downloaded Wikipedia/demo dumps. |
-| `BSDB_INDEX` | `benchmarks/competitors/run_bench.sh` | Index type selected by the competitor benchmark harness (`hnsw`, `hnsw_tq8`, `hnsw_pq`, ...). |
-| `BSDB_TABLE_DIR` | `scripts/build_three_tier.py` | Output table directory. |
-| `BSDB_THREE_TIER_OUT` | `scripts/build_three_tier.py` | Root output directory for the three-tier build. |
-| `BSDB_EMBED_SHARD_ROWS` | `scripts/prepare_demo.py` | Rows per embedding shard. |
-| `BSDB_LOAD_CHUNK_ROWS` | `scripts/prepare_demo.py` | Rows per load chunk. |
-| `BSDB_DEMO_DB` | `examples/web_ui/` | Demo database path for the Streamlit/Dash UIs. |
-| `BSDB_SKIP_GPU_PROBE` | `python/benodb/__init__.py` | Internal guard that stops the GPU-probe child from recursing. |
-| `BSDB_SOAK_RSS_CEILING_GB` | `tests/soak.rs` | RSS ceiling for the soak test (default 8 GiB). |
-| `BSDB_TEST_S3_BUCKET` | S3 multi-writer tests | Bucket used by the concurrency tests. |
-| `BSDB_WORKLOAD_SEED` | randomized workload tests | LCG seed (default `12345`). |
-| `BSDB_WORKLOAD_STEPS` | randomized workload tests | Number of randomized steps (default `400` for Rust, `100` for the Flight Python test). |
-| `BSDB_RELEASE_VERSION` | release workflow / dbt adapter | Forced version string for packaging. |
-| `BSDB_VERSION` | `docker-compose.production.yml` | Image tag for the search/Flight containers (`latest` by default). |
+| `BDB_ALLOW_DEBUG` | `scripts/bench_csr_subgraph.py` | Allow the CSR benchmark to run against a debug build (`1`). |
+| `BDB_MAX_DEGREE` | `scripts/bench_csr_subgraph.py` | Degree cap for the generated subgraph. |
+| `BDB_DATA` | `scripts/prepare_demo.py`, `scripts/build_three_tier.py`, `scripts/build_demo_dataset.py` | Input directory for downloaded Wikipedia/demo dumps. |
+| `BDB_INDEX` | `benchmarks/competitors/run_bench.sh` | Index type selected by the competitor benchmark harness (`hnsw`, `hnsw_tq8`, `hnsw_pq`, ...). |
+| `BDB_TABLE_DIR` | `scripts/build_three_tier.py` | Output table directory. |
+| `BDB_THREE_TIER_OUT` | `scripts/build_three_tier.py` | Root output directory for the three-tier build. |
+| `BDB_EMBED_SHARD_ROWS` | `scripts/prepare_demo.py` | Rows per embedding shard. |
+| `BDB_LOAD_CHUNK_ROWS` | `scripts/prepare_demo.py` | Rows per load chunk. |
+| `BDB_DEMO_DB` | `examples/web_ui/` | Demo database path for the Streamlit/Dash UIs. |
+| `BDB_SKIP_GPU_PROBE` | `python/benodb/__init__.py` | Internal guard that stops the GPU-probe child from recursing. |
+| `BDB_SOAK_RSS_CEILING_GB` | `tests/soak.rs` | RSS ceiling for the soak test (default 8 GiB). |
+| `BDB_TEST_S3_BUCKET` | S3 multi-writer tests | Bucket used by the concurrency tests. |
+| `BDB_WORKLOAD_SEED` | randomized workload tests | LCG seed (default `12345`). |
+| `BDB_WORKLOAD_STEPS` | randomized workload tests | Number of randomized steps (default `400` for Rust, `100` for the Flight Python test). |
+| `BDB_RELEASE_VERSION` | release workflow / dbt adapter | Forced version string for packaging. |
+| `BDB_VERSION` | `docker-compose.production.yml` | Image tag for the search/Flight containers (`latest` by default). |
 
 See [Monitoring & Operations](MONITORING.md) for the full metric catalog and the
 per-deployment-mode endpoints.
@@ -250,7 +250,7 @@ per-deployment-mode endpoints.
 You can use a TOML file to manage complex configurations, especially for catalogs and multi-cloud storage.
 
 BenoDB looks for this file in the following order:
-1. Environment variable `BSDB_CONFIG`
+1. Environment variable `BDB_CONFIG`
 2. `./benostream.toml` (current directory)
 3. `~/.benostream/config.toml`
 

@@ -438,13 +438,13 @@ jobs:
         env:
           SKIP_GPU_TESTS: "1"
           RUST_LOG: "error"
-          BSDB_SOAK_SECONDS: "1800"
+          BDB_SOAK_SECONDS: "1800"
         run: cargo test --test soak -- --ignored --nocapture 2>&1 | tee soak.log
       - name: Multi-writer soak
         env:
           SKIP_GPU_TESTS: "1"
           RUST_LOG: "error"
-          BSDB_SOAK_SECONDS: "1800"
+          BDB_SOAK_SECONDS: "1800"
         run: cargo test --test test_multi_writer_concurrency multi_writer_soak -- --ignored --nocapture 2>&1 | tee multi_writer.log
       - name: Write soak report
         if: always()
@@ -672,7 +672,7 @@ jobs:
       - name: Build dbt adapter (sdist + wheel)
         run: |
           # Carry the release version (including a .postN repack) into the build.
-          export BSDB_RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          export BDB_RELEASE_VERSION="${GITHUB_REF_NAME#v}"
           python -m pip install --upgrade build
           python -m build --outdir dbt-benodb/dist dbt-benodb
       # NO `continue-on-error` by design: a missing distribution must fail the
@@ -781,7 +781,7 @@ jobs:
           python-version: "3.12"
       - name: Build dbt adapter (for the release assets)
         run: |
-          export BSDB_RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          export BDB_RELEASE_VERSION="${GITHUB_REF_NAME#v}"
           python -m pip install --upgrade build
           python -m build --outdir dbt-benodb/dist dbt-benodb
       # The Java connector build moved to the parallel `connectors` job above;

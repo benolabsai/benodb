@@ -90,10 +90,10 @@ pub const DEFAULT_CLUSTER_EF_CONSTRUCTION: usize = 200;
 /// and strictly respects cloud object storage single-PUT boundaries (e.g. AWS S3 5 GiB limit).
 pub const DEFAULT_TARGET_SHARD_BYTES: usize = 536_870_912;
 
-/// Get the target shard size in bytes from the environment (`BSDB_INDEX_TARGET_SHARD_BYTES`)
+/// Get the target shard size in bytes from the environment (`BDB_INDEX_TARGET_SHARD_BYTES`)
 /// or fallback to [`DEFAULT_TARGET_SHARD_BYTES`].
 pub fn target_shard_bytes() -> usize {
-    std::env::var("BSDB_INDEX_TARGET_SHARD_BYTES")
+    std::env::var("BDB_INDEX_TARGET_SHARD_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
@@ -139,9 +139,9 @@ mod bucket_count_tests {
 ///
 /// At 100M the builder passes about 90 GB through this directory, so the system
 /// temp directory is a poor default on hosts where `/tmp` is a sized tmpfs.
-/// `BSDB_CLUSTER_BUILD_TMPDIR` points it at the storage volume instead.
+/// `BDB_CLUSTER_BUILD_TMPDIR` points it at the storage volume instead.
 fn build_spill_root() -> std::path::PathBuf {
-    std::env::var_os("BSDB_CLUSTER_BUILD_TMPDIR")
+    std::env::var_os("BDB_CLUSTER_BUILD_TMPDIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
 }
@@ -194,7 +194,7 @@ fn available_spill_bytes(_path: &std::path::Path) -> Option<u64> {
 }
 
 fn build_bucket_count(total_vector_bytes: usize) -> usize {
-    if let Some(n) = std::env::var("BSDB_CLUSTER_BUILD_BUCKETS")
+    if let Some(n) = std::env::var("BDB_CLUSTER_BUILD_BUCKETS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
@@ -217,7 +217,7 @@ fn build_bucket_count(total_vector_bytes: usize) -> usize {
 /// that many threads. Three buckets in flight gives the cores work while
 /// holding a few GB of grouped vectors, not the whole artifact.
 fn bucket_parallelism() -> usize {
-    std::env::var("BSDB_CLUSTER_BUILD_PARALLEL_BUCKETS")
+    std::env::var("BDB_CLUSTER_BUILD_PARALLEL_BUCKETS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
@@ -268,7 +268,7 @@ pub enum ClusterSearchMode {
 }
 
 fn configured_search_mode() -> ClusterSearchMode {
-    match std::env::var("BSDB_CLUSTER_SEARCH_MODE")
+    match std::env::var("BDB_CLUSTER_SEARCH_MODE")
         .ok()
         .as_deref()
         .map(str::trim)
@@ -439,17 +439,17 @@ fn span_covers(start: usize, len: usize, blob: (usize, usize)) -> bool {
 /// already being reclaimed: the 16 GiB sweep measured 250 MB/s of refaults while
 /// the 8 GiB budget sat unused.
 ///
-/// `BSDB_CLUSTER_CACHE_KIB` sets it directly. Otherwise a quarter of
-/// `BSDB_CACHE_GB` when that is set, because the shard mappings share the same
+/// `BDB_CLUSTER_CACHE_KIB` sets it directly. Otherwise a quarter of
+/// `BDB_CACHE_GB` when that is set, because the shard mappings share the same
 /// cap and page cache is the cheaper thing to lose. 256 MiB otherwise.
 fn cluster_cache_budget_kib() -> u64 {
     fn from_env(name: &str) -> Option<u64> {
         std::env::var(name).ok()?.trim().parse::<u64>().ok()
     }
-    if let Some(kib) = from_env("BSDB_CLUSTER_CACHE_KIB") {
+    if let Some(kib) = from_env("BDB_CLUSTER_CACHE_KIB") {
         return kib.max(1);
     }
-    if let Some(gb) = from_env("BSDB_CACHE_GB") {
+    if let Some(gb) = from_env("BDB_CACHE_GB") {
         return (gb.saturating_mul(1024 * 1024) / 4).max(1);
     }
     256 * 1024
@@ -1084,7 +1084,7 @@ impl ClusterIndex {
             if free < needed as u64 {
                 anyhow::bail!(
                     "cluster build spills buckets and shards through {} and needs about {} \
-                     bytes, but only {} is available. Set BSDB_CLUSTER_BUILD_TMPDIR to a \
+                     bytes, but only {} is available. Set BDB_CLUSTER_BUILD_TMPDIR to a \
                      directory on a filesystem with room, about 100 GB at 100M.",
                     spill_root.display(),
                     needed,
@@ -2153,7 +2153,7 @@ impl ClusterIndex {
     /// Uses the codes-only first stage with pipelined local prefetch whenever
     /// the artifact carries `cluster-codes` blobs (falling back transparently to
     /// HNSW graph traversal on legacy artifacts or when
-    /// `BSDB_CLUSTER_SEARCH_MODE=graph`).
+    /// `BDB_CLUSTER_SEARCH_MODE=graph`).
     pub fn search(
         &self,
         query: &[f32],
@@ -2626,7 +2626,7 @@ impl ClusterIndex {
     /// For callers that invoke `hydrate_for_query` followed by synchronous
     /// `search`, this hydrates codes + metadata (skipping the HNSW graph blob)
     /// whenever the artifact carries `cluster-codes` blobs, and falls back to
-    /// graph + metadata on legacy artifacts or `BSDB_CLUSTER_SEARCH_MODE=graph`.
+    /// graph + metadata on legacy artifacts or `BDB_CLUSTER_SEARCH_MODE=graph`.
     /// Callers with an `Arc<ClusterIndex>` should prefer [`Self::search_async`],
     /// which pipelines codes hydration and skips `node_meta` for non-winning
     /// clusters altogether.
@@ -2647,7 +2647,7 @@ impl ClusterIndex {
     ///
     /// Fetches touched shards concurrently with singleflight request
     /// deduplication across concurrent queries. When `cluster-codes` blobs are
-    /// present and `BSDB_CLUSTER_SEARCH_MODE != graph`, fetches codes and
+    /// present and `BDB_CLUSTER_SEARCH_MODE != graph`, fetches codes and
     /// `node_meta` only (never the HNSW graph).
     pub async fn hydrate_clusters(
         &self,
@@ -4915,7 +4915,7 @@ mod tests {
             let center = (cluster_i as f32) * 50.0;
             for j in 0..25usize {
                 let row = (cluster_i * 25 + j) as u32;
-                let seg = (row % 3) as u32;
+                let seg = row % 3;
                 let v: Vec<f32> = (0..dim)
                     .map(|d| center + (j as f32) * 0.05 + (d as f32) * 0.001)
                     .collect();

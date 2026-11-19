@@ -39,9 +39,9 @@ impl Suite {
 /// Supplied through environment variables so the harness depends only on an
 /// on-disk (or object-store) artifact, never on BenoStreamDB's types:
 ///
-/// * `BSDB_ORACLE_URI`          — table location, e.g. `file:///tmp/tbl`
-/// * `BSDB_ORACLE_SUITE`        — `v2` or `v3` (default `v2`)
-/// * `BSDB_ORACLE_EXPECT_IDS`   — comma-separated `id` values that must survive,
+/// * `BDB_ORACLE_URI`          — table location, e.g. `file:///tmp/tbl`
+/// * `BDB_ORACLE_SUITE`        — `v2` or `v3` (default `v2`)
+/// * `BDB_ORACLE_EXPECT_IDS`   — comma-separated `id` values that must survive,
 ///                                in ascending order
 pub struct OracleTarget {
     pub uri: String,
@@ -51,18 +51,18 @@ pub struct OracleTarget {
 
 impl OracleTarget {
     pub fn from_env() -> Result<Self> {
-        let uri = std::env::var("BSDB_ORACLE_URI").context(
-            "BSDB_ORACLE_URI is not set; point it at a BenoStreamDB table to verify \
+        let uri = std::env::var("BDB_ORACLE_URI").context(
+            "BDB_ORACLE_URI is not set; point it at a BenoStreamDB table to verify \
              (see tests/iceberg_rust_oracle/README.md)",
         )?;
-        let suite = Suite::parse(&std::env::var("BSDB_ORACLE_SUITE").unwrap_or_else(|_| "v2".into()))?;
-        let expected_ids = std::env::var("BSDB_ORACLE_EXPECT_IDS")
+        let suite = Suite::parse(&std::env::var("BDB_ORACLE_SUITE").unwrap_or_else(|_| "v2".into()))?;
+        let expected_ids = std::env::var("BDB_ORACLE_EXPECT_IDS")
             .unwrap_or_default()
             .split(',')
             .filter(|s| !s.trim().is_empty())
             .map(|s| s.trim().parse::<i32>())
             .collect::<std::result::Result<Vec<_>, _>>()
-            .context("BSDB_ORACLE_EXPECT_IDS must be comma-separated integers")?;
+            .context("BDB_ORACLE_EXPECT_IDS must be comma-separated integers")?;
         Ok(Self {
             uri,
             suite,

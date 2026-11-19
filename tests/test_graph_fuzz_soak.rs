@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 #[tokio::test]
 #[ignore = "Long-running soak and fuzz test"]
 async fn test_graph_udafs_fuzz_soak() {
-    let soak_seconds = std::env::var("BSDB_SOAK_SECONDS")
+    let soak_seconds = std::env::var("BDB_SOAK_SECONDS")
         .unwrap_or_else(|_| "10".to_string())
         .parse::<u64>()
         .unwrap();

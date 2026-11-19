@@ -41,18 +41,18 @@ documented in [`docs/CONFIGURATION.md`](../../docs/CONFIGURATION.md).
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_SEARCH_PORT` | Port for the OpenSearch/Elasticsearch 7.10 compatible HTTP REST API. | `9200` |
-| `BSDB_SEARCH_BIND` | Bind IP address for the OpenSearch REST server. | `0.0.0.0` |
-| `BSDB_SEARCH_DEVICE` | Compute device target (`"auto"`, `"cpu"`, `"cuda"`, `"rocm"`, `"metal"`). | `"auto"` |
-| `BSDB_SEARCH_STORAGE_URI` | Storage URI for search indices (e.g. `s3://bucket/search` or `file:///data`). | `./data` |
-| `BSDB_SEARCH_INDEX_CACHE_GB` | Size cap in GB for on-demand sidecar index file LRU cache. | `1` |
-| `BSDB_SEARCH_PRELOAD` | Preload index sidecars into memory on open (`0`/`false`/`no`/`off` disables). | `true` |
-| `BSDB_SEARCH_PRELOAD_GB` | In-memory budget in GB for preloaded index sidecars; overflow spills to the mmap disk cache. | `4` |
-| `BSDB_SEARCH_AUTO_REFRESH_SECS` | Background timer interval in seconds to flush memtables to Iceberg snapshots. | `1.0` |
-| `BSDB_SEARCH_WAL_DURABILITY` | Gateway ingestion durability (`"async"` for batched WAL, `"sync"` for per-doc fsync). | `"async"` |
-| `BSDB_SEARCH_RRF_K` | Smoothing constant ($k$) for Reciprocal Rank Fusion hybrid search scoring. | `60` |
-| `BSDB_QDRANT_BIND` | Bind IP address for the Qdrant-compatible Vector REST API listener. | Matches `BSDB_SEARCH_BIND` |
-| `BSDB_QDRANT_PORT` | Port for the Qdrant-compatible Vector REST API listener. | `6333` |
+| `BDB_SEARCH_PORT` | Port for the OpenSearch/Elasticsearch 7.10 compatible HTTP REST API. | `9200` |
+| `BDB_SEARCH_BIND` | Bind IP address for the OpenSearch REST server. | `0.0.0.0` |
+| `BDB_SEARCH_DEVICE` | Compute device target (`"auto"`, `"cpu"`, `"cuda"`, `"rocm"`, `"metal"`). | `"auto"` |
+| `BDB_SEARCH_STORAGE_URI` | Storage URI for search indices (e.g. `s3://bucket/search` or `file:///data`). | `./data` |
+| `BDB_SEARCH_INDEX_CACHE_GB` | Size cap in GB for on-demand sidecar index file LRU cache. | `1` |
+| `BDB_SEARCH_PRELOAD` | Preload index sidecars into memory on open (`0`/`false`/`no`/`off` disables). | `true` |
+| `BDB_SEARCH_PRELOAD_GB` | In-memory budget in GB for preloaded index sidecars; overflow spills to the mmap disk cache. | `4` |
+| `BDB_SEARCH_AUTO_REFRESH_SECS` | Background timer interval in seconds to flush memtables to Iceberg snapshots. | `1.0` |
+| `BDB_SEARCH_WAL_DURABILITY` | Gateway ingestion durability (`"async"` for batched WAL, `"sync"` for per-doc fsync). | `"async"` |
+| `BDB_SEARCH_RRF_K` | Smoothing constant ($k$) for Reciprocal Rank Fusion hybrid search scoring. | `60` |
+| `BDB_QDRANT_BIND` | Bind IP address for the Qdrant-compatible Vector REST API listener. | Matches `BDB_SEARCH_BIND` |
+| `BDB_QDRANT_PORT` | Port for the Qdrant-compatible Vector REST API listener. | `6333` |
 
 ### Authentication
 
@@ -62,24 +62,24 @@ same credentials protect **both** the OpenSearch/ES API and the Qdrant API.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_API_KEY` | Shared secret. Accepted via `Authorization: Bearer <key>`, `Authorization: ApiKey <key>`, or `api-key: <key>` (Qdrant). | unset |
-| `BSDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
-| `BSDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
-| `BSDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
-| `BSDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
-| `BSDB_AUTH_REQUIRED` | Fail closed (`401`) when no credential is configured. | `false` |
-| `BSDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
+| `BDB_API_KEY` | Shared secret. Accepted via `Authorization: Bearer <key>`, `Authorization: ApiKey <key>`, or `api-key: <key>` (Qdrant). | unset |
+| `BDB_JWT_SECRET` | HS256 shared secret for JWT verification. | unset |
+| `BDB_JWT_PUBLIC_KEY` | RS256 public key (PEM) for JWT verification — the "delegate to your IdP" path. | unset |
+| `BDB_JWT_AUDIENCE` | Required `aud` claim (if set). | unset |
+| `BDB_JWT_ISSUER` | Required `iss` claim (if set). | unset |
+| `BDB_AUTH_REQUIRED` | Fail closed (`401`) when no credential is configured. | `false` |
+| `BDB_METRICS_PUBLIC` | Exempt `/metrics` from auth (for an internal Prometheus scraper). | `false` |
 
 Health endpoints (`/_health`, `/_cluster/health`, `/_cat/health`, `/healthz`,
 `/readyz`, `/livez`) and `GET /` are always public.
 
 ```bash
 # API key
-export BSDB_API_KEY="$(openssl rand -hex 32)"
-curl -H "api-key: $BSDB_API_KEY" http://127.0.0.1:9200/_cat/indices
+export BDB_API_KEY="$(openssl rand -hex 32)"
+curl -H "api-key: $BDB_API_KEY" http://127.0.0.1:9200/_cat/indices
 
 # JWT (HS256) — verify a token minted by your IdP
-export BSDB_JWT_SECRET="shared-secret"
+export BDB_JWT_SECRET="shared-secret"
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9200/_search
 ```
 
@@ -135,7 +135,7 @@ else.
 > **Operational note:** a deployment that publishes **no** policy is read-only —
 > the gateway logs a `WARN` at startup (`"search gateway is READ-ONLY: no writable
 > schema"`). Provision the schema(s) and publish a policy before expecting writes.
-> Set `BSDB_SEARCH_REQUIRE_POLICY=1` to **refuse to start** rather than run
+> Set `BDB_SEARCH_REQUIRE_POLICY=1` to **refuse to start** rather than run
 > read-only. See [`docs/CATALOG_USAGE.md`](../../docs/CATALOG_USAGE.md) and
 > [`docs/SUPPORT_MATRIX.md`](../../docs/SUPPORT_MATRIX.md) for the full model.
 
@@ -148,24 +148,24 @@ the catalog's current snapshot.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `BSDB_SEARCH_CATALOG_TYPE` | Catalog provider: `"rest"` (Snowflake Polaris / Lakekeeper), `"nessie"`, `"glue"`, `"hive"`, `"unity"`. | None (path-based Iceberg) |
-| `BSDB_SEARCH_CATALOG_URL` | Catalog REST/Service endpoint (e.g. `https://polaris.example.com/api/catalog/v1`). | None |
-| `BSDB_SEARCH_CATALOG_URI` | Alias for `BSDB_SEARCH_CATALOG_URL` (also accepts `BSDB_CATALOG_URI`). | None |
-| `BSDB_SEARCH_CATALOG_NAMESPACE` | Catalog namespace where search index tables are created and committed. | `default` |
-| `BSDB_SEARCH_CATALOG_CREDENTIAL` | OAuth2 Client Credentials (`<client_id>:<client_secret>`) for Polaris / REST. | None |
-| `BSDB_SEARCH_CATALOG_TOKEN` | Bearer token for Iceberg REST authentication. | None |
-| `BSDB_SEARCH_CATALOG_PREFIX` | Warehouse or catalog prefix (e.g. Polaris warehouse name). | None |
-| `BSDB_SEARCH_CATALOG_ID` | AWS Glue Account / Catalog ID (when using Glue). | None |
+| `BDB_SEARCH_CATALOG_TYPE` | Catalog provider: `"rest"` (Snowflake Polaris / Lakekeeper), `"nessie"`, `"glue"`, `"hive"`, `"unity"`. | None (path-based Iceberg) |
+| `BDB_SEARCH_CATALOG_URL` | Catalog REST/Service endpoint (e.g. `https://polaris.example.com/api/catalog/v1`). | None |
+| `BDB_SEARCH_CATALOG_URI` | Alias for `BDB_SEARCH_CATALOG_URL` (also accepts `BDB_CATALOG_URI`). | None |
+| `BDB_SEARCH_CATALOG_NAMESPACE` | Catalog namespace where search index tables are created and committed. | `default` |
+| `BDB_SEARCH_CATALOG_CREDENTIAL` | OAuth2 Client Credentials (`<client_id>:<client_secret>`) for Polaris / REST. | None |
+| `BDB_SEARCH_CATALOG_TOKEN` | Bearer token for Iceberg REST authentication. | None |
+| `BDB_SEARCH_CATALOG_PREFIX` | Warehouse or catalog prefix (e.g. Polaris warehouse name). | None |
+| `BDB_SEARCH_CATALOG_ID` | AWS Glue Account / Catalog ID (when using Glue). | None |
 
 > **Note:** The gateway also accepts the core-engine aliases
-> `BSDB_CATALOG_TYPE`, `BSDB_CATALOG_URL` / `BSDB_CATALOG_URI`,
-> `BSDB_CATALOG_TOKEN`, `BSDB_CATALOG_CREDENTIAL`, and
-> `BSDB_CATALOG_NAMESPACE` as fallbacks when the corresponding
-> `BSDB_SEARCH_CATALOG_*` variable is unset.
+> `BDB_CATALOG_TYPE`, `BDB_CATALOG_URL` / `BDB_CATALOG_URI`,
+> `BDB_CATALOG_TOKEN`, `BDB_CATALOG_CREDENTIAL`, and
+> `BDB_CATALOG_NAMESPACE` as fallbacks when the corresponding
+> `BDB_SEARCH_CATALOG_*` variable is unset.
 
-> **Snowflake Polaris setup:** Set `BSDB_SEARCH_CATALOG_TYPE=rest`,
-> `BSDB_SEARCH_CATALOG_URL=https://<account>.snowflakecomputing.com/polaris/api/catalog/v1`,
-> and `BSDB_SEARCH_CATALOG_CREDENTIAL=<client_id>:<client_secret>`. Every bulk
+> **Snowflake Polaris setup:** Set `BDB_SEARCH_CATALOG_TYPE=rest`,
+> `BDB_SEARCH_CATALOG_URL=https://<account>.snowflakecomputing.com/polaris/api/catalog/v1`,
+> and `BDB_SEARCH_CATALOG_CREDENTIAL=<client_id>:<client_secret>`. Every bulk
 > ingest via `/_bulk` or `_doc` automatically executes an Iceberg atomic swap
 > against Snowflake Polaris.
 

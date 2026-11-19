@@ -143,7 +143,7 @@ table = catalog.load_table("MY_SCHEMA", "CUSTOMER_INTERACTIONS")
 
 > The embedded Python REST wrapper takes `url` and an optional `prefix`; OAuth2
 > client credentials are configured on the engine/search server through
-> `benostream.toml` or the `BSDB_SEARCH_CATALOG_*` environment variables.
+> `benostream.toml` or the `BDB_SEARCH_CATALOG_*` environment variables.
 
 ---
 

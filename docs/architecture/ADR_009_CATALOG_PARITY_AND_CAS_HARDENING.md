@@ -42,7 +42,7 @@ The point is not the catalog itself; it is that multi-writer convergence and HTT
 
 `RestCatalogAuth::AwsSigV4 { region, service }` signs `GET`, `POST`, `DELETE`, and `HEAD` requests using credentials already resolved through `aws-config` (`aws-sigv4` was already present transitively via `aws-sdk-glue` and `object_store`, so this added no dependency). `/v1/config?warehouse=<arn_or_name>` discovery populates the canonical `prefix` override, which is what both S3 Tables and Glue's managed Iceberg REST endpoint require.
 
-`CatalogType::S3Tables` (aliases `s3_tables`, `s3-tables`) accepts a table-bucket ARN as `warehouse`, derives the region from the ARN (or AWS defaults), allows an explicit `url` override, routes through `RestCatalogClient` with `service: "s3tables"`, and honors `BSDB_SSRF_GUARD=1`. Glue gains an optional `mode = "rest"` for its managed Iceberg REST endpoint (`service: "glue"`), complementing the native `aws-sdk-glue` client.
+`CatalogType::S3Tables` (aliases `s3_tables`, `s3-tables`) accepts a table-bucket ARN as `warehouse`, derives the region from the ARN (or AWS defaults), allows an explicit `url` override, routes through `RestCatalogClient` with `service: "s3tables"`, and honors `BDB_SSRF_GUARD=1`. Glue gains an optional `mode = "rest"` for its managed Iceberg REST endpoint (`service: "glue"`), complementing the native `aws-sdk-glue` client.
 
 ### 3.3 JDBC dialect, canonical paths, and CAS — [`jdbc.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/catalog/jdbc.rs)
 

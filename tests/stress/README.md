@@ -8,20 +8,20 @@ never OOM-kill, panic, or corrupt data.
 
 ## Running
 
-The whole directory is skipped unless `BSDB_STRESS=1`, so the normal
+The whole directory is skipped unless `BDB_STRESS=1`, so the normal
 `pytest tests/` run stays fast.
 
 ```bash
-BSDB_STRESS=1 BSDB_SOAK_SECONDS=120 pytest tests/stress -v
+BDB_STRESS=1 BDB_SOAK_SECONDS=120 pytest tests/stress -v
 ```
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `BSDB_STRESS` | unset | `1` enables the suite |
-| `BSDB_SOAK_SECONDS` | `30` | wall-clock budget for the mixed soak |
-| `BSDB_STRESS_RSS_CEILING_GB` | `16` | RSS ceiling asserted by the mixed soak |
-| `BSDB_MAX_INGEST_RAM_GB` | — | set by the memory test to force back-pressure |
-| `BSDB_INDEX_BUILD_CONCURRENCY` | — | set by the CPU test to bound the build fan-out |
+| `BDB_STRESS` | unset | `1` enables the suite |
+| `BDB_SOAK_SECONDS` | `30` | wall-clock budget for the mixed soak |
+| `BDB_STRESS_RSS_CEILING_GB` | `16` | RSS ceiling asserted by the mixed soak |
+| `BDB_MAX_INGEST_RAM_GB` | — | set by the memory test to force back-pressure |
+| `BDB_INDEX_BUILD_CONCURRENCY` | — | set by the CPU test to bound the build fan-out |
 
 The [`soak` workflow](../../.github/workflows/soak.yml) runs this at
 length, together with the Rust soak harness (`cargo test --test soak -- --ignored`).
@@ -33,7 +33,7 @@ length, together with the Rust soak harness (`cargo test --test soak -- --ignore
 | `test_memory_backpressure.py` | RAM | With a low ingest high-water mark, writes block and resume, data is readable, RSS stays under the ceiling, process alive |
 | `test_cpu_saturation.py` | CPU | With index builds gated, concurrent searches still complete within a bounded time |
 | `test_disk_io.py` | Disk I/O | Many commit cycles (WAL + manifest + small parquet files) complete and a full read returns exactly the written row count |
-| `test_mixed_soak.py` | All | Continuous write/search/read churn for `BSDB_SOAK_SECONDS`: no exception, RSS growth bounded, process alive |
+| `test_mixed_soak.py` | All | Continuous write/search/read churn for `BDB_SOAK_SECONDS`: no exception, RSS growth bounded, process alive |
 
 ## Relationship to `test_oom.py`
 

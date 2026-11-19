@@ -27,10 +27,10 @@ import benodb
 
 # ── Config (mirrors the Streamlit demo) ─────────────────────────────────────
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DB = os.environ.get("BSDB_DEMO_DB", os.path.join(REPO, "data", "wiki_graph_db"))
+DB = os.environ.get("BDB_DEMO_DB", os.path.join(REPO, "data", "wiki_graph_db"))
 EDGES_URI = f"file://{os.path.join(DB, 'edges')}"
 NODES_URI = f"file://{os.path.join(DB, 'nodes')}"
-EMBED_MODEL = os.environ.get("BSDB_DEMO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+EMBED_MODEL = os.environ.get("BDB_DEMO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
 # ── Tables (opened once) ────────────────────────────────────────────────────
 # Activate GPU for BenoStreamDB's vector search (HNSW distance computation,

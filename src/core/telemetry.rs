@@ -59,25 +59,25 @@ pub fn render_metrics() -> String {
     base
 }
 
-/// Resolve the metrics listener address from `BSDB_METRICS_BIND` (default
-/// `127.0.0.1`) and `BSDB_METRICS_PORT` (default `9090`).
+/// Resolve the metrics listener address from `BDB_METRICS_BIND` (default
+/// `127.0.0.1`) and `BDB_METRICS_PORT` (default `9090`).
 pub fn metrics_addr() -> String {
-    let bind = std::env::var("BSDB_METRICS_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("BSDB_METRICS_PORT").unwrap_or_else(|_| "9090".to_string());
+    let bind = std::env::var("BDB_METRICS_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = std::env::var("BDB_METRICS_PORT").unwrap_or_else(|_| "9090".to_string());
     format!("{bind}:{port}")
 }
 
 /// Initializes the metrics exporter if the `observability` feature is enabled.
 ///
 /// Installs the `metrics`-facade recorder and spawns a small HTTP server on
-/// `BSDB_METRICS_BIND:BSDB_METRICS_PORT` (default `127.0.0.1:9090`) serving
+/// `BDB_METRICS_BIND:BDB_METRICS_PORT` (default `127.0.0.1:9090`) serving
 /// `/metrics`, `/health`, and `/readyz`. The server runs on a dedicated thread
 /// so it does not require an ambient Tokio runtime.
 #[cfg(feature = "observability")]
 pub fn init_metrics_exporter() -> anyhow::Result<()> {
     install_metrics_recorder();
     // OTLP push is independent of the scrape endpoint: start it whenever
-    // BSDB_OTLP_ENDPOINT is set, so pull (`/metrics`) and push can coexist.
+    // BDB_OTLP_ENDPOINT is set, so pull (`/metrics`) and push can coexist.
     crate::telemetry::otlp::spawn_pusher();
     let bind = metrics_addr();
     std::thread::Builder::new()

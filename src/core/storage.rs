@@ -33,7 +33,7 @@ pub fn ssrf_guard_enabled() -> bool {
 /// private, link-local, and public hosts stay rejected even if listed — so the
 /// override cannot be used to reach an internal network from CI. Every accepted
 /// host logs a warning naming this variable.
-pub const SSRF_ALLOW_HOSTS_ENV: &str = "BSDB_SSRF_ALLOW_HOSTS";
+pub const SSRF_ALLOW_HOSTS_ENV: &str = "BDB_SSRF_ALLOW_HOSTS";
 
 // ---------------------------------------------------------------------------
 // Multipart upload part sizing
@@ -86,7 +86,7 @@ fn normalize_host(host: &str) -> String {
         .to_ascii_lowercase()
 }
 
-/// Split, trim, and canonicalize a `BSDB_SSRF_ALLOW_HOSTS` value.
+/// Split, trim, and canonicalize a `BDB_SSRF_ALLOW_HOSTS` value.
 fn parse_allowed_hosts(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(normalize_host)
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_ssrf_guard_rejects_loopback_by_default() {
-        // No `BSDB_SSRF_ALLOW_HOSTS` set in this test binary's environment.
+        // No `BDB_SSRF_ALLOW_HOSTS` set in this test binary's environment.
         if std::env::var(SSRF_ALLOW_HOSTS_ENV).is_ok() {
             return;
         }

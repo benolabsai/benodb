@@ -20,7 +20,7 @@ impl PySession {
         let mut session = crate::core::sql::session::BenoStreamSession::new(limit_bytes);
         // A warehouse base location lets CREATE TABLE / CREATE TABLE AS SELECT
         // derive table URIs (`<warehouse>/<schema>/<table>`), as the Flight
-        // server does via BSDB_WAREHOUSE.
+        // server does via BDB_WAREHOUSE.
         if let Some(w) = warehouse.filter(|w| !w.is_empty()) {
             session.set_warehouse(Some(w));
         }

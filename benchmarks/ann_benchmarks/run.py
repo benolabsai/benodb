@@ -19,11 +19,11 @@ Two things are exposed so the comparison is apples-to-apples:
    same cores and RAM the competitor is given, via the engine's own knobs:
 
        RAYON_NUM_THREADS              = cores
-       BSDB_MAX_CONCURRENCY           = cores
-       BSDB_INDEX_BUILD_CONCURRENCY   = cores
-       BSDB_MAX_INGEST_RAM_GB         = 0.8 * ram_gb
-       BSDB_INGEST_MEMORY_BUDGET_GB   = 0.8 * ram_gb
-       BSDB_DATAFUSION_MEMORY_GB      = 0.5 * ram_gb
+       BDB_MAX_CONCURRENCY           = cores
+       BDB_INDEX_BUILD_CONCURRENCY   = cores
+       BDB_MAX_INGEST_RAM_GB         = 0.8 * ram_gb
+       BDB_INGEST_MEMORY_BUDGET_GB   = 0.8 * ram_gb
+       BDB_DATAFUSION_MEMORY_GB      = 0.5 * ram_gb
 
    Run the competitor with the same `--cores` / `--ram-gb` (e.g. Docker
    `--cpus` / `--memory`, or the process's cgroup limit).
@@ -73,11 +73,11 @@ def configure_env(cores: int, ram_gb: float) -> None:
     engine reads them.
     """
     os.environ.setdefault("RAYON_NUM_THREADS", str(cores))
-    os.environ.setdefault("BSDB_MAX_CONCURRENCY", str(cores))
-    os.environ.setdefault("BSDB_INDEX_BUILD_CONCURRENCY", str(cores))
-    os.environ.setdefault("BSDB_MAX_INGEST_RAM_GB", f"{ram_gb * 0.8:.2f}")
-    os.environ.setdefault("BSDB_INGEST_MEMORY_BUDGET_GB", f"{ram_gb * 0.8:.2f}")
-    os.environ.setdefault("BSDB_DATAFUSION_MEMORY_GB", f"{ram_gb * 0.5:.2f}")
+    os.environ.setdefault("BDB_MAX_CONCURRENCY", str(cores))
+    os.environ.setdefault("BDB_INDEX_BUILD_CONCURRENCY", str(cores))
+    os.environ.setdefault("BDB_MAX_INGEST_RAM_GB", f"{ram_gb * 0.8:.2f}")
+    os.environ.setdefault("BDB_INGEST_MEMORY_BUDGET_GB", f"{ram_gb * 0.8:.2f}")
+    os.environ.setdefault("BDB_DATAFUSION_MEMORY_GB", f"{ram_gb * 0.5:.2f}")
 
 
 def download(dataset: str) -> str:

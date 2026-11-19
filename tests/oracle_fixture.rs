@@ -7,11 +7,11 @@
 //
 // Ignored by default. Run it, then point the oracle at the printed path:
 //
-//   BSDB_FIXTURE_DIR=/tmp/bsdb_oracle_fixture \
+//   BDB_FIXTURE_DIR=/tmp/bsdb_oracle_fixture \
 //     cargo test --test oracle_fixture -- --ignored --nocapture
 //
-//   BSDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v3 \
-//   BSDB_ORACLE_SUITE=v3 BSDB_ORACLE_EXPECT_IDS=1,2 \
+//   BDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v3 \
+//   BDB_ORACLE_SUITE=v3 BDB_ORACLE_EXPECT_IDS=1,2 \
 //     cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
 
 use anyhow::{Context, Result};
@@ -59,8 +59,8 @@ async fn build(dir: &std::path::Path, version: i32) -> Result<()> {
 #[tokio::test]
 #[ignore = "fixture generator; run explicitly to feed tests/iceberg_rust_oracle"]
 async fn write_oracle_fixtures() -> Result<()> {
-    let root = std::env::var("BSDB_FIXTURE_DIR")
-        .unwrap_or_else(|_| "/tmp/bsdb_oracle_fixture".to_string());
+    let root =
+        std::env::var("BDB_FIXTURE_DIR").unwrap_or_else(|_| "/tmp/bsdb_oracle_fixture".to_string());
     let root = std::path::PathBuf::from(root);
     std::fs::create_dir_all(&root)?;
 

@@ -40,10 +40,10 @@ use crate::core::table::Table;
 ///
 /// Scales to the CPU budget visible to the process (respects cgroup limits via
 /// `std::thread::available_parallelism`) rather than hard-coding a value, so a
-/// container gets the parallelism it is actually allowed. `BSDB_TARGET_PARTITIONS`
+/// container gets the parallelism it is actually allowed. `BDB_TARGET_PARTITIONS`
 /// overrides for tuning.
 pub fn effective_target_partitions() -> usize {
-    if let Ok(n) = std::env::var("BSDB_TARGET_PARTITIONS") {
+    if let Ok(n) = std::env::var("BDB_TARGET_PARTITIONS") {
         if let Ok(n) = n.parse::<usize>() {
             if n > 0 {
                 return n;

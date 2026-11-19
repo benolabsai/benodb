@@ -14,11 +14,11 @@ WORKLOAD="${WORKLOAD:-vector}"
 # selects the quantized/compressed index so the recall/size trade-off is
 # reported explicitly instead of hiding behind a single number.
 case "$ENGINE" in
-    benodb)     BSDB_INDEX=hnsw ;;
-    benodb_tq8) BSDB_INDEX=hnsw_tq8 ;;
-    benodb_sq)  BSDB_INDEX=hnsw_sq8 ;;
-    benodb_tq4) BSDB_INDEX=hnsw_tq4 ;;
-    *)                BSDB_INDEX="" ;;
+    benodb)     BDB_INDEX=hnsw ;;
+    benodb_tq8) BDB_INDEX=hnsw_tq8 ;;
+    benodb_sq)  BDB_INDEX=hnsw_sq8 ;;
+    benodb_tq4) BDB_INDEX=hnsw_tq4 ;;
+    *)                BDB_INDEX="" ;;
 esac
 
 # BenoDB is installed from the mounted abi3 wheel for every workload that
@@ -29,7 +29,7 @@ esac
 # `docker_bench.sh --build-wheel` produces. Passing the glob to pip then fails with
 # ResolutionImpossible, because two candidates provide the same distribution, and
 # the whole run dies before any engine is measured. Install exactly one: the newest.
-if [ -n "$BSDB_INDEX" ] || [ "$WORKLOAD" = "beir" ]; then
+if [ -n "$BDB_INDEX" ] || [ "$WORKLOAD" = "beir" ]; then
     WHEEL="$(ls -t /wheels/*.whl 2>/dev/null | head -n 1)"
     if [ -z "$WHEEL" ]; then
         echo "[bench] no wheel found in /wheels; cannot run $ENGINE" >&2
@@ -41,7 +41,7 @@ fi
 
 # BenoDB's vector workload uses the ANN-Benchmarks harness (it reports
 # pure-index latency too); every other engine/workload uses run_competitor.py.
-if [ -n "$BSDB_INDEX" ] && [ "$WORKLOAD" = "vector" ]; then
+if [ -n "$BDB_INDEX" ] && [ "$WORKLOAD" = "vector" ]; then
     # A refined point is a separate operating point of the same engine, so it needs
     # its own artifact name. Without the suffix the refined run overwrites the
     # unrefined one and the report can never show both (it would look like the
@@ -55,7 +55,7 @@ if [ -n "$BSDB_INDEX" ] && [ "$WORKLOAD" = "vector" ]; then
         --k "$K" --m "$M" --ef-construction "$EF_CONSTRUCTION" \
         --ef-search "$EF_SEARCH" --refine-factor "${REFINE_FACTOR:-1}" \
         --cores "$BENCH_CPUS" --ram-gb "${BENCH_MEM%g}" --device "$DEVICE" \
-        --index "$BSDB_INDEX" --engine "$ENGINE" \
+        --index "$BDB_INDEX" --engine "$ENGINE" \
         --out "/results/${ENGINE}${REFINE_TAG}_${DATASET}_${DEVICE}.json"
 fi
 

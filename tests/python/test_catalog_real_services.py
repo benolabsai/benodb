@@ -23,7 +23,7 @@ wrong.
 emulates the Glue Data Catalog API. Pointing a client at it needs three
 test-only switches, all set from this file:
 
-- `BSDB_SSRF_ALLOW_HOSTS=127.0.0.1` — the deliberate, loopback-only SSRF
+- `BDB_SSRF_ALLOW_HOSTS=127.0.0.1` — the deliberate, loopback-only SSRF
   override (`src/core/storage.rs`); see `docs/CONFIGURATION.md`.
 - `SSL_CERT_FILE=<emulator ca.pem>` — the emulator serves HTTPS with a
   self-signed CA it writes next to its credentials.
@@ -43,7 +43,7 @@ for the emulator to serve. SigV4 request construction for both remains covered b
 unit tests in `src/core/catalog/rest.rs`.
 
 These tests need Docker and are skipped when it is unavailable. Override images
-with `BSDB_UC_IMAGE`, `BSDB_NESSIE_IMAGE`, `BSDB_HIVE_IMAGE`, `BSDB_POSTGRES_IMAGE`.
+with `BDB_UC_IMAGE`, `BDB_NESSIE_IMAGE`, `BDB_HIVE_IMAGE`, `BDB_POSTGRES_IMAGE`.
 """
 
 import json
@@ -66,21 +66,21 @@ import pytest
 
 import benodb as bsdb
 
-UC_IMAGE = os.environ.get("BSDB_UC_IMAGE", "unitycatalog/unitycatalog:latest")
+UC_IMAGE = os.environ.get("BDB_UC_IMAGE", "unitycatalog/unitycatalog:latest")
 NESSIE_IMAGE = os.environ.get(
-    "BSDB_NESSIE_IMAGE", "ghcr.io/projectnessie/nessie:0.105.5"
+    "BDB_NESSIE_IMAGE", "ghcr.io/projectnessie/nessie:0.105.5"
 )
-HIVE_IMAGE = os.environ.get("BSDB_HIVE_IMAGE", "apache/hive:4.0.0")
-POSTGRES_IMAGE = os.environ.get("BSDB_POSTGRES_IMAGE", "postgres:17")
-POLARIS_IMAGE = os.environ.get("BSDB_POLARIS_IMAGE", "apache/polaris:latest")
+HIVE_IMAGE = os.environ.get("BDB_HIVE_IMAGE", "apache/hive:4.0.0")
+POSTGRES_IMAGE = os.environ.get("BDB_POSTGRES_IMAGE", "postgres:17")
+POLARIS_IMAGE = os.environ.get("BDB_POLARIS_IMAGE", "apache/polaris:latest")
 POLARIS_CLIENT_ID = "root"
 POLARIS_CLIENT_SECRET = "s3cr3t"
 POLARIS_SCOPE = "PRINCIPAL_ROLE:ALL"
 
-AEMU_RELEASE = os.environ.get("BSDB_AWS_EMULATOR_RELEASE", "latest")
+AEMU_RELEASE = os.environ.get("BDB_AWS_EMULATOR_RELEASE", "latest")
 AEMU_CACHE = Path(
     os.environ.get(
-        "BSDB_AWS_EMULATOR_CACHE", Path(tempfile.gettempdir()) / "bsdb-aws-emulator"
+        "BDB_AWS_EMULATOR_CACHE", Path(tempfile.gettempdir()) / "bsdb-aws-emulator"
     )
 )
 
@@ -629,7 +629,7 @@ def test_polaris_catalog_roundtrip(polaris):
 def test_glue_data_catalog_roundtrip(aws_emulator, tmp_path, monkeypatch):
     """Glue Data Catalog through the AWS SDK, against the AWS Emulator.
 
-    Needs the loopback-only SSRF override (`BSDB_SSRF_ALLOW_HOSTS`) because the
+    Needs the loopback-only SSRF override (`BDB_SSRF_ALLOW_HOSTS`) because the
     emulator listens on 127.0.0.1.
     """
     port, key, secret, ca = aws_emulator
@@ -639,7 +639,7 @@ def test_glue_data_catalog_roundtrip(aws_emulator, tmp_path, monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("AWS_ENDPOINT_URL", f"https://127.0.0.1:{port}")
     monkeypatch.setenv("SSL_CERT_FILE", str(ca))
-    monkeypatch.setenv("BSDB_SSRF_ALLOW_HOSTS", "127.0.0.1")
+    monkeypatch.setenv("BDB_SSRF_ALLOW_HOSTS", "127.0.0.1")
 
     cat = bsdb.create_catalog("glue", {"region": "us-east-1"})
     _roundtrip(cat, "bsdb_prod", tmp_path / "glue_tbl")

@@ -131,14 +131,14 @@ impl ReaderCounters {
 
 /// Whether the reader is allowed to build a page skipping `RowSelection`.
 ///
-/// `BSDB_READER_SKIP=0` forces a full selection, which is the control arm for
+/// `BDB_READER_SKIP=0` forces a full selection, which is the control arm for
 /// the rerank I/O ablation: same quantizer, same projection, same candidate
 /// count, but every row group read to the end. Read once per process so a run
 /// cannot drift between arms mid pass.
 pub fn skip_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
-        std::env::var("BSDB_READER_SKIP")
+        std::env::var("BDB_READER_SKIP")
             .map(|value| value.trim() != "0")
             .unwrap_or(true)
     })

@@ -13,12 +13,12 @@
 //!   [`crate::core::memory`] and [`crate::core::table`]).
 //! - **Disk:** [`free_disk_bytes_for_new_file`] reports the free space on the
 //!   filesystem that will hold a new file, and [`min_free_disk_bytes`] resolves
-//!   the `BSDB_MIN_FREE_DISK_GB` admission threshold (default
+//!   the `BDB_MIN_FREE_DISK_GB` admission threshold (default
 //!   [`DEFAULT_MIN_FREE_DISK_GB`]). A flush is refused when a local table's
 //!   filesystem is below it, so the failure is a clear error *before* any bytes
 //!   are written rather than a partial segment mid-write.
 //! - **CPU:** the writer never runs unbounded. Segment index builds go through
-//!   `Table::index_build_gate` (`BSDB_INDEX_BUILD_CONCURRENCY`, memory-scaled)
+//!   `Table::index_build_gate` (`BDB_INDEX_BUILD_CONCURRENCY`, memory-scaled)
 //!   and parallel segment reads through a semaphore sized by
 //!   `auto_detect_parallel_readers`.
 //!
@@ -34,10 +34,10 @@ pub const FALLBACK_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// heap-trim budget.
 ///
 /// Deliberately a single knob: an operator who wants to run a query-heavy
-/// workload lowers this (or sets `BSDB_MAX_INGEST_RAM_GB`) rather than accepting
+/// workload lowers this (or sets `BDB_MAX_INGEST_RAM_GB`) rather than accepting
 /// a fixed split. Independent overrides remain available:
-/// `BSDB_MAX_INGEST_RAM_GB`, `BSDB_INGEST_MEMORY_BUDGET_GB`,
-/// `BSDB_DATAFUSION_MEMORY_GB`, `BSDB_INDEX_BUILD_CONCURRENCY`.
+/// `BDB_MAX_INGEST_RAM_GB`, `BDB_INGEST_MEMORY_BUDGET_GB`,
+/// `BDB_DATAFUSION_MEMORY_GB`, `BDB_INDEX_BUILD_CONCURRENCY`.
 pub const MEMORY_BUDGET_FRACTION: f64 = 0.8;
 
 /// Default minimum free disk space for local (`file://`) tables, in GiB.
@@ -210,17 +210,17 @@ pub fn default_memory_budget_bytes() -> u64 {
 /// Fraction of the effective memory used as the DataFusion query memory limit.
 ///
 /// An independent knob from the ingest budget: an operator who wants a larger
-/// query working set raises this (or sets `BSDB_DATAFUSION_MEMORY_GB`) rather
+/// query working set raises this (or sets `BDB_DATAFUSION_MEMORY_GB`) rather
 /// than having it derived from a fixed split.
 pub const DATAFUSION_MEMORY_FRACTION: f64 = 0.5;
 
 /// Default DataFusion query memory limit in bytes.
 ///
 /// Derived from the effective memory so SQL sorts/joins/aggregations spill to
-/// disk instead of OOMing. `BSDB_DATAFUSION_MEMORY_GB` overrides the derived
+/// disk instead of OOMing. `BDB_DATAFUSION_MEMORY_GB` overrides the derived
 /// default.
 pub fn default_datafusion_memory_bytes() -> u64 {
-    if let Some(gb) = std::env::var("BSDB_DATAFUSION_MEMORY_GB")
+    if let Some(gb) = std::env::var("BDB_DATAFUSION_MEMORY_GB")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|g| *g > 0.0)
@@ -338,10 +338,10 @@ pub fn free_disk_bytes_for_new_file(path: &std::path::Path) -> Option<u64> {
 /// Resolve the minimum-free-disk admission threshold in bytes.
 ///
 /// Defaults to [`DEFAULT_MIN_FREE_DISK_GB`]; override with
-/// `BSDB_MIN_FREE_DISK_GB`. A non-positive override is ignored so the guard is
+/// `BDB_MIN_FREE_DISK_GB`. A non-positive override is ignored so the guard is
 /// always active.
 pub fn min_free_disk_bytes() -> u64 {
-    let gb = std::env::var("BSDB_MIN_FREE_DISK_GB")
+    let gb = std::env::var("BDB_MIN_FREE_DISK_GB")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|g| *g > 0.0)
@@ -360,7 +360,7 @@ pub fn check_min_free_disk(path: &std::path::Path) -> Result<(), String> {
     };
     if free < min_bytes {
         return Err(format!(
-            "only {:.2} GB free on {} — below the BSDB_MIN_FREE_DISK_GB threshold ({:.2} GB)",
+            "only {:.2} GB free on {} — below the BDB_MIN_FREE_DISK_GB threshold ({:.2} GB)",
             free as f64 / 1e9,
             path.display(),
             min_bytes as f64 / 1e9
@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn min_free_disk_default_is_active() {
         // With no override the guard must still have a positive threshold.
-        if std::env::var("BSDB_MIN_FREE_DISK_GB").is_err() {
+        if std::env::var("BDB_MIN_FREE_DISK_GB").is_err() {
             assert_eq!(
                 min_free_disk_bytes(),
                 (DEFAULT_MIN_FREE_DISK_GB * 1024.0 * 1024.0 * 1024.0) as u64

@@ -2,6 +2,6 @@
 
 //! Reserved for future configuration helpers.
 //!
-//! Environment variables use the canonical `BSDB_` prefix directly; there are
+//! Environment variables use the canonical `BDB_` prefix directly; there are
 //! no legacy aliases. This module is intentionally not declared in
 //! [`crate::core`] and is not compiled.

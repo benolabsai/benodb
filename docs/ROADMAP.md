@@ -55,7 +55,7 @@ BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
 - **Ingest back-pressure liveness**:
   - The ingest RAM high-water mark is now baseline-relative (it bounds the
     engine's *growth* since the write began) with a bounded fail-open grace
-    (`BSDB_INGEST_BACKPRESSURE_GRACE_SECS`, default 60s), so a writer can no
+    (`BDB_INGEST_BACKPRESSURE_GRACE_SECS`, default 60s), so a writer can no
     longer block forever when process RSS is already at/above the cap for reasons
     the write cannot relieve.
 - **MCP Server (`contrib/benodb-mcp`)**:
@@ -228,7 +228,7 @@ Themes are ordered by priority.
 - [ ] **Out-of-core sidecars (mmap)** — 🟢 **Deferred**:
   - Extend the existing `MmapCsrGraph` pattern to the HNSW/BM25 sidecars: mmap
     the graph/postings, keep only the hot top-level (centroids, entry points)
-    resident, and page in on demand via `BSDB_DISK_CACHE_DIR`. This is the only
+    resident, and page in on demand via `BDB_DISK_CACHE_DIR`. This is the only
     way a sidecar can exceed host memory.
 
 ### Theme 4: Hardware-Accelerated CPU Distance Kernels via SimSIMD (ARM NEON, AVX-512, VNNI) — 🔴 **High**
@@ -316,8 +316,8 @@ Themes are ordered by priority.
     implement the trait directly against the broker's consumer-group offsets
     (broker is the queue), or keep `ObjectStoreCoordinator` as the lease
     authority and add a broker → queue enqueue bridge.
-  - **Config:** follow the `BSDB_` / `BSDB_SEARCH_` convention →
-    `BSDB_INGEST_*` (brokers, topics, group id, lease TTL, coordinator backend
+  - **Config:** follow the `BDB_` / `BDB_SEARCH_` convention →
+    `BDB_INGEST_*` (brokers, topics, group id, lease TTL, coordinator backend
     selection: `object-store` | `kafka` | `nats`).
   - **Deploy / docs:** a `deploy/` compose entry (Kafka/NATS alongside the
     RustFS/Nessie stack) and `docs/integrations/INGEST.md` + its

@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     benodb::core::telemetry::install_metrics_recorder();
 
     // Pin a GPU device or install a round-robin device pool for this process
-    // from BSDB_GPU_DEVICE / BENOSTREAM_GPU_DEVICE (e.g. "cuda:1" or
+    // from BDB_GPU_DEVICE / BENOSTREAM_GPU_DEVICE (e.g. "cuda:1" or
     // "cuda:0,cuda:1"), so vector search runs on the intended device(s)
     // without per-query plumbing.
     if let Some(dev) = benodb::core::index::gpu::apply_gpu_context_from_env() {
@@ -31,22 +31,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Base location used to derive `CREATE TABLE` URIs when the catalog does
     // not assign one.
-    if let Ok(warehouse) = std::env::var("BSDB_WAREHOUSE") {
+    if let Ok(warehouse) = std::env::var("BDB_WAREHOUSE") {
         session.set_warehouse(Some(warehouse));
     }
 
     // Optional external catalog (Nessie / REST / Glue / Hive / Unity / JDBC),
-    // loaded from BSDB_CONFIG, ./benostream.toml, or
-    // ~/.benostream/config.toml. Bound under BSDB_CATALOG_NAME (default: the
+    // loaded from BDB_CONFIG, ./benostream.toml, or
+    // ~/.benostream/config.toml. Bound under BDB_CATALOG_NAME (default: the
     // catalog type, e.g. "rest") so `CREATE TABLE <name>.<schema>.<table>`
     // mirrors into it.
     match benodb::core::catalog::CatalogConfig::load_default() {
         Ok(cfg) => {
             let catalog_type = cfg.catalog_type;
-            match benodb::core::catalog::create_catalog_async(catalog_type, cfg.config).await
-            {
+            match benodb::core::catalog::create_catalog_async(catalog_type, cfg.config).await {
                 Ok(catalog) => {
-                    let name = std::env::var("BSDB_CATALOG_NAME")
+                    let name = std::env::var("BDB_CATALOG_NAME")
                         .unwrap_or_else(|_| format!("{:?}", catalog_type).to_lowercase());
                     session.register_catalog(&name, Arc::from(catalog)).await;
                     println!("Registered external catalog as '{}'", name);
@@ -86,14 +85,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tonic::service::interceptor::InterceptorLayer::new(AuthInterceptor { auth: auth.clone() });
 
     // Default to loopback; expose externally only via an explicit bind.
-    let bind = std::env::var("BSDB_FLIGHT_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let bind = std::env::var("BDB_FLIGHT_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let is_loopback = |b: &str| b == "127.0.0.1" || b == "::1" || b == "localhost";
     if !is_loopback(&bind) && !auth.enabled() {
-        tracing::error!("Network-exposed bind address without authentication credentials! Set BSDB_API_KEY or JWT config.");
+        tracing::error!("Network-exposed bind address without authentication credentials! Set BDB_API_KEY or JWT config.");
         std::process::exit(1);
     }
 
-    let port: u16 = std::env::var("BSDB_FLIGHT_PORT")
+    let port: u16 = std::env::var("BDB_FLIGHT_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(50051);
@@ -162,7 +161,7 @@ impl tonic::service::Interceptor for AuthInterceptor {
     }
 }
 
-/// Spawn the HTTP observability server on `BSDB_METRICS_BIND:BSDB_METRICS_PORT`
+/// Spawn the HTTP observability server on `BDB_METRICS_BIND:BDB_METRICS_PORT`
 /// (default `127.0.0.1:9090`), serving `/metrics`, `/health`, and `/readyz`.
 fn spawn_observability_server() {
     let addr = benodb::core::telemetry::metrics_addr();

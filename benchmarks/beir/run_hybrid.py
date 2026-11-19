@@ -607,12 +607,12 @@ def main():
     # In the GPU pass, select the GPU backend for BenoDB so the run is a
     # real GPU run rather than a CPU run that merely happened inside the GPU
     # container. `auto` picks the best available device; override with
-    # BSDB_GPU_DEVICE (e.g. `cuda:1`).
+    # BDB_GPU_DEVICE (e.g. `cuda:1`).
     if args.device == "gpu":
         try:
             import benodb as bsdb
 
-            resolved = bsdb.set_gpu_device(os.environ.get("BSDB_GPU_DEVICE", "auto"))
+            resolved = bsdb.set_gpu_device(os.environ.get("BDB_GPU_DEVICE", "auto"))
             print(f"BenoDB GPU backend: {resolved}", flush=True)
         except Exception as exc:  # no GPU / no wheel: fall back to CPU
             print(f"GPU device selection failed ({exc}); using CPU", flush=True)

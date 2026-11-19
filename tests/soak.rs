@@ -5,7 +5,7 @@
 //! Ignored by default so `cargo test` stays fast. Run explicitly:
 //!
 //! ```bash
-//! BSDB_SOAK_SECONDS=600 cargo test --test soak -- --ignored --nocapture
+//! BDB_SOAK_SECONDS=600 cargo test --test soak -- --ignored --nocapture
 //! ```
 //!
 //! The assertion is deliberately blunt — the point is that a multi-minute mixed
@@ -72,12 +72,12 @@ fn rss_bytes() -> Option<u64> {
     None
 }
 
-/// The soak's RSS ceiling in bytes (`BSDB_SOAK_RSS_CEILING_GB`, default 8 GiB).
+/// The soak's RSS ceiling in bytes (`BDB_SOAK_RSS_CEILING_GB`, default 8 GiB).
 ///
 /// The soak must degrade gracefully (throttle/trim) rather than grow until the
 /// OS OOM-kills it — this is the memory half of the "no process death" bar.
 fn rss_ceiling_bytes() -> u64 {
-    std::env::var("BSDB_SOAK_RSS_CEILING_GB")
+    std::env::var("BDB_SOAK_RSS_CEILING_GB")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|gb| *gb > 0.0)
@@ -86,9 +86,9 @@ fn rss_ceiling_bytes() -> u64 {
 }
 
 #[tokio::test]
-#[ignore = "soak test; run with `-- --ignored` and BSDB_SOAK_SECONDS"]
+#[ignore = "soak test; run with `-- --ignored` and BDB_SOAK_SECONDS"]
 async fn mixed_workload_soak() {
-    let secs: u64 = std::env::var("BSDB_SOAK_SECONDS")
+    let secs: u64 = std::env::var("BDB_SOAK_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
@@ -176,15 +176,15 @@ async fn visible_rows(table: &Table) -> usize {
 ///
 /// `tests/test_maintenance_invariant.rs` is the fast, per-PR version of these
 /// invariants. This is the long-duration version: under sustained churn for
-/// `BSDB_SOAK_SECONDS`, the table must never lose committed rows, never return
+/// `BDB_SOAK_SECONDS`, the table must never lose committed rows, never return
 /// a deleted row from a vector query, and never panic. It is `#[ignore]`d and
 /// wired into the weekly `.github/workflows/soak.yml` job.
 #[tokio::test]
-#[ignore = "soak test; run with `-- --ignored` and BSDB_SOAK_SECONDS"]
+#[ignore = "soak test; run with `-- --ignored` and BDB_SOAK_SECONDS"]
 async fn maintenance_churn_soak() {
     use benodb::core::index::VectorValue;
 
-    let secs: u64 = std::env::var("BSDB_SOAK_SECONDS")
+    let secs: u64 = std::env::var("BDB_SOAK_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);

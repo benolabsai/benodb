@@ -47,7 +47,7 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 > ## 🔒 Security & Warehouse Catalog Policy
 >
 > **1. Stateless Authentication & RBAC**:
-> Both `benodb-flight` and `bsdb-search` support stateless authentication via static API keys (`BSDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
+> Both `benodb-flight` and `bsdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
 >
 > **2. Authoritative Warehouse Catalog Policy (`.benostream-policy.json`)**:
 > Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benostream-policy.json`) and managed directly from the core database product:
@@ -350,7 +350,7 @@ print(table.properties()["benostream.embedding.model"])
 
 When vectors come from an HTTP service, record the provider and endpoint too. Credentials are
 deliberately not stored in table metadata; the MCP server reads the key from
-`BSDB_EMBEDDING_API_KEY`:
+`BDB_EMBEDDING_API_KEY`:
 
 ```python
 table.set_properties({
@@ -372,7 +372,7 @@ dimensions match. A single MCP process has one active embedding configuration; r
 instances for simultaneous providers, or compute vectors in the application and pass them in.
 
 Credentials are supplied by the runtime, never by the table: `benostream.embedding.*` stores only the
-contract. Run one MCP process per provider with its own `BSDB_EMBEDDING_API_KEY`, or put a
+contract. Run one MCP process per provider with its own `BDB_EMBEDDING_API_KEY`, or put a
 credential-multiplexing gateway in front and give MCP a single endpoint/key. Prefer the environment
 variable over a literal `embedding.api_key` in JSON.
 
@@ -386,7 +386,7 @@ variable over a literal `embedding.api_key` in JSON.
   into a new table to change models.
 - Legacy tables without provenance may adopt it once; after that the declared space is immutable.
 - `FixedSizeList` columns are validated from the schema on every write. Set
-  `BSDB_VALIDATE_EMBEDDINGS=strict` to also scan `List`/stringified vectors row by row.
+  `BDB_VALIDATE_EMBEDDINGS=strict` to also scan `List`/stringified vectors row by row.
 
 Model identity cannot be inferred from a vector: the property is the contract. Writes that bypass both
 the engine and the catalog (direct Parquet/object-store mutation) remain outside the guard.
@@ -513,6 +513,37 @@ LIMIT 10;
 > ```
 
 See [pgvector SQL Guide](https://benolabsai.com/docs/guides/pgvector_sql_guide.html) for complete documentation and conversion guide.
+
+### Command-Line Interface (`bsql` & `bdb`)
+
+BenoDB installs two developer-facing CLI binaries via `pip install benodb`:
+
+1. **`bsql` — Interactive SQL Terminal & Query Runner**:
+   Analogous to `psql` for PostgreSQL, `bsql` provides an in-process interactive terminal and command-line query executor directly over Apache Iceberg tables and Parquet files with native pgvector syntax:
+   ```bash
+   # Launch interactive SQL REPL
+   bsql
+
+   # Query an Iceberg table directly from the terminal
+   bsql -t docs=s3://my-warehouse/tables/documents \
+        -c "SELECT id, title, embedding <=> '[0.12, 0.45, ...]' AS dist FROM docs ORDER BY dist LIMIT 5;"
+
+   # Execute a SQL script file with custom output formatting (table, csv, json, arrow)
+   bsql -f query.sql --format json
+   ```
+
+2. **`bdb` — Administrative Management CLI**:
+   Administrative CLI (aliased to `benodb`) for service control, maintenance, and background nodes:
+   ```bash
+   # Check version and status
+   bdb --version
+
+   # Install search node background daemon (systemd / launchd)
+   sudo bdb install-service
+
+   # Query via embedded SQL runner
+   bdb sql -c "SELECT 42 AS status;"
+   ```
 
 ### Basic Usage
 
@@ -835,11 +866,11 @@ stats = table.preload_indexes(max_memory_bytes=8 * 1024**3)
 ```
 
 Indexes are warmed into RAM until `max_memory_bytes` is exhausted; the
-remainder **spills into the mmap disk cache** (`BSDB_DISK_CACHE_DIR`,
+remainder **spills into the mmap disk cache** (`BDB_DISK_CACHE_DIR`,
 `MADV_RANDOM`) for out-of-core serving. The bounded caches evict by
 LRU/TinyLFU + TTI, so overflow evicts the least-recently-used entries. The
 `benostream-search` gateway calls this on open, controlled by
-`BSDB_SEARCH_PRELOAD` (default on) and `BSDB_SEARCH_PRELOAD_GB` (default 4 GiB).
+`BDB_SEARCH_PRELOAD` (default on) and `BDB_SEARCH_PRELOAD_GB` (default 4 GiB).
 
 ## 🔌 Connectors
 
@@ -1014,9 +1045,9 @@ Both APIs are hosted concurrently from a single binary, share the same `AppState
 
 ```bash
 cargo build --release -p benodb-search --bin bsdb-search
-BSDB_SEARCH_BIND=127.0.0.1 BSDB_SEARCH_PORT=9200 ./target/release/bsdb-search
+BDB_SEARCH_BIND=127.0.0.1 BDB_SEARCH_PORT=9200 ./target/release/bsdb-search
 
-# Or during development (defaults: BSDB_SEARCH_PORT=9200, BSDB_QDRANT_PORT=6333)
+# Or during development (defaults: BDB_SEARCH_PORT=9200, BDB_QDRANT_PORT=6333)
 cargo run -p benodb-search
 
 # Index + search (ES 7.10 wire format)

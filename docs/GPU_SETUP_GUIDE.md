@@ -367,7 +367,7 @@ bsdb.set_gpu_device_pool("")
 For Flight SQL, MCP, and other server processes, use the same list:
 
 ```bash
-BSDB_GPU_DEVICE="cuda:0,cuda:1" benodb-flight
+BDB_GPU_DEVICE="cuda:0,cuda:1" benodb-flight
 ```
 
 The pool is **concurrency scaling**, not single-query sharding: each worker thread is assigned one

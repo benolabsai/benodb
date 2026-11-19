@@ -134,7 +134,7 @@ pub(crate) fn validate_embedding_property_transition(
 ///
 /// Default cost is O(fields): only `FixedSizeList` dimensions are checked.
 /// `List` and stringified vectors require the opt-in
-/// `BSDB_VALIDATE_EMBEDDINGS=strict` mode, which scans every row. Model
+/// `BDB_VALIDATE_EMBEDDINGS=strict` mode, which scans every row. Model
 /// identity is intentionally never checked: a vector carries no model id.
 pub(crate) fn validate_embedding_batches(
     table_uri: &str,

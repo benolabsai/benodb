@@ -3,22 +3,22 @@
 """Fixtures and gating for the soak / stress suite.
 
 These tests intentionally saturate memory, CPU, and disk I/O, so they take
-minutes and are **skipped unless `BSDB_STRESS=1`**. That keeps the normal
+minutes and are **skipped unless `BDB_STRESS=1`**. That keeps the normal
 `pytest tests/` CI run (and a developer's quick run) fast, while the nightly
 `soak` workflow runs them at full length.
 
 Environment:
-  BSDB_STRESS                set to "1" to enable this directory
-  BSDB_SOAK_SECONDS          wall-clock budget for the mixed soak (default 30)
-  BSDB_STRESS_RSS_CEILING_GB RSS ceiling asserted by the soak (default 16)
+  BDB_STRESS                set to "1" to enable this directory
+  BDB_SOAK_SECONDS          wall-clock budget for the mixed soak (default 30)
+  BDB_STRESS_RSS_CEILING_GB RSS ceiling asserted by the soak (default 16)
 """
 
 import os
 
 import pytest
 
-BSDB_STRESS = os.environ.get("BSDB_STRESS") == "1"
-DEFAULT_RSS_CEILING_GB = float(os.environ.get("BSDB_STRESS_RSS_CEILING_GB", "16"))
+BDB_STRESS = os.environ.get("BDB_STRESS") == "1"
+DEFAULT_RSS_CEILING_GB = float(os.environ.get("BDB_STRESS_RSS_CEILING_GB", "16"))
 
 
 def pytest_collection_modifyitems(config, items):
@@ -28,10 +28,10 @@ def pytest_collection_modifyitems(config, items):
     skip must be scoped by path — otherwise this hook silently disables every
     test in the run (which is exactly what it used to do).
     """
-    if BSDB_STRESS:
+    if BDB_STRESS:
         return
     stress_dir = os.path.dirname(os.path.abspath(__file__))
-    skip = pytest.mark.skip(reason="soak/stress suite; set BSDB_STRESS=1 to run")
+    skip = pytest.mark.skip(reason="soak/stress suite; set BDB_STRESS=1 to run")
     for item in items:
         item_path = str(item.path) if hasattr(item, "path") else str(item.fspath)
         if os.path.abspath(item_path).startswith(stress_dir):
@@ -40,7 +40,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def soak_seconds() -> float:
-    return float(os.environ.get("BSDB_SOAK_SECONDS", "30"))
+    return float(os.environ.get("BDB_SOAK_SECONDS", "30"))
 
 
 @pytest.fixture(scope="session")

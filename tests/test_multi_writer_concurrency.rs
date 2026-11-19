@@ -536,7 +536,7 @@ async fn multi_writer_insert_delete_is_exact() -> Result<()> {
 }
 
 /// Long-duration multi-writer soak: N writers churn a shared store for
-/// `BSDB_SOAK_SECONDS`, and the final state must be a valid serialization with
+/// `BDB_SOAK_SECONDS`, and the final state must be a valid serialization with
 /// no torn snapshots and no orphaned-but-referenced artifacts.
 ///
 /// This is the WS3 counterpart to `tests/soak.rs`: the fast
@@ -556,9 +556,9 @@ fn rss_bytes() -> Option<u64> {
 }
 
 #[tokio::test]
-#[ignore = "soak test; run with `-- --ignored` and BSDB_SOAK_SECONDS"]
+#[ignore = "soak test; run with `-- --ignored` and BDB_SOAK_SECONDS"]
 async fn multi_writer_soak() -> Result<()> {
-    let secs: u64 = std::env::var("BSDB_SOAK_SECONDS")
+    let secs: u64 = std::env::var("BDB_SOAK_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
@@ -744,7 +744,7 @@ async fn distributed_lock_mutual_exclusion() -> Result<()> {
 ///   AWS_ACCESS_KEY_ID=rustfsadmin
 ///   AWS_SECRET_ACCESS_KEY=rustfsadmin
 ///   AWS_REGION=us-east-1
-///   BSDB_TEST_S3_BUCKET=mstar-staging
+///   BDB_TEST_S3_BUCKET=mstar-staging
 #[tokio::test]
 async fn s3_shared_store_multi_writer_no_lost_updates() -> Result<()> {
     if std::env::var("AWS_ENDPOINT_URL").is_err() {
@@ -752,7 +752,7 @@ async fn s3_shared_store_multi_writer_no_lost_updates() -> Result<()> {
         return Ok(());
     }
     let bucket =
-        std::env::var("BSDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
+        std::env::var("BDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
     let prefix = format!(
         "ws3-{}",
         std::time::SystemTime::now()
@@ -811,7 +811,7 @@ async fn s3_full_lifecycle_round_trip() -> Result<()> {
         return Ok(());
     }
     let bucket =
-        std::env::var("BSDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
+        std::env::var("BDB_TEST_S3_BUCKET").unwrap_or_else(|_| "mstar-staging".to_string());
     let prefix = format!(
         "ws3-lifecycle-{}",
         std::time::SystemTime::now()

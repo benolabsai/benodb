@@ -7,9 +7,9 @@ BenoDB is designed around a strict separation of **authoritative state** (Iceber
 ## Recovery Objectives
 
 ### RPO (Recovery Point Objective)
-BenoDB’s RPO depends entirely on your configured `WalDurability` setting (`BSDB_WAL_DURABILITY` / `TableBuilder::with_durability`):
-- **`WalDurability::Sync` (`"sync"`, Default)**: **RPO = 0**. Every acknowledged write waits for `fdatasync` (`File::sync_data`, falling back to `File::sync_all`) on the WAL segment before the caller receives `Ok`. Failed syncs return an error to the caller. Note: for `s3://`, `gs://`, or `az://` tables, configure a persistent local volume via `BSDB_WAL_DIR` or `TableBuilder::with_wal_dir()`; otherwise the WAL defaults to temporary local storage (`/tmp/benostream_wal/...`) and logs a startup warning.
-- **`WalDurability::Async` (`"async"`)**: **RPO <= sync window**. Batches are handed to the WAL worker channel without blocking for `fdatasync`; the worker syncs every `BSDB_WAL_SYNC_BATCH_SIZE` (`10` batches) or `BSDB_WAL_SYNC_INTERVAL_MS` (`100` ms). Writes buffered inside the un-synced window are lost on hard termination.
+BenoDB’s RPO depends entirely on your configured `WalDurability` setting (`BDB_WAL_DURABILITY` / `TableBuilder::with_durability`):
+- **`WalDurability::Sync` (`"sync"`, Default)**: **RPO = 0**. Every acknowledged write waits for `fdatasync` (`File::sync_data`, falling back to `File::sync_all`) on the WAL segment before the caller receives `Ok`. Failed syncs return an error to the caller. Note: for `s3://`, `gs://`, or `az://` tables, configure a persistent local volume via `BDB_WAL_DIR` or `TableBuilder::with_wal_dir()`; otherwise the WAL defaults to temporary local storage (`/tmp/benostream_wal/...`) and logs a startup warning.
+- **`WalDurability::Async` (`"async"`)**: **RPO <= sync window**. Batches are handed to the WAL worker channel without blocking for `fdatasync`; the worker syncs every `BDB_WAL_SYNC_BATCH_SIZE` (`10` batches) or `BDB_WAL_SYNC_INTERVAL_MS` (`100` ms). Writes buffered inside the un-synced window are lost on hard termination.
 
 ### RTO (Recovery Time Objective)
 - **Data Availability**: **Seconds**. On startup, BenoDB reads the latest manifest (`_manifest/v{N}.json`), replays uncommitted records from the segmented WAL while skipping any `benostream:tx_id` already present in the manifest property `benostream.committed_wal_tx`, and immediately resumes queries (falling back to Parquet scans while secondary indexes rebuild).
@@ -25,7 +25,7 @@ Because Iceberg/Parquet in the object store is the authoritative source of truth
 **Action:**
 1. Provision a new compute node.
 2. Ensure the node has IAM/network access to the backing object store (S3/GCS/Azure).
-3. Start the BenoDB process pointing to the existing URI (with `BSDB_WAL_DIR` pointing to persistent local WAL storage if present):
+3. Start the BenoDB process pointing to the existing URI (with `BDB_WAL_DIR` pointing to persistent local WAL storage if present):
    ```rust
    let table = Table::new_async("s3://my-bucket/my-table").await?;
    ```
@@ -35,7 +35,7 @@ Because Iceberg/Parquet in the object store is the authoritative source of truth
 
 ## 2. WAL Recovery Procedure
 
-The Write-Ahead Log (`_wal/` by default for local tables, or `BSDB_WAL_DIR` for remote URIs) stores durable writes in rotated Arrow IPC stream segments named `log_<timestamp>_<pid>_<seq>.arrow` until the transaction commits to a manifest and watermark pruning removes the sealed file (`prune_committed_segments`).
+The Write-Ahead Log (`_wal/` by default for local tables, or `BDB_WAL_DIR` for remote URIs) stores durable writes in rotated Arrow IPC stream segments named `log_<timestamp>_<pid>_<seq>.arrow` until the transaction commits to a manifest and watermark pruning removes the sealed file (`prune_committed_segments`).
 
 ### Automatic Startup Recovery (Standard Crashes & Torn Tails)
 
@@ -49,7 +49,7 @@ In most crash scenarios (`SIGKILL`, power loss mid-append, or crash between mani
 
 **Action:**
 BenoDB refuses silent data truncation when mid-stream corruption is detected inside a non-EOF record. To restore table availability by quarantining only the damaged segment:
-1. Inspect startup logs for the failing segment path (under `[table_uri]/_wal/` or `$BSDB_WAL_DIR`).
+1. Inspect startup logs for the failing segment path (under `[table_uri]/_wal/` or `$BDB_WAL_DIR`).
 2. Inspect the directory (`ls -la` sorted chronologically; filenames encode nanosecond timestamps and sequence numbers). Keep all undamaged segments in place.
 3. Quarantine only the failing segment outside the WAL directory:
    ```bash

@@ -42,9 +42,9 @@ import pyarrow.parquet as pq
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Dumps (raw XML, parsed parquets, embedding shards) live on the 14 TB HDD by
 # default so they never fill the root disk. Override with --dumps-dir or
-# BSDB_DATA.
+# BDB_DATA.
 DATA = os.environ.get(
-    "BSDB_DATA",
+    "BDB_DATA",
     os.path.join(os.path.expanduser("~"), "data", "benodb"),
 )
 EMB = os.path.join(DATA, "embeddings")
@@ -258,7 +258,7 @@ def stage_embed(model: str, dims: int, batch: int, lead_chars: int = 256):
 
     # Rotate shards every SHARD_ROWS so the load stage can delete each shard
     # after ingesting it (bounds peak disk); tmp+rename keeps files atomic.
-    SHARD_ROWS = int(os.environ.get("BSDB_EMBED_SHARD_ROWS", 5_000_000))
+    SHARD_ROWS = int(os.environ.get("BDB_EMBED_SHARD_ROWS", 5_000_000))
     shard = len(done_shards)          # continue numbering after finished shards
     writer = None
     cur_tmp = cur_final = None
@@ -349,7 +349,7 @@ def _load_nodes_child(quant, delete_shards, row_start, row_end):
 
     The library now bounds its own footprint too (see `core::table::mod` and
     `core::memory`): concurrent index builds are gated by
-    ``BSDB_INDEX_BUILD_CONCURRENCY`` (default 2) and the heap is trimmed at flush
+    ``BDB_INDEX_BUILD_CONCURRENCY`` (default 2) and the heap is trimmed at flush
     and build boundaries. Chunking remains the demo's belt-and-braces reset.
     """
     import benodb as bsdb
@@ -454,7 +454,7 @@ def _resume_offset(loaded: int, chunk_rows: int) -> int:
     """Row offset to resume a chunked load from.
 
     Writes are NOT chunk-atomic: the engine spills to a real commit whenever the
-    write buffer exceeds ``BSDB_CACHE_GB`` (default 1 GB), so a killed
+    write buffer exceeds ``BDB_CACHE_GB`` (default 1 GB), so a killed
     chunk leaves partial rows committed. Resuming from the exact committed count
     avoids re-writing (and duplicating) those rows. ``chunk_rows`` is accepted
     for call-site clarity but deliberately not used to round down.
@@ -502,7 +502,7 @@ def stage_load(rebuild: bool, quant: str, delete_shards: bool,
 
     # Resume from the EXACT committed row count. Chunks are NOT atomic: the
     # write path spills to a real commit whenever the buffer exceeds
-    # BSDB_CACHE_GB (default 1 GB), so a killed chunk leaves partial rows
+    # BDB_CACHE_GB (default 1 GB), so a killed chunk leaves partial rows
     # committed. Rounding down to the chunk boundary would re-write those rows
     # and duplicate them, so continue from `loaded` itself.
     loaded = 0
@@ -630,10 +630,10 @@ def main():
         elif s == "embed":
             stage_embed(args.embed_model, args.embed_dims, args.embed_batch, args.lead_chars)
         elif s == "load":
-            # precedence: --load-chunk-rows flag > BSDB_LOAD_CHUNK_ROWS env > RAM auto-size
+            # precedence: --load-chunk-rows flag > BDB_LOAD_CHUNK_ROWS env > RAM auto-size
             chunk = args.load_chunk_rows
             if chunk is None:
-                env = os.environ.get("BSDB_LOAD_CHUNK_ROWS", "").strip()
+                env = os.environ.get("BDB_LOAD_CHUNK_ROWS", "").strip()
                 chunk = int(env) if env else _auto_chunk_rows()
             if not args.row_start:  # parent only (children pass explicit ranges)
                 inputs = os.path.getsize(os.path.join(DATA, "wiki_nodes.parquet"))

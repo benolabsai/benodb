@@ -737,7 +737,7 @@ async fn create_table(session: &BenoStreamSession, ct: &CreateTable, raw_sql: &s
         })
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no location for '{}': set BSDB_WAREHOUSE or use CREATE TABLE ... LOCATION",
+                "no location for '{}': set BDB_WAREHOUSE or use CREATE TABLE ... LOCATION",
                 full
             )
         })?;

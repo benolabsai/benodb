@@ -14,8 +14,8 @@ reverse proxy that terminates TLS.
   to an untrusted network.
 - Bind to `127.0.0.1` (the default for the metrics listener, the search
   gateway, and Flight SQL) or an internal interface only.
-- Set `BSDB_API_KEY` (or a JWT secret/public key) and, for a hardened
-  deployment, `BSDB_AUTH_REQUIRED=1` to fail closed.
+- Set `BDB_API_KEY` (or a JWT secret/public key) and, for a hardened
+  deployment, `BDB_AUTH_REQUIRED=1` to fail closed.
 - Put a TLS-terminating reverse proxy (mTLS, OAuth2, or your platform's
   identity-aware proxy) in front of every listener.
 - Treat the embedded library (Python/Rust) as in-process code: it inherits the
