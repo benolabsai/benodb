@@ -167,6 +167,7 @@ jobs:
         with:
           cuda: "13.0.2"
           method: "network"
+          sub-packages: '["nvcc", "cudart-dev"]'
 
       - name: Prep CUDA Stubs
         run: |
@@ -608,7 +609,7 @@ jobs:
           set -o pipefail
           log="${RUNNER_TEMP}/mvn-trino.log"
           for attempt in 1 2 3; do
-            if mvn -B \
+            if mvn -B -U \
                  -Dmaven.wagon.http.retryHandler.count=5 \
                  -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
                  test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
@@ -616,6 +617,7 @@ jobs:
             fi
             if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
+              rm -rf ~/.m2/repository/io/trino ~/.m2/repository/io/airlift ~/.m2/repository/io/opentelemetry
               sleep 20
               continue
             fi
@@ -634,7 +636,7 @@ jobs:
           set -o pipefail
           log="${RUNNER_TEMP}/mvn-spark.log"
           for attempt in 1 2 3; do
-            if mvn -B \
+            if mvn -B -U \
                  -Dmaven.wagon.http.retryHandler.count=5 \
                  -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
                  clean test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
@@ -642,6 +644,7 @@ jobs:
             fi
             if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
+              rm -rf ~/.m2/repository/org/apache/spark ~/.m2/repository/org/apache/iceberg
               sleep 20
               continue
             fi

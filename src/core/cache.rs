@@ -435,12 +435,7 @@ impl DiskCache {
         let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
         // Caller chooses the policy: `Random` for structures that are expected
         // to be resident, `WillNeed` for index containers that will not fit.
-        #[cfg(unix)]
-        let _ = mmap.advise(if prefetch {
-            memmap2::Advice::WillNeed
-        } else {
-            memmap2::Advice::Random
-        });
+        apply_mmap_prefetch_policy(&mmap, prefetch);
         Ok(Arc::new(mmap))
     }
 
@@ -516,14 +511,51 @@ impl DiskCache {
         // MADV_RANDOM disables readahead so only the pages actually touched
         // are faulted in — this is what makes mmap-backed (out-of-core)
         // vector/graph search cache-efficient on memory-constrained hosts.
-        #[cfg(unix)]
-        let _ = mmap.advise(if prefetch {
-            memmap2::Advice::WillNeed
-        } else {
-            memmap2::Advice::Random
-        });
+        apply_mmap_prefetch_policy(&mmap, prefetch);
         Ok(Arc::new(mmap))
     }
+}
+
+/// Applies an OS-native proactive readahead or random-access paging policy to a mapped file.
+///
+/// On Unix, uses `madvise` with `MADV_WILLNEED` (prefetch) or `MADV_RANDOM`.
+/// On Windows, invokes `PrefetchVirtualMemory` for the mapped address range when prefetch is requested.
+fn apply_mmap_prefetch_policy(mmap: &memmap2::Mmap, prefetch: bool) {
+    #[cfg(unix)]
+    let _ = mmap.advise(if prefetch {
+        memmap2::Advice::WillNeed
+    } else {
+        memmap2::Advice::Random
+    });
+
+    #[cfg(windows)]
+    if prefetch {
+        #[repr(C)]
+        struct WIN32_MEMORY_RANGE_ENTRY {
+            virtual_address: *mut std::ffi::c_void,
+            number_of_bytes: usize,
+        }
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn PrefetchVirtualMemory(
+                h_process: *mut std::ffi::c_void,
+                number_of_entries: usize,
+                virtual_addresses: *const WIN32_MEMORY_RANGE_ENTRY,
+                flags: u32,
+            ) -> i32;
+        }
+        let entry = WIN32_MEMORY_RANGE_ENTRY {
+            virtual_address: mmap.as_ptr() as *mut std::ffi::c_void,
+            number_of_bytes: mmap.len(),
+        };
+        unsafe {
+            let proc = GetCurrentProcess();
+            let _ = PrefetchVirtualMemory(proc, 1, &entry, 0);
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    let _ = prefetch;
 }
 
 // Cache Keys

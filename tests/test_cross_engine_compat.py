@@ -248,7 +248,13 @@ class TestTrinoCompatibility:
             schema="default",
         )
         cur = conn.cursor()
-        # A filesystem catalog names the table after its directory.
+        cur.execute("CREATE SCHEMA IF NOT EXISTS iceberg.default")
+        try:
+            cur.execute(
+                f"CALL iceberg.system.register_table(schema_name => 'default', table_name => 'trino_test_table', table_location => '{self.table_path}')"
+            )
+        except Exception:
+            pass
         cur.execute('SELECT count(*) FROM iceberg.default."trino_test_table"')
         (count,) = cur.fetchone()
         assert count == 500, f"Trino saw {count} rows, expected 500"
