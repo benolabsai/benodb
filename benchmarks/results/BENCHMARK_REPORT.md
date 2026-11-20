@@ -1,6 +1,6 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-20 22:37:00 UTC
+- **Generated At**: 2026-11-20 22:38:33 UTC
 - **Engine version**: 0.16.0
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
