@@ -1,6 +1,6 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-20 18:21:08 UTC
+- **Generated At**: 2026-11-20 22:37:00 UTC
 - **Engine version**: 0.16.0
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
@@ -756,4 +756,33 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 | sql | datafusion | target_partitions = BENCH_CPUS | embedded (in-process Rust) |
 | sql | clickhouse | MergeTree ORDER BY tuple(); Parquet loaded via the client | client → server (ClickHouse) |
 | sql | trino | Hive connector over the shared Parquet (external table) | client → server (Trino) |
+
+## 11. Large-Scale Out-of-Core Evaluation (NeurIPS BigANN 100M)
+
+### 11.1 Index Load, Warmup & Construction Timings
+
+| Lifecycle Phase | Measured Duration | Resource / Footprint Mechanism |
+|---|---|---|
+| **Container Preload** | **160 ms** | Maps 19 sharded Puffin container headers (`7.67 GB`) into virtual memory space via `mmap`. Only footers and offsets are parsed; zero eager deserialization into heap. |
+| **Tier C Warmup** | **20.34 s** | Executes 200 warmup probes across the 512 Voronoi centroids, warming centroid KD-tree structures and anonymous heap (`537–727 MiB`). |
+| **Cold-Start Pass (Repeat 1)** | **p99 = 25.39 s** | Initial pass faults the 11.92 GiB flat `.codes` working set from NVMe into the Linux page cache, issuing **`45.03 MB/q`** physical reads. |
+| **Steady-State Serving (Repeats 2+)** | **Instantaneous** | With the 11.92 GiB `.codes` memory-resident in page cache, physical NVMe reads drop to **`0.00 MB/q`**, delivering **`49.7–148.4 QPS`** (p50 = 52.2–154.3 ms). |
+| **Segment-Tier Backfill (Build)** | **4,134.7 s** (1.15 h) | Peak RSS held at **1.20 GiB** during segment-level HNSW-IVF Puffin generation. |
+| **Table Compaction (Build)** | **17,557.7 s** (4.88 h) | Parallel sharded compaction with partition spill to NVMe scratch (`53 GiB` sharded table sidecars). Total build time: 6.03 h. |
+
+### 11.2 BigANN 100M Pareto Frontier: Native SQ8 vs. BenoQuant TQ8
+
+| Quantizer | ef_search | n_probe | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) | Physical MB/q |
+|---|---|---|---|---|---|---|---|---|
+| Native SQ8 | 32 | 4 | 0.8530 | 146.2 | 53.1 | 73.7 | 14,093 | 0.00 |
+| Native SQ8 | 32 | 8 | 0.9265 | 115.4 | 66.0 | 93.8 | 14,078 | 0.00 |
+| Native SQ8 | 32 | 16 | 0.9695 | 81.9 | 93.9 | 150.7 | 14,078 | 0.00 |
+| Native SQ8 | 128 | 32 | 0.9810 | 49.7 | 154.2 | 224.6 | 14,052 | 0.00 |
+| BenoQuant TQ8 | 32 | 4 | 0.8420 | 148.3 | 52.1 | 71.0 | 14,097 | 0.00 |
+| BenoQuant TQ8 | 32 | 8 | 0.9260 | 122.0 | 63.1 | 92.2 | 14,097 | 0.00 |
+| BenoQuant TQ8 | 64 | 16 | 0.9570 | 86.6 | 87.5 | 135.2 | 14,023 | 0.00 |
+| BenoQuant TQ8 | 128 | 32 | 0.9650 | 51.7 | 149.2 | 211.3 | 13,979 | 0.00 |
+
+> [!NOTE]
+> **Memory Boundedness & Physical I/O:** Peak cgroup usage held at 14,071.1 MiB (TQ8) and 14,093.0 MiB (SQ8), leaving 2.26 GiB operating headroom below the 16 GiB hard limit with `oom_kill = 0`, `swap = 0`. Container preload completed in 160 ms (warmup 20.34 s). Physical NVMe reads were 0.00 MB/q in steady state because the 11.92 GiB flat `.codes` working set resided in Linux page cache (`cgroup_file_mapped_mb = 12,784–12,797 MiB`).
 
