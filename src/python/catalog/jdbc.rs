@@ -24,9 +24,12 @@ impl PyJdbcCatalog {
         catalog_name: Option<String>,
     ) -> PyResult<Self> {
         let catalog_name = catalog_name.unwrap_or_else(|| "default".to_string());
+        // `{e:#}` renders the whole anyhow chain; `e.to_string()` would print only
+        // the outer context and hide the driver cause (refused connection, bad
+        // credentials, missing database) that identifies the fault.
         let client = TOKIO_RUNTIME
             .block_on(async { JdbcCatalogClient::new(uri, warehouse, catalog_name).await })
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err((e.to_string(),)))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err((format!("{e:#}"),)))?;
 
         Ok(PyJdbcCatalog {
             client: Arc::new(client),

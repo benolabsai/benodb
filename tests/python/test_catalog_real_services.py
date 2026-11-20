@@ -77,6 +77,10 @@ POLARIS_CLIENT_ID = "root"
 POLARIS_CLIENT_SECRET = "s3cr3t"
 POLARIS_SCOPE = "PRINCIPAL_ROLE:ALL"
 
+POSTGRES_USER = "postgres"
+POSTGRES_PASSWORD = "bdb"
+POSTGRES_DB = "catalog"
+
 AEMU_RELEASE = os.environ.get("BDB_AWS_EMULATOR_RELEASE", "latest")
 AEMU_CACHE = Path(
     os.environ.get(
@@ -304,18 +308,47 @@ def _wait_hive(url: str, timeout_s: int = 300) -> None:
 
 
 def _wait_pg(container: str, timeout_s: int = 120) -> None:
-    """Poll `pg_isready`; the listening socket exists before the DB accepts."""
+    """Poll until PostgreSQL answers an authenticated query over TCP.
+
+    `pg_isready` with no `-h` probes the Unix socket. The image's entrypoint runs
+    a temporary server on that socket, with `listen_addresses=''`, while it
+    creates `$POSTGRES_DB`; a socket probe therefore reports ready while the TCP
+    port the driver dials still refuses connections. Authenticating over TCP, as
+    the client does, only succeeds after the entrypoint hands over to the real
+    server.
+    """
     deadline = time.time() + timeout_s
+    command = [
+        "docker",
+        "exec",
+        "-e",
+        f"PGPASSWORD={POSTGRES_PASSWORD}",
+        container,
+        "psql",
+        "-h",
+        "127.0.0.1",
+        "-p",
+        "5432",
+        "-U",
+        POSTGRES_USER,
+        "-d",
+        POSTGRES_DB,
+        "-tAc",
+        "SELECT 1",
+    ]
+    last: str = "no attempt made"
     while time.time() < deadline:
-        proc = subprocess.run(
-            ["docker", "exec", container, "pg_isready", "-U", "postgres"],
-            capture_output=True,
-            timeout=30,
-        )
-        if proc.returncode == 0:
+        try:
+            proc = subprocess.run(command, capture_output=True, timeout=30)
+        except subprocess.SubprocessError as exc:
+            last = str(exc)
+            time.sleep(1)
+            continue
+        if proc.returncode == 0 and proc.stdout.strip() == b"1":
             return
+        last = (proc.stderr or proc.stdout).decode(errors="replace").strip()
         time.sleep(1)
-    raise RuntimeError("postgres never became ready")
+    raise RuntimeError(f"postgres never accepted a TCP query: {last}")
 
 
 # --------------------------------------------------------------------------- #
@@ -399,14 +432,18 @@ def postgres():
         POSTGRES_IMAGE,
         5432,
         "-e",
-        "POSTGRES_PASSWORD=bdb",
+        f"POSTGRES_PASSWORD={POSTGRES_PASSWORD}",
         "-e",
-        "POSTGRES_DB=catalog",
+        f"POSTGRES_DB={POSTGRES_DB}",
     )
     try:
-        _wait_tcp(port)
+        # `_wait_tcp` cannot gate this container: the published port answers as
+        # soon as the proxy binds, before any server is listening behind it.
         _wait_pg(name, timeout_s=120)
-        yield f"postgres://postgres:bdb@127.0.0.1:{port}/catalog"
+        yield (
+            f"postgres://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+            f"@127.0.0.1:{port}/{POSTGRES_DB}"
+        )
     finally:
         _stop(name)
 

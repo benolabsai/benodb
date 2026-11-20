@@ -28,11 +28,18 @@ TEST_DIR.mkdir(exist_ok=True)
 
 # The per-PR `ecosystem` job cannot read Iceberg-format tables from the pip
 # `pyspark` package (it ships no Iceberg JAR), so these tests skip there. The
-# `Iceberg Interop (JVM)` workflow sets both variables below to turn the skips
-# into hard failures and to fetch the Iceberg Spark runtime from Maven:
+# `Iceberg Interop (JVM)` workflow sets the variables below to turn the skips
+# into hard failures and to supply the Iceberg Spark runtime from Maven:
 #
 #   BDB_REQUIRE_JVM_INTEROP=1
+#   BDB_SPARK_ICEBERG_JAR=<local path to the pinned runtime jar>
 #   BDB_SPARK_ICEBERG_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.11.0
+#
+# The workflow downloads and checksum-verifies the jar and passes it with
+# `--jars`. `--packages` stays as the fallback for local runs, but it resolves
+# through Ivy, and a restored `~/.ivy2/cache` answered a resolution with zero
+# repository searches and a spurious "not found" for an artifact Maven Central
+# was serving.
 #
 # The Iceberg runtime artifact is keyed by Spark *minor series*, and Maven
 # Central publishes exactly: 3.4, 3.5, 4.0, 4.1 (each `_2.12` and `_2.13`).
@@ -45,6 +52,20 @@ SPARK_ICEBERG_PACKAGES = os.environ.get(
     "BDB_SPARK_ICEBERG_PACKAGES",
     "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.11.0",
 )
+SPARK_ICEBERG_JAR = os.environ.get("BDB_SPARK_ICEBERG_JAR", "")
+
+
+def _spark_runtime_args() -> list[str]:
+    """spark-submit arguments that put the Iceberg runtime on the classpath.
+
+    A pre-fetched jar wins because it needs no resolution. Without one, fall
+    back to Ivy through `--packages`, which is what local runs use.
+    """
+    if SPARK_ICEBERG_JAR:
+        if not Path(SPARK_ICEBERG_JAR).is_file():
+            _require_or_skip(f"BDB_SPARK_ICEBERG_JAR is missing: {SPARK_ICEBERG_JAR}")
+        return ["--jars", SPARK_ICEBERG_JAR]
+    return ["--packages", SPARK_ICEBERG_PACKAGES]
 
 
 def _table_format_version(table_path: str) -> int | None:
@@ -133,7 +154,7 @@ class TestSparkCompatibility:
         try:
             cmd = ["spark-submit", "--master", "local[*]"]
             if REQUIRE_JVM_INTEROP:
-                cmd += ["--packages", SPARK_ICEBERG_PACKAGES]
+                cmd += _spark_runtime_args()
             cmd.append(script_path)
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -188,14 +209,7 @@ class TestSparkCompatibility:
             script_path = f.name
         try:
             result = subprocess.run(
-                [
-                    "spark-submit",
-                    "--master",
-                    "local[*]",
-                    "--packages",
-                    SPARK_ICEBERG_PACKAGES,
-                    script_path,
-                ],
+                ["spark-submit", "--master", "local[*]", *_spark_runtime_args(), script_path],
                 capture_output=True,
                 text=True,
             )

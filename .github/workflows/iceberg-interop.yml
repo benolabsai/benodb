@@ -108,11 +108,39 @@ jobs:
           done
           exit 1
 
-      - name: Cache the Iceberg Spark runtime
+      - name: Cache the Iceberg Spark runtime JAR
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2/cache
-          key: ivy-${{ matrix.packages }}
+          path: ~/.cache/benodb-iceberg-runtime
+          key: iceberg-spark-runtime-${{ matrix.packages }}
+
+      - name: Fetch the Iceberg Spark runtime JAR
+        # `spark-submit --packages` resolves through Ivy. With a restored
+        # `~/.ivy2/cache` the resolver answered from cache state and reported the
+        # pinned artifact as missing without a single repository search
+        # (`resolve 1455ms :: artifacts dl 0ms`, `search 0`), while Maven Central
+        # served the same jar and its checksum. Fetching the pinned jar and
+        # handing it to Spark with `--jars` removes Ivy from the critical path.
+        run: |
+          coord="${{ matrix.packages }}"
+          group=$(printf '%s' "$coord" | cut -d: -f1 | tr . /)
+          artifact=$(printf '%s' "$coord" | cut -d: -f2)
+          version=$(printf '%s' "$coord" | cut -d: -f3)
+          base="https://repo1.maven.org/maven2/$group/$artifact/$version"
+          dir="$HOME/.cache/benodb-iceberg-runtime"
+          jar="$dir/$artifact-$version.jar"
+          if [ ! -s "$jar" ]; then
+            mkdir -p "$dir"
+            curl -fsSL --retry 10 --retry-all-errors --retry-delay 5 \
+              -o "$jar.part" "$base/$artifact-$version.jar"
+            curl -fsSL --retry 10 --retry-all-errors --retry-delay 5 \
+              -o "$jar.sha1" "$base/$artifact-$version.jar.sha1"
+            ( cd "$dir" && printf '%s  %s\n' "$(cat "$jar.sha1")" \
+                "$(basename "$jar.part")" | sha1sum -c - )
+            mv "$jar.part" "$jar"
+          fi
+          unzip -tq "$jar" > /dev/null
+          echo "BDB_SPARK_ICEBERG_JAR=$jar" >> "$GITHUB_ENV"
 
       - name: Install maturin and build the Python bindings
         run: |
@@ -125,6 +153,9 @@ jobs:
 
       - name: Spark reads a BenoDB table (V2 + V3 lineage)
         env:
+          # `BDB_SPARK_ICEBERG_JAR` arrives from the fetch step via `$GITHUB_ENV`.
+          # The coordinate stays exported for the `--packages` fallback the test
+          # uses when no jar is supplied.
           BDB_SPARK_ICEBERG_PACKAGES: ${{ matrix.packages }}
         run: |
           pytest -v tests/test_cross_engine_compat.py -k "spark"
