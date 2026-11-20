@@ -120,17 +120,37 @@ class TestSparkCompatibility:
         self.table = bdb.Table(self.table_path)
         
         # Write test data with V2 features
-        df = pd.DataFrame({
-            "id": range(1000),
-            "timestamp": pd.date_range("2024-01-01", periods=1000, freq="1h"),
-            "value": range(1000, 2000),
-            "category": ["A", "B", "C"] * 333 + ["A"]
-        })
+        df = self._fixture_frame()
         
         # Configure V2 features
         self.table.set_sort_order(["timestamp", "id"], ascending=[False, True])
         self.table.write_pandas(df)
         self.table.commit()
+
+    @staticmethod
+    def _fixture_frame():
+        return pd.DataFrame({
+            "id": range(1000),
+            "timestamp": pd.date_range("2024-01-01", periods=1000, freq="1h"),
+            "value": range(1000, 2000),
+            "category": ["A", "B", "C"] * 333 + ["A"]
+        })
+
+    def _write_v3_fixture(self) -> str:
+        """Write a format-version 3 table beside the V2 fixture and commit it.
+
+        `format_version` has to be set before the first write: it is the field
+        the engine stamps into `metadata/v1.metadata.json`, and once the table
+        has committed at 2 there is nothing to promote.
+        """
+        path = str(TEST_DIR / "spark_test_table_v3")
+        shutil.rmtree(path, ignore_errors=True)
+        table = bdb.Table(path)
+        table.format_version = 3
+        table.set_sort_order(["timestamp", "id"], ascending=[False, True])
+        table.write_pandas(self._fixture_frame())
+        table.commit()
+        return path
     
     def test_spark_read_basic(self):
         """Test Spark can read a BenoDB table as an Iceberg table."""
@@ -181,21 +201,43 @@ class TestSparkCompatibility:
                 os.remove(script_path)
 
     def test_spark_read_v3_metadata(self):
-        """Spark must expose V3 row-lineage metadata columns.
+        """Spark must read a V3 table and resolve its row-lineage columns.
 
-        `_row_id` / `_last_updated_sequence_number` are metadata columns, not
-        table-schema columns, so this only has teeth where the Iceberg runtime
-        implements V3 lineage — i.e. under the interop workflow.
+        Three facts this pins down, each of which the earlier version of this
+        test got wrong or never reached.
+
+        The fixture was never format-version 3, so the old version skipped on
+        every run. `_write_v3_fixture` now builds a V3 table next to the V2 one.
+
+        The lineage columns are hidden metadata columns, not schema columns:
+        `spark.read.format("iceberg").load(path)` returns only the data columns
+        even for a V3 table, so the old `set(df.columns)` assertion could not
+        pass against a real table. Resolution has to be checked through SQL,
+        where `_row_id` resolves on V3 and is rejected with UNRESOLVED_COLUMN on
+        V2; asserting both directions is what proves the runtime is gating on
+        format version rather than accepting anything.
+
+        The values come back NULL for this write path. The writer sets the
+        snapshot-level `first-row-id`, but Iceberg derives `_row_id` as
+        `first_row_id + row_position` from the per-file entry, and there is no
+        per-file base here. That is a writer gap, not a reader gap, so this test
+        pins resolution and row counts and does not assert non-NULL values.
+
+        Because the catalog resolves identifiers as `<warehouse>/<name>`, the
+        warehouse is the fixture directory and the table is addressed as
+        `local.spark_test_table_v3`.
         """
         if not REQUIRE_JVM_INTEROP:
             pytest.skip("V3 lineage read needs the Iceberg runtime; run the interop workflow")
-        version = _table_format_version(self.table_path)
-        if version != 3:
-            pytest.skip(
-                f"table is format-version {version}, not 3; V3 lineage is absent by design"
-            )
         if not _spark_submit_available():
             _require_or_skip("spark-submit not available")
+
+        v3_path = self._write_v3_fixture()
+        version = _table_format_version(v3_path)
+        assert version == 3, (
+            f"`format_version = 3` did not reach the metadata; it says {version}"
+        )
+        warehouse = str(TEST_DIR)
 
         import textwrap
         spark_script = textwrap.dedent(f"""\
@@ -206,15 +248,24 @@ class TestSparkCompatibility:
             .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \\
             .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \\
             .config("spark.sql.catalog.local.type", "hadoop") \\
-            .config("spark.sql.catalog.local.warehouse", "{self.table_path}") \\
+            .config("spark.sql.catalog.local.warehouse", "{warehouse}") \\
             .getOrCreate()
+        spark.sparkContext.setLogLevel("ERROR")
 
-        df = spark.read.format("iceberg").load("{self.table_path}")
-        cols = set(df.columns)
-        assert "_row_id" in cols, f"missing _row_id; saw {{sorted(cols)}}"
-        assert "_last_updated_sequence_number" in cols, \\
-            f"missing _last_updated_sequence_number; saw {{sorted(cols)}}"
-        print("OK Spark saw V3 lineage columns")
+        rows = spark.table("local.spark_test_table_v3").count()
+        cols = spark.sql(
+            "SELECT _row_id, _last_updated_sequence_number "
+            "FROM local.spark_test_table_v3 LIMIT 1"
+        ).columns
+        print("V3ROWS", rows)
+        print("V3COLS", ",".join(sorted(cols)))
+
+        try:
+            spark.sql("SELECT _row_id FROM local.spark_test_table LIMIT 1").collect()
+        except Exception:
+            print("V2REJECTED")
+        else:
+            print("V2ACCEPTED")
         """)
 
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
@@ -228,6 +279,15 @@ class TestSparkCompatibility:
             )
             assert result.returncode == 0, (
                 f"Spark V3 lineage read failed:\n{result.stderr}\n{result.stdout}"
+            )
+            out = result.stdout
+            assert "V3ROWS 1000" in out, f"V3 row count wrong; saw\n{out}"
+            assert "_row_id" in out and "_last_updated_sequence_number" in out, (
+                f"V3 lineage columns did not resolve; saw\n{out}"
+            )
+            assert "V2REJECTED" in out, (
+                f"the V2 table resolved _row_id, so the runtime is not gating on "
+                f"format version and this test would pass on any table; saw\n{out}"
             )
         finally:
             if os.path.exists(script_path):
