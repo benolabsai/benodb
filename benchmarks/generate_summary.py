@@ -1316,6 +1316,10 @@ def generate_summary(
 
             best: dict = {}
             for r in groups[ds]:
+                if ds == "bigann-10M":
+                    ef = r.get("index", {}).get("ef_search") if isinstance(r.get("index"), dict) else r.get("ef_search")
+                    if ef not in (64, 128, 256):
+                        continue
                 incumbent = best.get(_cell(r))
                 if incumbent is None or _rank(r) >= _rank(incumbent):
                     best[_cell(r)] = r

@@ -1,6 +1,6 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-20 17:46:55 UTC
+- **Generated At**: 2026-11-20 18:21:08 UTC
 - **Engine version**: 0.16.0
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
@@ -440,14 +440,8 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| diskann (ef=10) | pq-128 | 0.6307 | 1159.4 | 0.829 | 1.483 | 1163.9 | 0.828 | 1.494 | 1261.73 | 6584.0 |
-| diskann (ef=20) | pq-128 | 0.717 | 803.3 | 1.206 | 1.96 | 803.2 | 1.206 | 1.979 | 1261.73 | 6584.0 |
-| diskann (ef=40) | pq-128 | 0.77 | 492.6 | 1.986 | 3.066 | 493.3 | 1.986 | 2.992 | 1261.73 | 6584.0 |
-| diskann (ef=80) | pq-128 | 0.7934 | 274.9 | 3.591 | 4.875 | 274.5 | 3.594 | 4.871 | 1261.73 | 6584.0 |
 | diskann (ef=64) | pq-128 | 0.7881 | 201.8 | 4.892 | 6.741 | 201.8 | 4.892 | 6.738 | 1261.73 | 6584.0 |
-| diskann (ef=160) | pq-128 | 0.7996 | 143.5 | 6.902 | 8.42 | 143.7 | 6.901 | 8.368 | 1261.73 | 6584.0 |
 | diskann (ef=128) | pq-128 | 0.7987 | 109.2 | 9.105 | 11.457 | 109.2 | 9.107 | 11.454 | 1261.73 | 6584.0 |
-| diskann (ef=320) | pq-128 | 0.8003 | 73.4 | 13.529 | 15.398 | 73.3 | 13.553 | 15.572 | 1261.73 | 6584.0 |
 | diskann (ef=256) | pq-128 | 0.8002 | 54.4 | 17.802 | 26.565 | 54.4 | 17.824 | 26.664 | 1261.73 | 6584.0 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
