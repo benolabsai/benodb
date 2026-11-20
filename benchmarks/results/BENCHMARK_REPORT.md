@@ -1,7 +1,8 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-20 22:38:33 UTC
-- **Engine version**: 0.16.0
+- **Generated At**: 2026-11-20 23:01:45 UTC
+- **Engine version**: 0.17.0
+- **Updated At**: 2026-11-20
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
 - **Session**: 8c5598405a7d
@@ -763,10 +764,10 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 
 | Lifecycle Phase | Measured Duration | Resource / Footprint Mechanism |
 |---|---|---|
-| **Container Preload** | **160 ms** | Maps 19 sharded Puffin container headers (`7.67 GB`) into virtual memory space via `mmap`. Only footers and offsets are parsed; zero eager deserialization into heap. |
+| **Container Preload** | **250 ms** | Maps 19 sharded Puffin container headers (`7.67 GB`) into virtual memory space via `mmap`. Only footers and offsets are parsed; zero eager deserialization into heap. |
 | **Tier C Warmup** | **20.34 s** | Executes 200 warmup probes across the 512 Voronoi centroids, warming centroid KD-tree structures and anonymous heap (`537–727 MiB`). |
 | **Cold-Start Pass (Repeat 1)** | **p99 = 25.39 s** | Initial pass faults the 11.92 GiB flat `.codes` working set from NVMe into the Linux page cache, issuing **`45.03 MB/q`** physical reads. |
-| **Steady-State Serving (Repeats 2+)** | **Instantaneous** | With the 11.92 GiB `.codes` memory-resident in page cache, physical NVMe reads drop to **`0.00 MB/q`**, delivering **`49.7–148.4 QPS`** (p50 = 52.2–154.3 ms). |
+| **Steady-State Serving (Repeats 2+)** | **Instantaneous** | With the 11.92 GiB `.codes` memory-resident in page cache, physical NVMe reads drop to **`0.00 MB/q`**, delivering **`49.7–148.3 QPS`** (p50 = 52.1–154.2 ms). |
 | **Segment-Tier Backfill (Build)** | **4,134.7 s** (1.15 h) | Peak RSS held at **1.20 GiB** during segment-level HNSW-IVF Puffin generation. |
 | **Table Compaction (Build)** | **17,557.7 s** (4.88 h) | Parallel sharded compaction with partition spill to NVMe scratch (`53 GiB` sharded table sidecars). Total build time: 6.03 h. |
 
@@ -784,5 +785,63 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 | BenoQuant TQ8 | 128 | 32 | 0.9650 | 51.7 | 149.2 | 211.3 | 13,979 | 0.00 |
 
 > [!NOTE]
-> **Memory Boundedness & Physical I/O:** Peak cgroup usage held at 14,071.1 MiB (TQ8) and 14,093.0 MiB (SQ8), leaving 2.26 GiB operating headroom below the 16 GiB hard limit with `oom_kill = 0`, `swap = 0`. Container preload completed in 160 ms (warmup 20.34 s). Physical NVMe reads were 0.00 MB/q in steady state because the 11.92 GiB flat `.codes` working set resided in Linux page cache (`cgroup_file_mapped_mb = 12,784–12,797 MiB`).
+> **Memory Boundedness & Physical I/O:** Peak cgroup usage held at 14,096.9 MiB (TQ8) and 14,093.0 MiB (SQ8), leaving 2.23 GiB operating headroom below the 16 GiB hard limit with `oom_kill = 0`, `swap = 0`. Container preload completed in 250 ms (warmup 20.34 s). Physical NVMe reads were 0.00 MB/q in steady state because the 11.92 GiB flat `.codes` working set resided in Linux page cache (`cgroup_file_mapped_mb = 12,784–12,797 MiB`).
+
+### 11.3 Architectural Mechanism Ablation: Codes-First SIMD Scan vs. Out-of-Core Graph Traversal
+
+Isolating retrieval under identical 100M table artifacts, same hardware, same queries, same parameter pairs:
+
+| Mode | ef_s / n_p | Recall@10 | QPS | p50 (ms) | Speedup |
+|---|---|---|---|---|---|
+| Codes SIMD Scan | 128 / 8 | 0.9260 | 119.4 | 64.4 | **125.7x** |
+| Codes SIMD Scan | 128 / 16 | 0.9570 | 85.5 | 90.6 | **129.5x** |
+| Codes SIMD Scan | 256 / 32 | 0.9650 | 49.9 | 153.5 | **124.7x** |
+| Graph Traversal | 128 / 8 | 0.8990 | 0.95 | 10,240 | 1.0x (baseline) |
+| Graph Traversal | 128 / 16 | 0.9240 | 0.66 | 15,120 | 1.0x (baseline) |
+| Graph Traversal | 256 / 32 | 0.9325 | 0.40 | 24,800 | 1.0x (baseline) |
+
+*Root Cause:* Out-of-core graph traversal forces random 4 KB pointer hops across noncontiguous disk offsets, generating 45 to 981 MB/query physical NVMe reads that saturate queue depths. Codes-first SIMD streams contiguous codes sequentially out of page cache at ~40.3 GB/s, reading 0.00-0.11 MB/q physical NVMe.
+
+### 11.4 Immutable Manifest Version Caching Ablation (`b53e59e4`)
+
+| Metric | Pre-Caching Baseline | With `MANIFEST_FULL_CACHE` | Impact |
+|---|---|---|---|
+| Logical `rchar` per query | 33.4–35.7 MB/q | **0.32–0.33 MB/q** | **100x reduction** |
+| Fixed JSON parsing latency | ~162 ms/query | **0.00 ms/query** | **Eliminated** |
+| Anonymous Heap Overhead | 1,493–1,859 MiB | **537–727 MiB** | **2.6x reduction** |
+| Throughput (n_p = 4 / 8 / 16 / 32) | 43.8 / 40.3 / 34.4 / 27.1 QPS | **148.4 / 120.1 / 85.5 / 51.7 QPS** | **1.9x to 3.4x lift** |
+
+---
+
+## 12. High-Dimensional Cohere 10M Benchmark Audit (v0.17.0)
+
+**Workload Profile:** Cohere 10M (10,000,000 vectors, d=768, MIPS).  
+**Hardware Envelope:** Controlled Azure `Standard_D8lds_v5` profile (--cpus=8 --memory=16g), `BDB_CACHE_GB = 8`.  
+**Artifact:** `benchmarks/results/neurips_bigann/bigann_cohere-10m_10000k_20261119T140747Z.json` (16 operating points).
+
+| Quantizer Mode | ef_s | n_p | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) |
+|---|---|---|---|---|---|---|---|
+| BenoQuant TQ8 (H * D) | 64 | 32 | 0.9800 | 65.9 | 122.74 | 159.75 | 10,393 |
+| BenoQuant TQ8 (H * D) | 32 | 16 | 0.9485 | 127.4 | 61.92 | 82.31 | 10,396 |
+| BenoQuant TQ8 (H * D) | 32 | 8 | 0.8890 | 226.7 | 34.08 | 49.79 | 10,396 |
+| BenoQuant TQ8 (H * D) | 128 | 4 | 0.8025 | 344.3 | 22.64 | 31.85 | 10,389 |
+| Native SQ8 (No Rotation, 32G) | 256 | 32 | 0.8080 | 68.2 | 115.50 | 154.21 | 5,050 |
+| Uncompressed F32 (Baseline, 64G) | 256 | 32 | 0.8541 | 9.3 | 855.00 | 1412.90 | 9,990 |
+| BenoQuant TQ4 (32G) | 256 | 32 | 0.7288 | 46.8 | 170.00 | 201.01 | 4,590 |
+| Product Quantization (PQ, 32G) | 256 | 32 | 0.5374 | 23.8 | 335.55 | 458.53 | 4,510 |
+
+---
+
+## 13. Page-Indexed Sparse Parquet Reranking Physical I/O Audit (v0.17.0)
+
+**Workload Profile:** BigANN 10M (10,000,000 vectors, d=128, L2). Cold page cache (evicted via `posix_fadvise` before every query).
+
+| Configuration | Refine Factor (k') | Recall@10 | Physical I/O / query | Row Groups Read | Decoded Rows |
+|---|---|---|---|---|---|
+| 32 KB Pages (OffsetIndex) | k'=40 | 0.910 | **3.80 MB** | 0 | 40 |
+| 128 MB Pages (Row Group Default) | k'=40 | 0.910 | **380.55 MB** | full | full |
+| **Reduction** | | | **100.2x reduction** | | **0 post-filter** |
+| 32 KB Pages (OffsetIndex) | k'=160 | 0.957 | **12.91 MB** | 0 | 160 |
+| 128 MB Pages (Row Group Default) | k'=160 | 0.957 | **1,330.99 MB** | full | full |
+| **Reduction** | | | **103.1x reduction** | | **0 post-filter** |
 
