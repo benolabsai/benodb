@@ -543,6 +543,20 @@ jobs:
           overwrite: true
 
   # crates.io publishing moved into its own job so it runs in PARALLEL with the
+  interop:
+    needs: [ci]
+    # The JVM interop suite is the only place the on-disk format is opened by an
+    # engine this project does not own. ci.yml runs the same test file in the
+    # `ecosystem` job, but without BDB_REQUIRE_JVM_INTEROP, so every Spark and
+    # Trino assertion skips there and the release would otherwise ship on a
+    # format check that never executed.
+    #
+    # This is a `uses:` job rather than a dependency on the standalone run:
+    # GitHub has no cross-workflow `needs`, and a tag push produces no prior run
+    # to wait for. Calling the workflow puts the check on the release commit,
+    # which is the property that makes the gate meaningful.
+    uses: ./.github/workflows/iceberg-interop.yml
+
   # PyPI uploads and the connector build. `cargo publish` compiles the crate to
   # verify it, so on a brand-new version this is the most expensive part of the
   # publish stage — and because crates.io versions are immutable it must never
@@ -552,7 +566,7 @@ jobs:
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     timeout-minutes: 120
-    needs: [soak-gate, reproducibility]
+    needs: [soak-gate, reproducibility, interop]
     environment: release_pypi
     steps:
       - uses: actions/checkout@v5
@@ -610,7 +624,7 @@ jobs:
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     timeout-minutes: 30
-    needs: [linux, macos, windows, sdist]
+    needs: [linux, macos, windows, sdist, interop]
     environment: release_pypi
     steps:
       - uses: actions/checkout@v5
@@ -640,7 +654,7 @@ jobs:
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     timeout-minutes: 30
-    needs: [linux, macos, windows]
+    needs: [linux, macos, windows, interop]
     environment: release_pypi
     steps:
       - uses: actions/checkout@v5

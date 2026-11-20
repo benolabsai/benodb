@@ -26,6 +26,11 @@ on:
   schedule:
     - cron: '0 8 * * 3' # Wednesdays 08:00 UTC
   workflow_dispatch:
+  # Called by release.yml so a release commit carries its own interop result.
+  # A workflow cannot depend on another workflow, and a tag push has no run to
+  # wait for, so the only way to gate publication on interop is to run it
+  # inside the release.
+  workflow_call:
   push:
     branches: [main]
     paths:
