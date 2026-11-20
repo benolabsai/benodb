@@ -1,6 +1,6 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-20 23:01:45 UTC
+- **Generated At**: 2026-11-20 23:53:57 UTC
 - **Engine version**: 0.17.0
 - **Updated At**: 2026-11-20
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
@@ -31,6 +31,7 @@ Session `8c5598405a7d` — every stamped section below was measured on this host
 - DIMM timings: not readable (needs root + i2c-dev: decode-dimms) — a manual tCL/tRCD/tRP change is only visible in the calibration probes
 - Kernel: 7.0.0-42-generic — governor: powersave
 - CPU frequency: driver amd-pstate-epp, policy 1740528–4981510 kHz, hw 570173–4981510 kHz, boost enabled
+- Storage (SSD): PNY CS2130 2TB SSD (1.8TB NVME PCIe Gen3 x4)
 
 ### Calibration (drift normalizers)
 
@@ -50,7 +51,7 @@ Probes are cheap and machine-state sensitive, not engine benchmarks: they move w
 
 **Scope and limitations**
 
-- Single host (AMD Ryzen 9 5900XT, 32 cores / 128 GB, 2× RTX 5070 Ti); no
+- Single host (AMD Ryzen 9 5900XT, 32 cores / 128 GB, 2× RTX 5070 Ti, PNY CS2130 2TB NVMe SSD); no
   multi-node or multi-client network measurements.
 - Vector benchmarks cap the train set at **20k** vectors and 500 queries;
   they do not characterize million-vector indexes.

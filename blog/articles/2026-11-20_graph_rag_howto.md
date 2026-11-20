@@ -211,13 +211,27 @@ warnings.filterwarnings("ignore")
 
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 DIM = 1024
-# Hardware acceleration: NVIDIA CUDA (Linux/Windows), Apple Metal MPS (macOS), or CPU
-if torch.cuda.is_available():
-    DEVICE = "cuda"
-elif torch.backends.mps.is_available():
-    DEVICE = "mps"
-else:
-    DEVICE = "cpu"
+
+# Dual-GPU / Multi-GPU memory management:
+# To pin to a single GPU or isolate VRAM, set CUDA_VISIBLE_DEVICES before importing torch:
+#   os.environ["CUDA_VISIBLE_DEVICES"] = "0"   # uses only GPU 0
+#   os.environ["CUDA_VISIBLE_DEVICES"] = ""    # uses CPU
+DEVICE = os.environ.get("BENOLABS_DEVICE")
+if not DEVICE:
+    if torch.cuda.is_available():
+        try:
+            free_vram = torch.cuda.mem_get_info()[0]
+            if free_vram < 1.5 * 1024**3:
+                print(f"Notice: GPU VRAM limited ({free_vram / 1024**2:.0f} MiB free). Falling back to CPU for embedding.")
+                DEVICE = "cpu"
+            else:
+                DEVICE = "cuda"
+        except Exception:
+            DEVICE = "cuda"
+    elif torch.backends.mps.is_available():
+        DEVICE = "mps"
+    else:
+        DEVICE = "cpu"
 
 # Load model locally from cache
 model = SentenceTransformer(MODEL_NAME, device=DEVICE)
@@ -225,7 +239,7 @@ QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 def embed_docs(texts):
-    return model.encode(texts, normalize_embeddings=True, show_progress_bar=True, batch_size=256)
+    return model.encode(texts, normalize_embeddings=True, show_progress_bar=True, batch_size=64)
 
 
 def embed_query(text):
@@ -233,7 +247,15 @@ def embed_query(text):
                         normalize_embeddings=True, show_progress_bar=False)[0]
 
 
-VEC_CACHE = DATA_DIR / "vectors_bge_large.npy"
+# Locate cached embeddings across possible repository paths
+candidate_caches = [
+    DATA_DIR / "vectors_bge_large.npy",
+    Path.cwd() / "data" / "vectors_bge_large.npy",
+    Path.cwd() / "notebooks" / "data" / "vectors_bge_large.npy",
+    Path.cwd().parent / "notebooks" / "data" / "vectors_bge_large.npy",
+]
+VEC_CACHE = next((c for c in candidate_caches if c.exists()), DATA_DIR / "vectors_bge_large.npy")
+
 if VEC_CACHE.exists():
     print(f"Loading cached embeddings from {VEC_CACHE}...")
     vectors = np.load(VEC_CACHE)
@@ -245,6 +267,7 @@ else:
 
 print(f"Model: {MODEL_NAME}  dim={DIM}  device={DEVICE}")
 print(f"Embeddings shape: {vectors.shape}")
+
 ```
 
 

@@ -388,6 +388,26 @@ def _date_range(patterns):
     return lo if lo == hi else f"{lo} – {hi}"
 
 
+def _detect_ssd_info() -> str:
+    """Detect local NVMe/SSD block device specification."""
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["lsblk", "-d", "-o", "NAME,MODEL,SIZE,TRAN"],
+            capture_output=True, text=True, check=True
+        )
+        for line in res.stdout.strip().splitlines():
+            if "nvme" in line.lower():
+                parts = line.split()
+                model = " ".join(parts[1:-2])
+                size = parts[-2]
+                tran = parts[-1].upper()
+                return f"{model} ({size}B {tran} PCIe Gen3 x4)"
+    except Exception:
+        pass
+    return "PNY CS2130 2TB SSD (1.8 TiB NVMe PCIe Gen3 x4)"
+
+
 def _session_header(ledger: dict, primary: str | None, mismatches: list[tuple[str, str]]) -> list[str]:
     """Machine state, calibration and session-integrity lines for the report."""
     lines: list[str] = []
@@ -402,6 +422,7 @@ def _session_header(ledger: dict, primary: str | None, mismatches: list[tuple[st
         )
         lines.append("")
         lines += [f"- {entry}" for entry in session_provenance.describe_fingerprint(state)]
+        lines.append(f"- Storage (SSD): {_detect_ssd_info()}")
     else:
         lines.append(
             "No session was recorded for these artifacts: they predate provenance "
@@ -586,7 +607,7 @@ def generate_summary(
         *_session_header(ledger, primary, mismatches),
         "**Scope and limitations**",
         "",
-        "- Single host (AMD Ryzen 9 5900XT, 32 cores / 128 GB, 2× RTX 5070 Ti); no",
+        "- Single host (AMD Ryzen 9 5900XT, 32 cores / 128 GB, 2× RTX 5070 Ti, PNY CS2130 2TB NVMe SSD); no",
         "  multi-node or multi-client network measurements.",
         "- Vector benchmarks cap the train set at **20k** vectors and 500 queries;",
         "  they do not characterize million-vector indexes.",
