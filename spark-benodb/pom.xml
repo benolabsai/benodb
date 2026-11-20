@@ -28,6 +28,8 @@
              `org.apache.arrow.memory.RootAllocator` fail its static initialiser
              ("Could not initialize class"). Overridden per profile below. -->
         <arrow.version>18.1.0</arrow.version>
+        <!-- Bytecode target. Separate from the JDK the tests may run on: see the
+             enforcer rule below, which bounds the test JVM. -->
         <java.release>17</java.release>
         <skipTests>false</skipTests>
     </properties>
@@ -167,6 +169,40 @@
 
     <build>
         <plugins>
+            <!--
+                Spark's SparkContext constructor calls
+                org.apache.hadoop.security.UserGroupInformation.getCurrentUser,
+                which reads javax.security.auth.Subject.getSubject. JDK 24
+                removed that method, so on a newer runtime every test that builds
+                a SparkSession fails in setup with
+
+                    UnsupportedOperationException: getSubject is not supported
+
+                before any assertion runs. That signature points at the test JVM,
+                not at the connector, so fail here with the reason stated rather
+                than leaving thirteen opaque errors behind.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-test-jdk</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[17,24)</version>
+                                    <message>Spark's UserGroupInformation calls Subject.getSubject, which JDK 24 removed. Run these tests on JDK 17 or 21.</message>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>

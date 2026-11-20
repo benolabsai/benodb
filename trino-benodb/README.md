@@ -29,22 +29,22 @@ flattens the ZIP for you.
 
 1. **Extract Plugin**:
    ```bash
-   mkdir -p /usr/lib/trino/plugin/benostream
-   unzip target/trino-*-SNAPSHOT.zip -d /usr/lib/trino/plugin/benostream
+   mkdir -p /usr/lib/trino/plugin/benodb
+   unzip target/trino-*-SNAPSHOT.zip -d /usr/lib/trino/plugin/benodb
    ```
 
 2. **Configure Catalog**:
    Sample catalog configurations are provided in [`etc/catalog/`](etc/catalog/):
    ```properties
    connector.name=benodb
-   benostream.warehouse=s3://my-bucket/
-   benostream.s3.endpoint=http://rustfs:9000
-   benostream.s3.access-key=${TRINO_S3_ACCESS_KEY}
-   benostream.s3.secret-key=${TRINO_S3_SECRET_KEY}
+   benodb.warehouse=s3://my-bucket/
+   benodb.s3.endpoint=http://rustfs:9000
+   benodb.s3.access-key=${TRINO_S3_ACCESS_KEY}
+   benodb.s3.secret-key=${TRINO_S3_SECRET_KEY}
    ```
 
-   > **Config-key note.** The connector factory reads `benostream.warehouse`
-   > (default `s3://default`); the older `benostream.base-uri` key is ignored.
+   > **Config-key note.** The connector factory reads `benodb.warehouse`
+   > (default `s3://default`); the older `benodb.base-uri` key is ignored.
    > Schemas are subdirectories of the warehouse, so
    > `benodb.default.events` resolves to `<warehouse>/default/events`.
 
@@ -68,8 +68,8 @@ docker compose -f benchmarks/competitors/docker-compose.bench.yml up -d trino
 
 The image is [`benchmarks/competitors/Dockerfile.trino`](../benchmarks/competitors/Dockerfile.trino):
 it extends `trinodb/trino`, flattens the plugin ZIP into
-`/usr/lib/trino/plugin/benostream` (Trino's loader does not scan the ZIP's
-nested `trino-benostream-<version>/` directory), and installs the native lib to
+`/usr/lib/trino/plugin/benodb` (Trino's loader does not scan the ZIP's
+nested `trino-benodb-<version>/` directory), and installs the native lib to
 `/usr/lib/trino/lib` (added to `java.library.path` in `jvm.config`).
 
 ## Packaging status
@@ -87,7 +87,7 @@ packaging defects. All are now fixed:
    bytecode, so the build now uses a JDK ≥ 23 (see `build-connectors.sh`).
 
 2. **The plugin ZIP is not flat.** The `trino-plugin` Maven packaging emits the
-   JARs under a `trino-benostream-<version>/` base directory. Trino's plugin
+   JARs under a `trino-benodb-<version>/` base directory. Trino's plugin
    loader only scans JARs *directly* in the plugin dir (it does not recurse), so
    the nested layout fails with
    `No service providers of type io.trino.spi.Plugin in the classpath`.
@@ -142,7 +142,7 @@ Exercised end-to-end through Trino 468 against a BenoDB Iceberg table
 The connector implements Trino's full MERGE surface (the grammar is Trino's, not
 Iceberg's): `WHEN MATCHED THEN UPDATE`, `WHEN MATCHED THEN DELETE`,
 `WHEN NOT MATCHED THEN INSERT`, multiple `WHEN` clauses, and `AND` conditions.
-It uses the `DELETE_ROW_AND_INSERT_ROW` paradigm with a hidden `_bsdb_row_id`
+It uses the `DELETE_ROW_AND_INSERT_ROW` paradigm with a hidden `_bdb_row_id`
 column (sourced from the primary key), the SPI `MergePage` helper, and
 delete-before-insert so an `UPDATE` reuses the same key.
 

@@ -27,15 +27,15 @@ Use `memory` for deterministic tests and multi-writer conflict simulations witho
 
 ```python
 import pyarrow as pa
-import benodb as bsdb
+import benodb as bdb
 
-catalog = bsdb.create_catalog(
+catalog = bdb.create_catalog(
     "memory",
-    {"uri": "memory://dev_catalog", "warehouse": "file:///tmp/bsdb_wh"},
+    {"uri": "memory://dev_catalog", "warehouse": "file:///tmp/bdb_wh"},
 )
 catalog.create_namespace("analytics")
 
-schema = bsdb.Schema.from_arrow(pa.schema([pa.field("id", pa.int32(), nullable=False)]))
+schema = bdb.Schema.from_arrow(pa.schema([pa.field("id", pa.int32(), nullable=False)]))
 catalog.create_table("analytics", "events", schema)
 
 table = catalog.load_table("analytics", "events")
@@ -47,16 +47,16 @@ table.commit()
 BenoDB's JDBC catalog routes PostgreSQL (`postgres://`, `$1..$N` parameters) and SQLite (`sqlite://`, `sqlite::memory:`, `?` parameters) through `sqlx::AnyPool`, using `VARCHAR(1024)` for `metadata_location` and conditional `WHERE metadata_location = <expected>` updates:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Embedded single-connection SQLite in-memory catalog
-mem_jdbc = bsdb.create_catalog(
+mem_jdbc = bdb.create_catalog(
     "jdbc",
-    {"uri": "sqlite::memory:", "warehouse": "file:///tmp/bsdb_jdbc_wh", "catalog_name": "default"},
+    {"uri": "sqlite::memory:", "warehouse": "file:///tmp/bdb_jdbc_wh", "catalog_name": "default"},
 )
 
 # File-backed SQLite or PostgreSQL catalog
-pg_jdbc = bsdb.create_catalog(
+pg_jdbc = bdb.create_catalog(
     "jdbc",
     {
         "uri": "postgres://iceberg:secret@pg-host:5432/iceberg_catalog",
@@ -74,10 +74,10 @@ The Hive Metastore (HMS) is the industry standard for metadata management in Had
 
 ### Connection
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Connect to HMS via Thrift (no auth example)
-catalog = bsdb.create_catalog("hive", {"url": "thrift://metastore-host:9083"})
+catalog = bdb.create_catalog("hive", {"url": "thrift://metastore-host:9083"})
 
 # Load a table from the catalog (returns a Table)
 table = catalog.load_table("default", "events_analytics")
@@ -103,10 +103,10 @@ docker run -p 19120:19120 projectnessie/nessie
 
 ### Python API
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Connect to Nessie
-catalog = bsdb.create_catalog("nessie", {"url": "http://localhost:19120"})
+catalog = bdb.create_catalog("nessie", {"url": "http://localhost:19120"})
 
 # Create a branch for experimentation
 catalog.create_branch("etl-job-v2", source_ref="main")
@@ -123,11 +123,11 @@ For AWS deployments, BenoDB supports both **Amazon S3 Tables** (`s3tables`, Iceb
 
 ### Amazon S3 Tables (`s3tables`)
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Derives region (`us-east-1`) from the bucket ARN, signs requests via AWS SigV4
 # using the default AWS credential chain, and auto-discovers prefix via `/v1/config`.
-catalog = bsdb.create_catalog(
+catalog = bdb.create_catalog(
     "s3tables",
     {"warehouse": "arn:aws:s3tables:us-east-1:123456789012:bucket/analytics-tables"},
 )
@@ -138,13 +138,13 @@ table = catalog.load_table("events", "clickstream_data")
 
 ### AWS Glue (`glue` SDK & Iceberg REST)
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Native AWS Glue SDK (version_id CAS)
-sdk_catalog = bsdb.create_catalog("glue", {"region": "us-east-1"})
+sdk_catalog = bdb.create_catalog("glue", {"region": "us-east-1"})
 
 # Managed AWS Glue Iceberg REST endpoint (SigV4 + /v1/config)
-rest_catalog = bsdb.create_catalog(
+rest_catalog = bdb.create_catalog(
     "glue",
     {"mode": "rest", "region": "us-east-1", "catalog_id": "123456789012"},
 )
@@ -154,10 +154,10 @@ table = sdk_catalog.load_table("production_db", "clickstream_data")
 
 ### Databricks Unity Catalog (`unity`)
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Recommended: Databricks Unity Iceberg REST endpoint (full Iceberg CAS & 409 retries)
-unity_iceberg = bsdb.create_catalog(
+unity_iceberg = bdb.create_catalog(
     "unity",
     {
         "url": "https://<workspace>.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
@@ -167,7 +167,7 @@ unity_iceberg = bsdb.create_catalog(
 )
 
 # Standard Unity Tables REST API
-unity_tables = bsdb.create_catalog(
+unity_tables = bdb.create_catalog(
     "unity",
     {
         "url": "https://<workspace>.cloud.databricks.com",
@@ -185,10 +185,10 @@ The vendor-neutral REST catalog is the most interoperable way to manage Iceberg 
 
 ### Snowflake / Apache Polaris with OAuth2 Client Credentials
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Connect to an Apache Polaris REST catalog and load a table
-catalog = bsdb.create_catalog("rest", {
+catalog = bdb.create_catalog("rest", {
     "url": "https://polaris.example.com/api/catalog/v1",
     "prefix": "my_warehouse",
     "credential": "<POLARIS_CLIENT_ID>:<POLARIS_CLIENT_SECRET>",
@@ -201,7 +201,7 @@ All `benodb` engines and servers (`benodb-search`, `benodb-flight`, and Python b
 
 ### Static Token (Tabular / Nessie REST)
 ```python
-catalog = bsdb.create_catalog("rest", {"url": "https://api.tabular.io/v1/"})
+catalog = bdb.create_catalog("rest", {"url": "https://api.tabular.io/v1/"})
 table = catalog.load_table("marketing", "campaign_results")
 ```
 
@@ -243,7 +243,7 @@ flowchart LR
     end
 
     subgraph Workloads ["Multi-Engine Execution"]
-        BSDB["BenoDB / bsdb-search<br>• Real-time REST ingestion<br>• Sub-2ms Vector / BM25 Search"]
+        BSDB["BenoDB / bdb-search<br>• Real-time REST ingestion<br>• Sub-2ms Vector / BM25 Search"]
         Snowflake["Snowflake Cloud Data Warehouse<br>• Native SQL queries & aggregations<br>• Zero-copy joins with enterprise data<br>• BI dashboards & Snowpark ML"]
     end
 
@@ -299,7 +299,7 @@ prefix = "my_warehouse"
 namespace = "production"
 ```
 
-When you start `bsdb-search`, startup diagnostics confirm Polaris catalog synchronization:
+When you start `bdb-search`, startup diagnostics confirm Polaris catalog synchronization:
 ```
 INFO Initialized external Iceberg catalog from environment catalog_type=Rest namespace=production
 ```
@@ -424,6 +424,6 @@ WHERE r.rating <= 2;
 
 1. **Zero-Copy Architecture**: No `COPY INTO`, no Kafka-to-Snowflake connectors, and no duplicate storage charges.
 2. **Dual-Speed Workloads**:
-   * **Sub-2ms Interactive Search**: Applications query `bsdb-search` over HTTP for instant vector & full-text retrieval.
+   * **Sub-2ms Interactive Search**: Applications query `bdb-search` over HTTP for instant vector & full-text retrieval.
    * **Large-Scale BI & SQL**: Data analysts and data scientists query the exact same data in Snowflake.
 3. **Open Standards**: If you ever migrate away from Snowflake, all data remains in vanilla Apache Iceberg / Parquet format with Apache Polaris as the vendor-neutral catalog.

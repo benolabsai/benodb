@@ -17,8 +17,8 @@ use crate::TAGLINE;
 /// `GET /` — cluster root info (ES 7.10 shape).
 pub async fn cluster_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let info = ClusterInfo {
-        name: "bsdb-search-1".to_string(),
-        cluster_name: "bsdb-search".to_string(),
+        name: "bdb-search-1".to_string(),
+        cluster_name: "bdb-search".to_string(),
         cluster_uuid: state.cluster_uuid.clone(),
         version: VersionInfo::new(),
         tagline: TAGLINE.to_string(),
@@ -37,7 +37,7 @@ pub async fn cluster_health(State(state): State<Arc<AppState>>) -> impl IntoResp
     let tables = state.tables.read().await;
     let shards = tables.len() as u32;
     let health = ClusterHealth {
-        cluster_name: "bsdb-search".to_string(),
+        cluster_name: "bdb-search".to_string(),
         status: "green".to_string(),
         timed_out: false,
         number_of_nodes: 1,
@@ -102,7 +102,7 @@ pub async fn cluster_stats(State(state): State<Arc<AppState>>) -> Response {
         }
     }
     let body = serde_json::json!({
-        "cluster_name": "bsdb-search",
+        "cluster_name": "bdb-search",
         "status": "green",
         "compute": {
             "backend": state.compute.backend_name(),
@@ -128,7 +128,7 @@ pub async fn cluster_stats(State(state): State<Arc<AppState>>) -> Response {
 
 /// `GET /_cat/master` and `GET /_cat/cluster_manager`
 pub async fn cat_cluster_manager() -> Response {
-    let body = "id\thost\tip\tnode\nbsdb-node-1\t127.0.0.1\t127.0.0.1\tbsdb-search-1";
+    let body = "id\thost\tip\tnode\nbdb-node-1\t127.0.0.1\t127.0.0.1\tbdb-search-1";
     let mut resp = (axum::http::StatusCode::OK, body).into_response();
     resp.headers_mut().insert(
         axum::http::header::CONTENT_TYPE,
@@ -139,7 +139,7 @@ pub async fn cat_cluster_manager() -> Response {
 
 /// `GET /_cat/nodes`
 pub async fn cat_nodes() -> Response {
-    let body = "ip\theap.percent\tram.percent\tcpu\tload_1m\tload_5m\tload_15m\tnode.role\tmaster\tname\n127.0.0.1\t0\t0\t0\t0.00\t0.00\t0.00\tcdfhimrst\t*\tbsdb-search-1";
+    let body = "ip\theap.percent\tram.percent\tcpu\tload_1m\tload_5m\tload_15m\tnode.role\tmaster\tname\n127.0.0.1\t0\t0\t0\t0.00\t0.00\t0.00\tcdfhimrst\t*\tbdb-search-1";
     let mut resp = (axum::http::StatusCode::OK, body).into_response();
     resp.headers_mut().insert(
         axum::http::header::CONTENT_TYPE,
@@ -154,7 +154,7 @@ pub async fn cat_shards(State(state): State<Arc<AppState>>) -> Response {
     if let Ok(indexes) = state.list_indexes().await {
         for index in indexes {
             lines.push(format!(
-                "{index}\t0\tp\tSTARTED\t0\t0b\t127.0.0.1\tbsdb-search-1"
+                "{index}\t0\tp\tSTARTED\t0\t0b\t127.0.0.1\tbdb-search-1"
             ));
         }
     }
@@ -174,7 +174,7 @@ pub async fn cat_health() -> Response {
         .as_secs();
     let body = format!(
         "epoch\ttimestamp\tcluster\tstatus\tnode.total\tnode.data\tshards\tpri\trelo\tinit\tunassign\tpending_tasks\tmax_task_wait_time\tactive_shards_percent\n\
-         {now_secs}\t00:00:00\tbsdb-search\tgreen\t1\t1\t1\t1\t0\t0\t0\t0\t-\t100.0%"
+         {now_secs}\t00:00:00\tbdb-search\tgreen\t1\t1\t1\t1\t0\t0\t0\t0\t-\t100.0%"
     );
     let mut resp = (axum::http::StatusCode::OK, body).into_response();
     resp.headers_mut().insert(
@@ -192,10 +192,10 @@ pub async fn nodes_info(State(_state): State<Arc<AppState>>) -> Response {
             "successful": 1,
             "failed": 0
         },
-        "cluster_name": "bsdb-search",
+        "cluster_name": "bdb-search",
         "nodes": {
-            "bsdb-node-1": {
-                "name": "bsdb-search-1",
+            "bdb-node-1": {
+                "name": "bdb-search-1",
                 "transport_address": "127.0.0.1:9300",
                 "host": "127.0.0.1",
                 "ip": "127.0.0.1",
@@ -317,7 +317,7 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert_eq!(json["cluster_name"], "bsdb-search");
+        assert_eq!(json["cluster_name"], "bdb-search");
         assert_eq!(json["tagline"], TAGLINE);
         assert!(
             json.get("compute").is_some(),
@@ -358,7 +358,7 @@ mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        assert_eq!(json["cluster_name"], "bsdb-search");
+        assert_eq!(json["cluster_name"], "bdb-search");
         assert_eq!(json["compute"]["backend"], "cpu");
 
         let cat_resp = cat_indices(State(state)).await.into_response();

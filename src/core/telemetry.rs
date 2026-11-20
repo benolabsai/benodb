@@ -81,7 +81,7 @@ pub fn init_metrics_exporter() -> anyhow::Result<()> {
     crate::telemetry::otlp::spawn_pusher();
     let bind = metrics_addr();
     std::thread::Builder::new()
-        .name("bsdb-metrics".to_string())
+        .name("bdb-metrics".to_string())
         .spawn(move || {
             let rt = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()

@@ -10,7 +10,7 @@ import java.util.Objects;
 
 public class BenoDBColumnHandle implements ColumnHandle {
     /** The name Trino uses for the hidden merge row-id column. */
-    public static final String ROW_ID_COLUMN = "_bsdb_row_id";
+    public static final String ROW_ID_COLUMN = "_bdb_row_id";
 
     private final String columnName;
     private final Type columnType;

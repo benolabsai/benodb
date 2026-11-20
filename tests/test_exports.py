@@ -11,7 +11,7 @@ def test_imports():
     """Test that all modules and functions can be imported"""
     print("Testing imports...")
     try:
-        import benodb as bsdb
+        import benodb as bdb
         print("✓ benodb module imported successfully")
     except ImportError as e:
         print(f"✗ Failed to import benodb: {e}")
@@ -20,13 +20,13 @@ def test_imports():
     # Test GPU Context API
     print("\nTesting GPU Context API...")
     try:
-        ctx = bsdb.ComputeContext.auto_detect()
+        ctx = bdb.ComputeContext.auto_detect()
         print(f"✓ ComputeContext.auto_detect() works: backend={ctx.backend}")
         
-        backends = bsdb.ComputeContext.list_available_backends()
+        backends = bdb.ComputeContext.list_available_backends()
         print(f"✓ ComputeContext.list_available_backends() works: {backends}")
         
-        cpu_ctx = bsdb.ComputeContext('cpu')
+        cpu_ctx = bdb.ComputeContext('cpu')
         print(f"✓ ComputeContext('cpu') works: backend={cpu_ctx.backend}")
     except Exception as e:
         print(f"✗ GPU Context API failed: {e}")
@@ -38,12 +38,12 @@ def test_imports():
     b = np.array([4.0, 5.0, 6.0], dtype=np.float32)
     
     functions = [
-        ('l2', bsdb.l2),
-        ('cosine', bsdb.cosine),
-        ('inner_product', bsdb.inner_product),
-        ('l1', bsdb.l1),
-        ('hamming', bsdb.hamming),
-        ('jaccard', bsdb.jaccard),
+        ('l2', bdb.l2),
+        ('cosine', bdb.cosine),
+        ('inner_product', bdb.inner_product),
+        ('l1', bdb.l1),
+        ('hamming', bdb.hamming),
+        ('jaccard', bdb.jaccard),
     ]
     
     for name, func in functions:
@@ -64,12 +64,12 @@ def test_imports():
     ], dtype=np.float32)
     
     batch_functions = [
-        ('l2_batch', bsdb.l2_batch),
-        ('cosine_batch', bsdb.cosine_batch),
-        ('inner_product_batch', bsdb.inner_product_batch),
-        ('l1_batch', bsdb.l1_batch),
-        ('hamming_batch', bsdb.hamming_batch),
-        ('jaccard_batch', bsdb.jaccard_batch),
+        ('l2_batch', bdb.l2_batch),
+        ('cosine_batch', bdb.cosine_batch),
+        ('inner_product_batch', bdb.inner_product_batch),
+        ('l1_batch', bdb.l1_batch),
+        ('hamming_batch', bdb.hamming_batch),
+        ('jaccard_batch', bdb.jaccard_batch),
     ]
     
     for name, func in batch_functions:
@@ -85,19 +85,19 @@ def test_imports():
     try:
         indices = np.array([0, 5, 10], dtype=np.uint32)
         values = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        sparse_a = bsdb.SparseVector(indices, values, 100)
+        sparse_a = bdb.SparseVector(indices, values, 100)
         print(f"✓ SparseVector created: dim={sparse_a.dim}, nnz={len(sparse_a.indices)}")
         
-        sparse_b = bsdb.SparseVector(np.array([0, 3, 10], dtype=np.uint32), 
+        sparse_b = bdb.SparseVector(np.array([0, 3, 10], dtype=np.uint32), 
                                      np.array([1.0, 4.0, 3.0], dtype=np.float32), 100)
         
-        l2_dist = bsdb.l2_sparse(sparse_a, sparse_b)
+        l2_dist = bdb.l2_sparse(sparse_a, sparse_b)
         print(f"✓ l2_sparse(sparse_a, sparse_b) = {l2_dist}")
         
-        cos_dist = bsdb.cosine_sparse(sparse_a, sparse_b)
+        cos_dist = bdb.cosine_sparse(sparse_a, sparse_b)
         print(f"✓ cosine_sparse(sparse_a, sparse_b) = {cos_dist}")
         
-        ip = bsdb.inner_product_sparse(sparse_a, sparse_b)
+        ip = bdb.inner_product_sparse(sparse_a, sparse_b)
         print(f"✓ inner_product_sparse(sparse_a, sparse_b) = {ip}")
         
         dense = sparse_a.to_dense()
@@ -113,20 +113,20 @@ def test_imports():
         a_packed = np.array([0b10110101], dtype=np.uint8)
         b_packed = np.array([0b10101100], dtype=np.uint8)
         
-        hamming_dist = bsdb.hamming_packed(a_packed, b_packed)
+        hamming_dist = bdb.hamming_packed(a_packed, b_packed)
         print(f"✓ hamming_packed(a_packed, b_packed) = {hamming_dist}")
         
-        jaccard_dist = bsdb.jaccard_packed(a_packed, b_packed)
+        jaccard_dist = bdb.jaccard_packed(a_packed, b_packed)
         print(f"✓ jaccard_packed(a_packed, b_packed) = {jaccard_dist}")
         
         # Test auto-packing
         a_unpacked = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0], dtype=np.float32)
         b_unpacked = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0], dtype=np.float32)
         
-        hamming_auto = bsdb.hamming_auto(a_unpacked, b_unpacked)
+        hamming_auto = bdb.hamming_auto(a_unpacked, b_unpacked)
         print(f"✓ hamming_auto(a_unpacked, b_unpacked) = {hamming_auto}")
         
-        jaccard_auto = bsdb.jaccard_auto(a_unpacked, b_unpacked)
+        jaccard_auto = bdb.jaccard_auto(a_unpacked, b_unpacked)
         print(f"✓ jaccard_auto(a_unpacked, b_unpacked) = {jaccard_auto}")
     except Exception as e:
         print(f"✗ Binary Vector API failed: {e}")

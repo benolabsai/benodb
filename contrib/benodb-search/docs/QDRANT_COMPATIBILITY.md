@@ -1,6 +1,6 @@
 # Qdrant Compatibility
 
-`bsdb-search` (the `benodb-search` add-on) speaks the **Qdrant v1.x REST
+`bdb-search` (the `benodb-search` add-on) speaks the **Qdrant v1.x REST
 wire format** on port `6333` (override with `BDB_QDRANT_BIND` / `BDB_QDRANT_PORT`).
 Collections are stored as BenoDB tables: a reserved `_id` (Utf8) column,
 a `vector` (`FixedSizeList<Float32>`) column, and one Arrow column per inferred

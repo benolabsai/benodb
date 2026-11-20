@@ -73,8 +73,8 @@ def _parse_bytes(text: str) -> int:
     return int(float(text))
 
 
-def _table(bsdb, uri: str):
-    return bsdb.Table(uri)
+def _table(bdb, uri: str):
+    return bdb.Table(uri)
 
 
 def _existing_objects(uri: str) -> int:
@@ -101,7 +101,7 @@ def _existing_objects(uri: str) -> int:
 
 
 def build(
-    bsdb,
+    bdb,
     uri: str,
     container: str,
     algorithm: str | None = None,
@@ -116,7 +116,7 @@ def build(
         )
     rx0, tx0 = netio(container)
     t0 = time.time()
-    table = _table(bsdb, uri)
+    table = _table(bdb, uri)
     rng = np.random.default_rng(0)
     for start in range(0, rows, SEGMENT_ROWS):
         end = min(start + SEGMENT_ROWS, rows)
@@ -186,7 +186,7 @@ def recall_at_k(returned: list[list[int]], truth: np.ndarray, k: int) -> float:
 
 
 def measure(
-    bsdb,
+    bdb,
     uri: str,
     container: str,
     probes: list[int],
@@ -206,13 +206,13 @@ def measure(
     # the delta is the whole initialisation cost. The request count is the point
     # of the shard descriptor: an open that reads every footer pays three
     # requests per shard, one that reads the descriptor pays five in total.
-    bsdb.reset_reader_stats()
+    bdb.reset_reader_stats()
     rx0, tx0 = netio(container)
     t0 = time.time()
-    table = _table(bsdb, uri)
+    table = _table(bdb, uri)
     first = _query(table, query_vectors[0], k, 64, probes[0])
     init_s = time.time() - t0
-    init_stats = bsdb.reader_stats()
+    init_stats = bdb.reader_stats()
     rx1, tx1 = netio(container)
     egress_mb = max(tx1 - tx0, 0) / 1e6
     print(
@@ -225,14 +225,14 @@ def measure(
     records: list[dict] = []
     for n_probe in probes:
         rx0, tx0 = netio(container)
-        bsdb.reset_reader_stats()
+        bdb.reset_reader_stats()
         returned: list[list[int]] = []
         t0 = time.time()
         for i in range(queries):
             returned.append(_ids(_query(table, query_vectors[i], k, 64, n_probe)))
         elapsed = time.time() - t0
         rx1, tx1 = netio(container)
-        st = bsdb.reader_stats()
+        st = bdb.reader_stats()
         egress = max(tx1 - tx0, 0) / 1e6
         # Coverage is the axis that makes two clusterings comparable: the vectors
         # the probe set actually contains, over the corpus. `nprobe` cannot serve,
@@ -347,7 +347,7 @@ def rows_for_dim(dim: int, cap: int, budget_mb: float = 120.0) -> int:
 
 
 def sweep(
-    bsdb,
+    bdb,
     base_uri: str,
     container: str,
     dims: list[int],
@@ -374,9 +374,9 @@ def sweep(
             short = algo.replace("hnsw_", "").replace("hnsw", "f32")
             uri = f"{base_uri.rstrip('/')}/q{dim}_{short}_{rows}"
             print(f"\n=== dim {dim} ({short}), {rows:,} rows ===", flush=True)
-            build(bsdb, uri, container, algo, m, rows, dim)
+            build(bdb, uri, container, algo, m, rows, dim)
             records = measure(
-                bsdb, uri, container, [probes], queries, k, rows, dim
+                bdb, uri, container, [probes], queries, k, rows, dim
             )
             rec = records[0]
             rec.update(
@@ -436,7 +436,7 @@ def main() -> int:
     parser.add_argument("phase", choices=["build", "measure", "sweep", "compare"])
     parser.add_argument("--left", default=None, help="`compare`: JSON from one arm")
     parser.add_argument("--right", default=None, help="`compare`: JSON from the other")
-    parser.add_argument("--uri", default="s3://bsdb-bench/bench")
+    parser.add_argument("--uri", default="s3://benodb-bench/bench")
     parser.add_argument("--container", default="rustfs")
     parser.add_argument("--queries", type=int, default=100)
     parser.add_argument("--probes", default="8,16,32")
@@ -483,18 +483,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    import benodb as bsdb
+    import benodb as bdb
 
     probes = [int(p) for p in args.probes.split(",") if p.strip()]
     if args.phase == "build":
-        build(bsdb, args.uri, args.container, args.algorithm, args.m, args.rows, args.dim)
+        build(bdb, args.uri, args.container, args.algorithm, args.m, args.rows, args.dim)
     elif args.phase == "sweep":
         dims = [int(d) for d in args.dims.split(",") if d.strip()]
         algos = [a.strip() for a in args.algorithms.split(",") if a.strip()]
         # One probe value for the whole grid: every cluster, so the probe stage
         # cannot mask the quantizer's effect on ranking.
         records = sweep(
-            bsdb,
+            bdb,
             args.uri,
             args.container,
             dims,
@@ -517,7 +517,7 @@ def main() -> int:
         compare(args.left, args.right, args.k)
     else:
         records = measure(
-            bsdb,
+            bdb,
             args.uri,
             args.container,
             probes,

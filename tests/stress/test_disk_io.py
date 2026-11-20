@@ -12,7 +12,7 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 np = pytest.importorskip("numpy")
-bsdb = pytest.importorskip("benodb")
+bdb = pytest.importorskip("benodb")
 
 DIM = 32
 ROWS = 2_000
@@ -29,7 +29,7 @@ def _table(offset: int):
 
 
 def test_many_commit_cycles_are_durable(table_uri, rows_of):
-    table = bsdb.Table.create(
+    table = bdb.Table.create(
         table_uri,
         pa.schema([("id", pa.int64()), ("embedding", pa.list_(pa.float32(), DIM))]),
     )

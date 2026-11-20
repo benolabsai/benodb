@@ -1,6 +1,6 @@
 # OpenSearch / Elasticsearch Compatibility
 
-`bsdb-search` (the `benodb-search` add-on) speaks the **OpenSearch 1.x /
+`bdb-search` (the `benodb-search` add-on) speaks the **OpenSearch 1.x /
 Elasticsearch 7.10** wire format. OpenSearch 1.x is the 7.10 fork, so the response
 shapes, error envelopes, and query DSL target that dialect. `GET /` reports
 `version.number = "7.10.2"` and `tagline = "You know, you search"`.
@@ -216,7 +216,7 @@ Before implementing new features, we must establish a production-readiness basel
 
 ### 1.2 Documentation Readiness Check
 - **API Reference Compilation**: Verify that `cargo doc --no-deps` builds cleanly without warnings or broken intra-doc links.
-- **Getting Started Guide**: Ensure [INSTALLATION.md](https://www.benostreamdb.org/guides/installation.html) is up-to-date with current APIs and dependency instructions.
+- **Getting Started Guide**: Ensure [INSTALLATION.md](https://www.benodb.org/guides/installation.html) is up-to-date with current APIs and dependency instructions.
 - **API Coverage**: Confirm all public catalog methods, index structures, and configuration keys are fully documented.
 
 ---

@@ -21,7 +21,7 @@ services:
       - ./docker/data/rustfs:/data
     command: server /data --console-address ":9001"
     networks:
-      - benostream_net
+      - benodb_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/rustfs/health/live"]
       interval: 10s
@@ -33,7 +33,7 @@ services:
     image: rustfs/mc:latest
     container_name: rustfs-init
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -41,9 +41,9 @@ services:
       /bin/sh -c "
       mc alias set rustfs http://rustfs:9000 ${RUSTFS_ROOT_USER} ${RUSTFS_ROOT_PASSWORD};
       mc mb rustfs/warehouse --ignore-existing;
-      mc mb rustfs/benostream --ignore-existing;
+      mc mb rustfs/benodb --ignore-existing;
       mc policy set public rustfs/warehouse;
-      mc policy set public rustfs/benostream;
+      mc policy set public rustfs/benodb;
       exit 0;
       "
 
@@ -72,7 +72,7 @@ services:
       - nessie.catalog.s3.path-style-access=true
       - nessie.server.authentication.enabled=false
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -94,7 +94,7 @@ services:
     volumes:
       - ./docker/data/postgres:/var/lib/postgresql/data
     networks:
-      - benostream_net
+      - benodb_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nessie -d nessie"]
       interval: 10s
@@ -113,11 +113,11 @@ services:
       # Use the connector's checked-in Trino configuration
       - ./trino-benodb/etc:/etc/trino
       # Mount our built plugin
-      # - ./trino-benodb/target/trino-benostream-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benostream
+      # - ./trino-benodb/target/trino-benodb-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benodb
     environment:
       - TRINO_ENV=dev
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -134,7 +134,7 @@ services:
       - "10000:10000"
     command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
     networks:
-      - benostream_net
+      - benodb_net
 
   # ---------------------
   # 5. Fake GCS
@@ -146,8 +146,8 @@ services:
       - "4443:4443"
     command: -scheme http
     networks:
-      - benostream_net
+      - benodb_net
 
 networks:
-  benostream_net:
+  benodb_net:
     driver: bridge

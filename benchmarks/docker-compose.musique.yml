@@ -4,8 +4,8 @@ services:
     build:
       context: ..
       dockerfile: benchmarks/Dockerfile.musique
-    image: bsdb-musique:local
-    container_name: bsdb-musique-graphrag
+    image: benodb-musique:local
+    container_name: benodb-musique-graphrag
     deploy:
       resources:
         limits:
@@ -47,8 +47,8 @@ services:
       dockerfile: benchmarks/Dockerfile.musique
       args:
         TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
-    image: bsdb-musique:gpu
-    container_name: bsdb-musique-graphrag-gpu
+    image: benodb-musique:gpu
+    container_name: benodb-musique-graphrag-gpu
     deploy:
       resources:
         limits:

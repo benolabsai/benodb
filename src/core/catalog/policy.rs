@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// Standard filename for the authoritative catalog storage policy in the warehouse/bucket root.
-pub const CATALOG_POLICY_FILE: &str = ".benostream-policy.json";
+pub const CATALOG_POLICY_FILE: &str = ".benodb-policy.json";
 
 /// Baseline system catalog schemas that are strictly immutable and can NEVER be configured as writable.
 pub const IMMUTABLE_SYSTEM_SCHEMAS: &[&str] =
@@ -314,7 +314,7 @@ where
     }
 }
 
-/// Reads the catalog policy from `.benostream-policy.json` in the warehouse, if present.
+/// Reads the catalog policy from `.benodb-policy.json` in the warehouse, if present.
 ///
 /// Reads go through [`create_object_store`], so both local paths and object
 /// stores (`s3://`, `gs://`, `az://`, `memory://`) are supported. When the
@@ -327,7 +327,7 @@ pub fn get_catalog_policy(warehouse_path: &str) -> Result<Option<CatalogPolicy>>
     block_on_policy(read_policy_via_store(warehouse_path))?
 }
 
-/// Persists an authoritative catalog policy to `.benostream-policy.json` in the
+/// Persists an authoritative catalog policy to `.benodb-policy.json` in the
 /// warehouse root (local path or object-store URI).
 ///
 /// This is an unconditional whole-policy write (the administrator override).
@@ -376,7 +376,7 @@ pub fn lock_catalog_read_only(warehouse_path: &str) -> Result<CatalogPolicy> {
 /// - Trusted engines (Core BenoStreamDB kernel, Arrow Flight SQL, Spark, Trino, dbt) bypass this
 ///   connector-level lockdown and operate with full standard catalog authority.
 /// - Untrusted connectors (MCP, Search REST API, external agents) are subject to zero-trust rules:
-///   1. If an authoritative `.benostream-policy.json` exists in the warehouse, its rules are strictly enforced.
+///   1. If an authoritative `.benodb-policy.json` exists in the warehouse, its rules are strictly enforced.
 ///   2. If NO policy file is present, untrusted connectors are locked down to CONSERVATIVE READ-ONLY MODE:
 ///      all persistent schemas are locked as read-only; only the isolated `scratch` schema is writable.
 pub fn resolve_permissions_for_untrusted_connector(
@@ -485,7 +485,7 @@ pub fn resolve_permissions_for_untrusted_connector(
 ///
 /// This mirrors the `SchemaPermissions` policy used by the MCP server so that
 /// every untrusted connector (MCP, the OpenSearch/Qdrant REST gateways, and
-/// external agents) enforces the authoritative `.benostream-policy.json`
+/// external agents) enforces the authoritative `.benodb-policy.json`
 /// identically.
 ///
 /// Writes are gated by [`SchemaPermissions::is_schema_writable`]; reads are
@@ -641,7 +641,7 @@ impl SchemaPermissions {
     }
 
     /// Build permissions for an untrusted connector from the authoritative
-    /// `.benostream-policy.json` in `warehouse_path`.
+    /// `.benodb-policy.json` in `warehouse_path`.
     ///
     /// Fails closed: when no policy file exists, only the `scratch` schema is
     /// writable and everything else is read-only. The immutable system schemas

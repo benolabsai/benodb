@@ -4,7 +4,7 @@
 # Compatible with Ubuntu 26.04 host toolchain and GLIBC_2.43.
 #
 # Build:
-#   docker build -f benchmarks/Dockerfile.musique -t bsdb-musique:local .
+#   docker build -f benchmarks/Dockerfile.musique -t benodb-musique:local .
 #
 # Weights must exist in the mounted Hugging Face cache. Pre-fetch on the host once.
 # The default configuration is bge-large retrieval + MiniLM-L6 rerank:
@@ -20,7 +20,7 @@
 # NV-Embed-v2 needs trust_remote_code and its custom modules (einops/accelerate are
 # installed below). It also needs a 32 GiB+ envelope: the harness refuses to start
 # on the 16 GiB d8lds profile instead of OOMing mid-run, and reserves the model's
-# resident footprint before sizing BSDB_CACHE_GB.
+# resident footprint before sizing BDB_CACHE_GB.
 #
 # GPU encoding (optional). This image installs the default torch wheel, which is
 # CPU-oriented in most indexes. For GPU encoding, rebuild with CUDA wheels and run
@@ -29,7 +29,7 @@
 #
 #   docker build -f benchmarks/Dockerfile.musique \
 #     --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128 \
-#     -t bsdb-musique:gpu .
+#     -t benodb-musique:gpu .
 #   GPU=1 ./run_musique_docker.sh --embed-model nvembed --encode-gpus cuda:0,cuda:1
 #
 # The runner handles both steps: GPU=1 selects the ':gpu' image, builds it with
@@ -43,7 +43,7 @@
 #
 # Run:
 #   docker run --rm -it \
-#     --name bsdb-musique \
+#     --name benodb-musique \
 #     --cpus=8 \
 #     --memory=32g \
 #     --memory-swap=32g \
@@ -51,7 +51,7 @@
 #     -v /home/ralbright/data/datasets/musique:/data/musique \
 #     -v /home/ralbright/.cache/huggingface:/root/.cache/huggingface:ro \
 #     -v /home/ralbright/projects/benodb/benchmarks/scratch_musique:/work/scratch \
-#     bsdb-musique:local \
+#     benodb-musique:local \
 #       --data-dir /data/musique \
 #       --scratch-dir /work/scratch \
 #       --hardware d8s \

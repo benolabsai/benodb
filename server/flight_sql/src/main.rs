@@ -36,8 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Optional external catalog (Nessie / REST / Glue / Hive / Unity / JDBC),
-    // loaded from BDB_CONFIG, ./benostream.toml, or
-    // ~/.benostream/config.toml. Bound under BDB_CATALOG_NAME (default: the
+    // loaded from BDB_CONFIG, ./benodb.toml, or
+    // ~/.benodb/config.toml. Bound under BDB_CATALOG_NAME (default: the
     // catalog type, e.g. "rest") so `CREATE TABLE <name>.<schema>.<table>`
     // mirrors into it.
     match benodb::core::catalog::CatalogConfig::load_default() {

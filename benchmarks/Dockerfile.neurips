@@ -7,7 +7,7 @@
 # image pins no engine build and no cache budget.
 #
 # Build the harness image (no engine inside):
-#   docker build -f benchmarks/Dockerfile.neurips -t bsdb-neurips .
+#   docker build -f benchmarks/Dockerfile.neurips -t benodb-neurips .
 #
 # The abi3 wheel is mounted at /wheels and installed at start-up, so the same
 # image works for every engine build:

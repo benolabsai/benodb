@@ -1,11 +1,11 @@
 import sys
-import benodb as bsdb
+import benodb as bdb
 import time
 
 def test_view_creation():
     # 1. Initialize Catalog
     try:
-        catalog = bsdb.PyNessieCatalog("http://localhost:19120")
+        catalog = bdb.PyNessieCatalog("http://localhost:19120")
     except AttributeError:
         print("AttributeError: PyNessieCatalog not found in module.")
         sys.exit(1)

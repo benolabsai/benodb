@@ -62,10 +62,10 @@ def make_table(n: int):
 # --------------------------------------------------------------------------- #
 def write_benodb(uri: str, n: int) -> float:
     """Write `n` rows into a BenoDB Iceberg table at `uri`."""
-    import benodb as bsdb
+    import benodb as bdb
 
     t0 = time.time()
-    table = bsdb.Table(uri)
+    table = bdb.Table(uri)
     table.write(make_table(n))
     table.commit()
     table.wait_for_background_tasks()
@@ -82,7 +82,7 @@ def read_spark(uri: str) -> dict:
     from pyspark.sql import SparkSession
 
     spark = (
-        SparkSession.builder.appName("bsdb-iceberg-roundtrip")
+        SparkSession.builder.appName("benodb-iceberg-roundtrip")
         .config(
             "spark.jars.packages",
             "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.6.1",
@@ -91,9 +91,9 @@ def read_spark(uri: str) -> dict:
             "spark.sql.extensions",
             "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
         )
-        .config("spark.sql.catalog.bsdb", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.bsdb.type", "hadoop")
-        .config("spark.sql.catalog.bsdb.warehouse", uri)
+        .config("spark.sql.catalog.bdb", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.bdb.type", "hadoop")
+        .config("spark.sql.catalog.bdb.warehouse", uri)
         .getOrCreate()
     )
     t0 = time.time()
@@ -176,7 +176,7 @@ def main() -> None:
     tmpdir = None
     try:
         if args.engine == "delta":
-            tmpdir = tempfile.mkdtemp(prefix="bsdb_delta_")
+            tmpdir = tempfile.mkdtemp(prefix="benodb_delta_")
             write_s = write_delta(tmpdir, args.rows)
             res = read_delta(tmpdir)
             res["write_seconds"] = write_s
@@ -184,7 +184,7 @@ def main() -> None:
         else:
             uri: str = args.table_uri or ""
             if not uri:
-                tmpdir = tempfile.mkdtemp(prefix="bsdb_iceberg_")
+                tmpdir = tempfile.mkdtemp(prefix="benodb_iceberg_")
                 uri = tmpdir
                 write_s = write_benodb(uri, args.rows)
             else:

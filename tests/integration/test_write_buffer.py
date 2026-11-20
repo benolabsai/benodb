@@ -1,6 +1,6 @@
 import tempfile
 import pytest
-import benodb as bsdb
+import benodb as bdb
 import pyarrow as pa
 import uuid
 import os
@@ -16,7 +16,7 @@ def test_write_buffer_and_index():
     # Even better, we test the buffering behavior specifically.
     os.environ["BDB_CACHE_GB"] = "1" 
     
-    table = bsdb.Table(uri)
+    table = bdb.Table(uri)
     table.index_all_columns() # Enable indexing
     
     # 1. Create Data (Vector + Scalar)

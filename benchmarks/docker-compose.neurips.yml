@@ -9,7 +9,7 @@
 #   maturin build --release --out dist
 #
 #   # 2. harness image
-#   docker build -f benchmarks/Dockerfile.neurips -t bsdb-neurips .
+#   docker build -f benchmarks/Dockerfile.neurips -t benodb-neurips .
 #
 #   # 3. one ablation, 10M vectors, full Pareto grid
 #   DATASET_DIR=/home/ralbright/data/datasets/bigann \
@@ -21,14 +21,14 @@
 #
 # Every number produced here is comparable to the leaderboard because cpus,
 # memory and cache budgets all come from the same envelope.
-name: bsdb-neurips
+name: benodb-neurips
 
 services:
   neurips:
     build:
       context: ..
       dockerfile: benchmarks/Dockerfile.neurips
-    image: bsdb-neurips:latest
+    image: benodb-neurips:latest
 
     # --- the envelope -------------------------------------------------------
     cpus: "${BENCH_CPUS:-8}"
@@ -54,8 +54,8 @@ services:
       TMPDIR: /work/scratch/tmp
       # The profile cannot know the mount path, so these two override whatever
       # scratch location the profile names.
-      BSDB_BENCH_SCRATCH: /work/scratch
-      BSDB_BENCH_TMP: /work/scratch/tmp
+      BDB_BENCH_SCRATCH: /work/scratch
+      BDB_BENCH_TMP: /work/scratch/tmp
 
     # Passed to run_neurips_bigann.py by the entrypoint. The envelope comes from
     # the profile, whose strict preflight aborts when the cgroup limits are

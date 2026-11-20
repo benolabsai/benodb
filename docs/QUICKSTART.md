@@ -23,10 +23,10 @@ pip install benodb
 Run this Python script to create an Iceberg table, attach secondary index overlays (HNSW vector, BM25 full-text, and bitmap scalar), insert records, and query:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # 1. Open (or create) an Iceberg table on local disk or object storage
-table = bsdb.Table("file:///tmp/my_quickstart_table")
+table = bdb.Table("file:///tmp/my_quickstart_table")
 
 # 2. Layer reconstructible secondary indexes onto the table
 table.add_index("vec", "hnsw")          # HNSW index for vector similarity
@@ -119,12 +119,12 @@ print(hybrid_results[["id", "title", "distance", "rrf_score"]])
 BenoDB provides a full Apache DataFusion SQL engine with native support for standard **PostgreSQL pgvector operators** (`<->` L2 distance, `<=>` Cosine distance, `<#>` Inner product). SQL queries transparently benefit from the attached secondary index overlays:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("file:///tmp/my_quickstart_table")
+table = bdb.Table("file:///tmp/my_quickstart_table")
 
 # Create a local SQL session and register the table
-session = bsdb.Session()
+session = bdb.Session()
 session.register("documents", table)
 
 # Query using pgvector cosine distance operator (<=>) filtered by category

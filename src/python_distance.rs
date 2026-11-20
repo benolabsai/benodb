@@ -114,11 +114,11 @@ fn compute_single_distance(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
-/// >>> distance = bsdb.l2(a, b)
+/// >>> distance = bdb.l2(a, b)
 /// >>> print(f"{distance:.3f}")
 /// 5.196
 #[pyfunction]
@@ -162,11 +162,11 @@ pub fn py_l2(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 0.0, 0.0])
 /// >>> b = np.array([0.0, 1.0, 0.0])
-/// >>> distance = bsdb.cosine(a, b)
+/// >>> distance = bdb.cosine(a, b)
 /// >>> print(distance)
 /// 1.0
 #[pyfunction]
@@ -209,11 +209,11 @@ pub fn py_cosine(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
-/// >>> product = bsdb.inner_product(a, b)
+/// >>> product = bdb.inner_product(a, b)
 /// >>> print(product)
 /// 32.0
 #[pyfunction]
@@ -256,11 +256,11 @@ pub fn py_inner_product(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0])
 /// >>> b = np.array([4.0, 5.0, 6.0])
-/// >>> distance = bsdb.l1(a, b)
+/// >>> distance = bdb.l1(a, b)
 /// >>> print(distance)
 /// 9.0
 #[pyfunction]
@@ -303,11 +303,11 @@ pub fn py_l1(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 2.0, 3.0, 4.0])
 /// >>> b = np.array([1.0, 0.0, 3.0, 5.0])
-/// >>> distance = bsdb.hamming(a, b)
+/// >>> distance = bdb.hamming(a, b)
 /// >>> print(distance)
 /// 2.0
 #[pyfunction]
@@ -351,11 +351,11 @@ pub fn py_hamming(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array([1.0, 1.0, 0.0, 0.0])
 /// >>> b = np.array([1.0, 0.0, 1.0, 0.0])
-/// >>> distance = bsdb.jaccard(a, b)
+/// >>> distance = bdb.jaccard(a, b)
 /// >>> print(f"{distance:.3f}")
 /// 0.667
 #[pyfunction]
@@ -488,11 +488,11 @@ fn compute_batch_distances(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> query = np.array([1.0, 2.0, 3.0])
 /// >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-/// >>> distances = bsdb.l2_batch(query, vectors)
+/// >>> distances = bdb.l2_batch(query, vectors)
 /// >>> print(distances)
 /// [0.0, 5.196...]
 #[pyfunction]
@@ -536,11 +536,11 @@ pub fn py_l2_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-///     >>> distances = bsdb.cosine_batch(query, vectors)
+///     >>> distances = bdb.cosine_batch(query, vectors)
 ///     >>> print(distances)  # [0.0, 1.0, 1.0]
 #[pyfunction]
 #[pyo3(name = "cosine_batch", signature = (query, vectors, device=None))]
@@ -586,11 +586,11 @@ pub fn py_cosine_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 2.0, 3.0])
 ///     >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-///     >>> products = bsdb.inner_product_batch(query, vectors)
+///     >>> products = bdb.inner_product_batch(query, vectors)
 ///     >>> print(products)  # [14.0, 32.0]
 #[pyfunction]
 #[pyo3(name = "inner_product_batch", signature = (query, vectors, device=None))]
@@ -636,11 +636,11 @@ pub fn py_inner_product_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([0.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-///     >>> distances = bsdb.l1_batch(query, vectors)
+///     >>> distances = bdb.l1_batch(query, vectors)
 ///     >>> print(distances)  # [6.0, 15.0]
 #[pyfunction]
 #[pyo3(name = "l1_batch", signature = (query, vectors, device=None))]
@@ -680,11 +680,11 @@ pub fn py_l1_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 0.0, 1.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0]])
-///     >>> distances = bsdb.hamming_batch(query, vectors)
+///     >>> distances = bdb.hamming_batch(query, vectors)
 ///     >>> print(distances)  # [0.0, 4.0]
 #[pyfunction]
 #[pyo3(name = "hamming_batch", signature = (query, vectors, device=None))]
@@ -729,11 +729,11 @@ pub fn py_hamming_batch<'py>(
 ///     TypeError: If inputs are not numeric arrays
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> query = np.array([1.0, 1.0, 0.0, 0.0])
 ///     >>> vectors = np.array([[1.0, 1.0, 0.0, 0.0], [1.0, 0.0, 1.0, 0.0]])
-///     >>> distances = bsdb.jaccard_batch(query, vectors)
+///     >>> distances = bdb.jaccard_batch(query, vectors)
 ///     >>> print(distances)  # [0.0, 0.667]
 #[pyfunction]
 #[pyo3(name = "jaccard_batch", signature = (query, vectors, device=None))]
@@ -786,10 +786,10 @@ pub fn py_jaccard_batch<'py>(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> # Create a sparse vector with non-zero values at indices 0, 5, 10
-/// >>> sparse = bsdb.SparseVector([0, 5, 10], [1.0, 2.0, 3.0], 100)
+/// >>> sparse = bdb.SparseVector([0, 5, 10], [1.0, 2.0, 3.0], 100)
 /// >>> print(sparse.dim)
 /// 100
 /// >>> dense = sparse.to_dense()  # Convert to dense representation
@@ -900,8 +900,8 @@ impl PySparseVector {
     ///
     /// Examples
     /// --------
-    /// >>> import benodb as bsdb
-    /// >>> sparse = bsdb.SparseVector([0, 2], [1.0, 3.0], 5)
+    /// >>> import benodb as bdb
+    /// >>> sparse = bdb.SparseVector([0, 2], [1.0, 3.0], 5)
     /// >>> dense = sparse.to_dense()
     /// >>> print(dense)
     /// [1.0, 0.0, 3.0, 0.0, 0.0]
@@ -968,10 +968,10 @@ fn validate_sparse_indices(indices: &[u32], dim: usize) -> PyResult<()> {
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
-/// >>> a = bsdb.SparseVector([0, 5], [1.0, 2.0], 10)
-/// >>> b = bsdb.SparseVector([0, 3], [1.0, 3.0], 10)
-/// >>> distance = bsdb.l2_sparse(a, b)
+/// >>> import benodb as bdb
+/// >>> a = bdb.SparseVector([0, 5], [1.0, 2.0], 10)
+/// >>> b = bdb.SparseVector([0, 3], [1.0, 3.0], 10)
+/// >>> distance = bdb.l2_sparse(a, b)
 /// >>> print(f"{distance:.3f}")
 /// 3.606
 #[pyfunction]
@@ -1018,12 +1018,12 @@ pub fn py_l2_sparse(
 ///     ValueError: If vectors have different dimensions
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> # Two sparse vectors in 1000-dimensional space
-///     >>> a = bsdb.SparseVector([0, 100, 500], [1.0, 2.0, 3.0], 1000)
-///     >>> b = bsdb.SparseVector([0, 200, 500], [1.0, 1.0, 3.0], 1000)
-///     >>> distance = bsdb.cosine_sparse(a, b)
+///     >>> a = bdb.SparseVector([0, 100, 500], [1.0, 2.0, 3.0], 1000)
+///     >>> b = bdb.SparseVector([0, 200, 500], [1.0, 1.0, 3.0], 1000)
+///     >>> distance = bdb.cosine_sparse(a, b)
 #[pyfunction]
 #[pyo3(name = "cosine_sparse", signature = (a, b, device=None))]
 pub fn py_cosine_sparse(
@@ -1077,12 +1077,12 @@ pub fn py_cosine_sparse(
 ///     ValueError: If vectors have different dimensions
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> # Sparse vectors with some overlapping non-zero indices
-///     >>> a = bsdb.SparseVector([0, 2, 4], [1.0, 2.0, 3.0], 10)
-///     >>> b = bsdb.SparseVector([0, 2, 5], [2.0, 3.0, 1.0], 10)
-///     >>> product = bsdb.inner_product_sparse(a, b)
+///     >>> a = bdb.SparseVector([0, 2, 4], [1.0, 2.0, 3.0], 10)
+///     >>> b = bdb.SparseVector([0, 2, 5], [2.0, 3.0, 1.0], 10)
+///     >>> product = bdb.inner_product_sparse(a, b)
 ///     >>> print(product)  # 8.0 (1*2 + 2*3 + 0)
 #[pyfunction]
 #[pyo3(name = "inner_product_sparse", signature = (a, b, device=None))]
@@ -1256,12 +1256,12 @@ fn pack_binary_vector(values: &[f32]) -> Vec<u8> {
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> # Two binary vectors: 10110101 and 10101100
 /// >>> a = np.array(\[0b10110101\], dtype=np.uint8)
 /// >>> b = np.array(\[0b10101100\], dtype=np.uint8)
-/// >>> distance = bsdb.hamming_packed(a, b)
+/// >>> distance = bdb.hamming_packed(a, b)
 /// >>> print(distance)
 /// 3
 #[pyfunction]
@@ -1394,12 +1394,12 @@ pub fn py_jaccard_distance_batch<'py>(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> # Unpacked binary vectors (will be auto-packed)
 /// >>> a = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0])
 /// >>> b = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0])
-/// >>> distance = bsdb.hamming_auto(a, b)
+/// >>> distance = bdb.hamming_auto(a, b)
 /// >>> print(distance)
 /// 3
 #[pyfunction]
@@ -1459,11 +1459,11 @@ pub fn py_hamming_auto(
 ///
 /// Examples
 /// --------
-/// >>> import benodb as bsdb
+/// >>> import benodb as bdb
 /// >>> import numpy as np
 /// >>> a = np.array(\[0b10110101\], dtype=np.uint8)
 /// >>> b = np.array(\[0b10101100\], dtype=np.uint8)
-/// >>> distance = bsdb.jaccard_packed(a, b)
+/// >>> distance = bdb.jaccard_packed(a, b)
 /// >>> print(f"{distance:.3f}")
 /// 0.429
 #[pyfunction]
@@ -1524,12 +1524,12 @@ pub fn py_jaccard_packed(
 ///     ValueError: If vectors have different lengths or contain non-binary values
 ///
 /// Example:
-///     >>> import benodb as bsdb
+///     >>> import benodb as bdb
 ///     >>> import numpy as np
 ///     >>> # Unpacked binary vectors representing sets
 ///     >>> a = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0])
 ///     >>> b = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0])
-///     >>> distance = bsdb.jaccard_auto(a, b)  # Auto-packs and computes
+///     >>> distance = bdb.jaccard_auto(a, b)  # Auto-packs and computes
 ///     >>> print(distance)  # Jaccard distance based on set overlap
 #[pyfunction]
 #[pyo3(name = "jaccard_auto", signature = (a, b, device=None))]

@@ -242,7 +242,7 @@ services:
     build:
       context: ../..
       dockerfile: benchmarks/competitors/Dockerfile.trino
-    image: bsdb-trino:latest
+    image: bdb-trino:latest
     # The runner writes the shared data dir as root, so the connector's write
     # path (CTAS/INSERT/MERGE) needs root here too; otherwise the `trino` user
     # gets EACCES on the root-owned warehouse. Read-only queries are unaffected.
@@ -270,7 +270,7 @@ services:
     build:
       context: ../..
       dockerfile: benchmarks/competitors/Dockerfile.bench
-    image: bsdb-bench-runner:latest
+    image: bdb-bench-runner:latest
     profiles: ["run"]
     # The maintenance/workload benchmarks saturate reads while compaction
     # rewrites segments; the default `nofile=1024` is far too low and surfaces
@@ -282,7 +282,7 @@ services:
     volumes:
       - ./run_competitor.py:/opt/bench/run_competitor.py:ro
       # Mounted for the same reason as run_competitor.py: the runner is otherwise
-      # only the copy baked into bsdb-bench-runner:latest, so a fix to it (the
+      # only the copy baked into bdb-bench-runner:latest, so a fix to it (the
       # multi-wheel install below) silently does nothing until the image is rebuilt.
       - ./run_bench.sh:/opt/bench/run_bench.sh:ro
       # Same reasoning again for the ANN-Benchmarks harness, which

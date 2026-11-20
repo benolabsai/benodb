@@ -30,7 +30,7 @@ pub struct DetectedKnnPattern {
     /// Optional filter predicate found between Sort and BenoStreamExec
     pub filter: Option<std::sync::Arc<dyn datafusion::physical_expr::PhysicalExpr>>,
     /// The BenoStreamExec node at the base of the pattern
-    pub benostream_exec: BenoStreamExecRef,
+    pub benodb_exec: BenoStreamExecRef,
 }
 
 /// A reference wrapper to hold the BenoStreamExec without consuming the Arc.
@@ -104,6 +104,6 @@ pub fn detect_knn_pattern(plan: &dyn ExecutionPlan) -> Option<DetectedKnnPattern
         offset,
         sort_exprs,
         filter,
-        benostream_exec: BenoStreamExecRef::from_exec(hs_exec),
+        benodb_exec: BenoStreamExecRef::from_exec(hs_exec),
     })
 }

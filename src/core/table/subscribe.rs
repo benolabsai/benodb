@@ -220,7 +220,7 @@ mod tests {
     }
 
     async fn temp_table(tag: &str) -> (Table, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!("bsdb_sub_{tag}_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdb_sub_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Int64, false)]));
         let table = Table::create_async(dir.to_str().unwrap().to_string(), schema)

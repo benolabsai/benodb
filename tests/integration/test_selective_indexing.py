@@ -1,5 +1,5 @@
 import tempfile
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import shutil
 import os
@@ -31,7 +31,7 @@ def get_files(table_uri):
 
 def test_selective_indexing():
     print("1. Creating Table and Ingesting Data (Default: NO INDEX)")
-    table = bsdb.Table(TABLE_URI)
+    table = bdb.Table(TABLE_URI)
     table.set_index_all(False) # Ensure we test selective indexing only
     table.autocommit = False # Prevent background flushes during investigation
     

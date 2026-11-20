@@ -20,18 +20,18 @@ def wait_for_healthy(port=9200, timeout=60):
     return False
 
 def test_process_kill_recovery():
-    # Skip in CI where the bsdb-search binary is not pre-built and
+    # Skip in CI where the bdb-search binary is not pre-built and
     # compiling from source via `cargo run --release` exceeds the
     # health-check timeout.
     if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
-        pytest.skip("bsdb-search binary not pre-built in CI")
+        pytest.skip("bdb-search binary not pre-built in CI")
     print("="*60)
     print("Testing External Crash Recovery (SIGKILL)")
     print("="*60)
 
     # Setup unique data directory
     ts = int(time.time())
-    data_dir = os.path.join(tempfile.gettempdir(), f"bsdb_crash_data_{ts}")
+    data_dir = os.path.join(tempfile.gettempdir(), f"bdb_crash_data_{ts}")
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
     os.makedirs(data_dir)
@@ -46,9 +46,9 @@ def test_process_kill_recovery():
     env["BDB_API_KEY"] = "test-key"
 
     # Start the server
-    print("Starting bsdb-search...")
-    # Assuming bsdb-search is built in release mode
-    bin_path = "../../target/release/bsdb-search"
+    print("Starting bdb-search...")
+    # Assuming bdb-search is built in release mode
+    bin_path = "../../target/release/bdb-search"
     if not os.path.exists(bin_path):
         # Fallback to cargo run
         proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benodb-search"], env=env)
@@ -86,7 +86,7 @@ def test_process_kill_recovery():
             proc.wait()
 
     # Restart the server
-    print("Restarting bsdb-search...")
+    print("Restarting bdb-search...")
     if not os.path.exists(bin_path):
         proc = subprocess.Popen(["cargo", "run", "--release", "-p", "benodb-search"], env=env)
     else:

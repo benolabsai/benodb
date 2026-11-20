@@ -23,7 +23,7 @@ class BuildIndexProcedure extends Procedure {
     val table = inputArgs.getString(0)
     
     val jniBridge = com.benodb.spark.jni.BenoDBJNIBridge.getInstance()
-    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benostream.gpu.device", "auto")
+    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benodb.gpu.device", "auto")
     jniBridge.setGpuContext(gpuDevice)
     jniBridge.buildIndex(BenoDBTableResolver.resolveFromSession(table), "all")
     

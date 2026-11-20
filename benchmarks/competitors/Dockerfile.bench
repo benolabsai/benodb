@@ -5,7 +5,7 @@
 # envelope. See docker_bench.sh.
 #
 # Build:
-#   docker build -f benchmarks/competitors/Dockerfile.bench -t bsdb-bench-runner .
+#   docker build -f benchmarks/competitors/Dockerfile.bench -t bdb-bench-runner .
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1

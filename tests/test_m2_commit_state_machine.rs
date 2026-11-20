@@ -1088,7 +1088,7 @@ async fn pillar1_scripted_store_metadata_cas_version_hint_and_ambiguous_manifest
         "buffer must stay restored until retry converges"
     );
 
-    // Retry must detect `benostream.committed_wal_tx` on v2.json and converge cleanly
+    // Retry must detect `benodb.committed_wal_tx` on v2.json and converge cleanly
     // without creating `_manifest/v3.json` or writing duplicate Parquet files.
     table.commit_async().await?;
     assert!(

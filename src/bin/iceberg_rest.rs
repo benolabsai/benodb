@@ -170,7 +170,7 @@ async fn shutdown_signal() {
 
 async fn get_config() -> impl IntoResponse {
     let mut overrides = std::collections::HashMap::new();
-    overrides.insert("prefix".to_string(), "bsdb".to_string());
+    overrides.insert("prefix".to_string(), "bdb".to_string());
 
     let config = CatalogConfig {
         overrides,

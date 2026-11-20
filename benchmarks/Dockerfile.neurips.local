@@ -12,7 +12,7 @@
 # the committed image for leaderboard-comparable runs built in manylinux.
 #
 #   .venv/bin/maturin build --release --out dist
-#   docker build -f benchmarks/Dockerfile.neurips.local -t bsdb-neurips:local .
+#   docker build -f benchmarks/Dockerfile.neurips.local -t benodb-neurips:local .
 FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1

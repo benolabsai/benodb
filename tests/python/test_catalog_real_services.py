@@ -64,7 +64,7 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
-import benodb as bsdb
+import benodb as bdb
 
 UC_IMAGE = os.environ.get("BDB_UC_IMAGE", "unitycatalog/unitycatalog:latest")
 NESSIE_IMAGE = os.environ.get(
@@ -80,7 +80,7 @@ POLARIS_SCOPE = "PRINCIPAL_ROLE:ALL"
 AEMU_RELEASE = os.environ.get("BDB_AWS_EMULATOR_RELEASE", "latest")
 AEMU_CACHE = Path(
     os.environ.get(
-        "BDB_AWS_EMULATOR_CACHE", Path(tempfile.gettempdir()) / "bsdb-aws-emulator"
+        "BDB_AWS_EMULATOR_CACHE", Path(tempfile.gettempdir()) / "bdb-aws-emulator"
     )
 )
 
@@ -192,7 +192,7 @@ def _polaris_token(base_url: str) -> str:
 
 
 def _name(prefix: str) -> str:
-    return f"bsdb-{prefix}-{uuid.uuid4().hex[:8]}"
+    return f"bdb-{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 def _wait_polaris_token(base_url: str, timeout_s: int = 240) -> str:
@@ -293,7 +293,7 @@ def _wait_hive(url: str, timeout_s: int = 300) -> None:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
-            bsdb.create_catalog("hive", {"url": url}).list_tables("default")
+            bdb.create_catalog("hive", {"url": url}).list_tables("default")
             return
         except RuntimeError as exc:
             message = str(exc)
@@ -399,14 +399,14 @@ def postgres():
         POSTGRES_IMAGE,
         5432,
         "-e",
-        "POSTGRES_PASSWORD=bsdb",
+        "POSTGRES_PASSWORD=bdb",
         "-e",
         "POSTGRES_DB=catalog",
     )
     try:
         _wait_tcp(port)
         _wait_pg(name, timeout_s=120)
-        yield f"postgres://postgres:bsdb@127.0.0.1:{port}/catalog"
+        yield f"postgres://postgres:bdb@127.0.0.1:{port}/catalog"
     finally:
         _stop(name)
 
@@ -448,7 +448,7 @@ def polaris(tmp_path_factory):
             f"{base_url}/api/management/v1/catalogs",
             {
                 "catalog": {
-                    "name": "bsdb",
+                    "name": "bdb",
                     "type": "INTERNAL",
                     "readOnly": False,
                     "properties": {"default-base-location": f"file://{storage}"},
@@ -503,8 +503,8 @@ def aws_emulator(tmp_path_factory):
 # --------------------------------------------------------------------------- #
 
 
-def _schema() -> bsdb.Schema:
-    return bsdb.Schema.from_arrow(
+def _schema() -> bdb.Schema:
+    return bdb.Schema.from_arrow(
         pa.schema(
             [
                 pa.field("id", pa.int32(), nullable=False),
@@ -549,7 +549,7 @@ def _roundtrip(cat, namespace: str, location) -> None:
 def test_iceberg_rest_catalog_roundtrip(unity_catalog):
     """Generic Iceberg REST client against the server's Iceberg REST mount."""
     base_url, storage = unity_catalog
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "rest",
         {"url": f"{base_url}/api/2.1/unity-catalog/iceberg", "warehouse": "main"},
     )
@@ -559,7 +559,7 @@ def test_iceberg_rest_catalog_roundtrip(unity_catalog):
 def test_unity_catalog_iceberg_rest_autodetect(unity_catalog):
     """Unity client finds `/iceberg` rather than the Databricks `/iceberg-rest`."""
     base_url, storage = unity_catalog
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "unity",
         {"url": base_url, "token": "unused", "warehouse": "main", "mode": "iceberg-rest"},
     )
@@ -569,7 +569,7 @@ def test_unity_catalog_iceberg_rest_autodetect(unity_catalog):
 def test_unity_catalog_explicit_mount_point(unity_catalog):
     """An explicit `.../iceberg` base URL is probed first and kept."""
     base_url, storage = unity_catalog
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "unity",
         {
             "url": f"{base_url}/api/2.1/unity-catalog/iceberg",
@@ -586,22 +586,22 @@ def test_unity_catalog_explicit_mount_point(unity_catalog):
 
 
 def test_nessie_catalog_roundtrip(nessie, tmp_path):
-    cat = bsdb.create_catalog("nessie", {"url": nessie})
+    cat = bdb.create_catalog("nessie", {"url": nessie})
     _roundtrip(cat, "prod", tmp_path / "nessie_tbl")
 
 
 def test_hive_metastore_roundtrip(hive_metastore, tmp_path):
-    cat = bsdb.create_catalog("hive", {"url": hive_metastore})
-    _roundtrip(cat, "bsdb_prod", tmp_path / "hive_tbl")
+    cat = bdb.create_catalog("hive", {"url": hive_metastore})
+    _roundtrip(cat, "bdb_prod", tmp_path / "hive_tbl")
 
 
 def test_jdbc_postgres_roundtrip(postgres, tmp_path):
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "jdbc",
         {
             "uri": postgres,
             "warehouse": f"file://{tmp_path}/wh",
-            "catalog_name": "bsdb",
+            "catalog_name": "bdb",
         },
     )
     _roundtrip(cat, "prod", tmp_path / "pg_tbl")
@@ -614,11 +614,11 @@ def test_polaris_catalog_roundtrip(polaris):
     location is nested inside `{root}/prod`.
     """
     base_url, storage = polaris
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "rest",
         {
             "url": f"{base_url}/api/catalog",
-            "warehouse": "bsdb",
+            "warehouse": "bdb",
             "credential": f"{POLARIS_CLIENT_ID}:{POLARIS_CLIENT_SECRET}",
             "scope": POLARIS_SCOPE,
         },
@@ -641,5 +641,5 @@ def test_glue_data_catalog_roundtrip(aws_emulator, tmp_path, monkeypatch):
     monkeypatch.setenv("SSL_CERT_FILE", str(ca))
     monkeypatch.setenv("BDB_SSRF_ALLOW_HOSTS", "127.0.0.1")
 
-    cat = bsdb.create_catalog("glue", {"region": "us-east-1"})
-    _roundtrip(cat, "bsdb_prod", tmp_path / "glue_tbl")
+    cat = bdb.create_catalog("glue", {"region": "us-east-1"})
+    _roundtrip(cat, "bdb_prod", tmp_path / "glue_tbl")

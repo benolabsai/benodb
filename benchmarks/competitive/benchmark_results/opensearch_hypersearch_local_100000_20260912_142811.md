@@ -3,7 +3,7 @@
 **Generated:** 2026-09-12T14:28:24  
 **Host:** AMD Ryzen 9 5900XT 16-Core Processor (Linux 7.0.0-31-generic)  
 **ES:** skipped (build `n/a`, Docker, single-node, 1 shard, no replicas, 1 GiB JVM)  
-**bsdb-search:** 7.10.2 (release build, storage: `local`, in-process HNSW/BM25)  
+**bdb-search:** 7.10.2 (release build, storage: `local`, in-process HNSW/BM25)  
 **Dataset:** 100,000 docs × 64-dim embeddings, 100 query runs, k=10
 
 ## Ingest (bulk POST)
@@ -52,11 +52,11 @@
 
 ## Fairness caveats
 
-- Single-doc POST on **both** systems (bsdb-search has no `_bulk` in this test); ES index pre-created with refresh disabled, bsdb-search creates the index on first write.
-- The `embedding` field is sent to bsdb-search only: ES 7.10 has no `dense_vector` type.
-- `knn` and `hybrid_rrf` are bsdb-search-only (no vector search in ES 7.10).
-- ES refresh does little work (segments are indexed during ingest); bsdb-search refresh includes BM25/HNSW index build, so refresh times are not like-for-like.
-- bsdb-search is a **release** build; ES uses the stock Docker image.
+- Single-doc POST on **both** systems (bdb-search has no `_bulk` in this test); ES index pre-created with refresh disabled, bdb-search creates the index on first write.
+- The `embedding` field is sent to bdb-search only: ES 7.10 has no `dense_vector` type.
+- `knn` and `hybrid_rrf` are bdb-search-only (no vector search in ES 7.10).
+- ES refresh does little work (segments are indexed during ingest); bdb-search refresh includes BM25/HNSW index build, so refresh times are not like-for-like.
+- bdb-search is a **release** build; ES uses the stock Docker image.
 - Both systems run on the same host; ES JVM heap is the image default (1 GiB).
 
 ## Notes

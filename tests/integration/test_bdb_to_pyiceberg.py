@@ -9,7 +9,7 @@ with BenoStreamDB).
 Requires: pyiceberg + pyarrow (installed in the project `.venv`).
 
 Run with:
-    .venv/bin/python -m pytest tests/integration/test_bsdb_to_pyiceberg.py -v
+    .venv/bin/python -m pytest tests/integration/test_bdb_to_pyiceberg.py -v
 """
 
 import glob
@@ -19,7 +19,7 @@ import tempfile
 import pyarrow as pa
 import pytest
 
-import benodb as bsdb
+import benodb as bdb
 
 pyiceberg = pytest.importorskip("pyiceberg")
 from pyiceberg.table import StaticTable  # noqa: E402
@@ -34,9 +34,9 @@ def _latest_metadata(table_path: str) -> str:
     return os.path.join(mdir, files[-1])
 
 
-def test_bsdb_table_is_readable_by_pyiceberg():
+def test_bdb_table_is_readable_by_pyiceberg():
     """BenoStreamDB -> PyIceberg: schema + data must round-trip."""
-    tmp = tempfile.mkdtemp(prefix="bsdb_pyiceberg_")
+    tmp = tempfile.mkdtemp(prefix="bdb_pyiceberg_")
     table_path = os.path.join(tmp, "t")
     uri = f"file://{table_path}"
 
@@ -47,7 +47,7 @@ def test_bsdb_table_is_readable_by_pyiceberg():
             "value": [1.5, 2.5, 3.5, 4.5, 5.5],
         }
     )
-    bsdb.Table.from_arrow(uri, data)
+    bdb.Table.from_arrow(uri, data)
 
     metadata_path = _latest_metadata(table_path)
 
@@ -68,15 +68,15 @@ def test_bsdb_table_is_readable_by_pyiceberg():
     assert arrow.column("value").to_pylist() == [1.5, 2.5, 3.5, 4.5, 5.5]
 
 
-def test_bsdb_multi_commit_manifest_list_is_readable():
+def test_bdb_multi_commit_manifest_list_is_readable():
     """Multiple commits -> the manifest list must remain readable by PyIceberg."""
-    tmp = tempfile.mkdtemp(prefix="bsdb_pyiceberg_multi_")
+    tmp = tempfile.mkdtemp(prefix="bdb_pyiceberg_multi_")
     table_path = os.path.join(tmp, "t")
     uri = f"file://{table_path}"
 
     # Two separate commits (each adds a segment + a manifest list).
-    bsdb.Table.from_arrow(uri, pa.table({"id": [1, 2, 3]}))
-    t = bsdb.Table(uri)
+    bdb.Table.from_arrow(uri, pa.table({"id": [1, 2, 3]}))
+    t = bdb.Table(uri)
     t.write(pa.table({"id": [4, 5, 6]}))
     t.commit()
 
@@ -88,6 +88,6 @@ def test_bsdb_multi_commit_manifest_list_is_readable():
 
 
 if __name__ == "__main__":
-    test_bsdb_table_is_readable_by_pyiceberg()
-    test_bsdb_multi_commit_manifest_list_is_readable()
+    test_bdb_table_is_readable_by_pyiceberg()
+    test_bdb_multi_commit_manifest_list_is_readable()
     print("=== BenoStreamDB -> PyIceberg interop OK ===")

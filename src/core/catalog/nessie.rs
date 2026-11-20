@@ -610,7 +610,7 @@ impl NessieClient {
             operations: vec![op],
             meta: CommitMeta {
                 message,
-                author: "benostream".to_string(),
+                author: "benodb".to_string(),
                 properties: HashMap::new(),
             },
         };

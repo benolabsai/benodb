@@ -4,7 +4,7 @@
 import os
 import shutil
 import tempfile
-import benodb as bsdb
+import benodb as bdb
 
 
 def test_vector_search_with_string_columns_no_offset_corruption():
@@ -15,7 +15,7 @@ def test_vector_search_with_string_columns_no_offset_corruption():
     tmpdir = tempfile.mkdtemp(prefix="benostream_test_str_")
     try:
         table_uri = "file://" + tmpdir
-        table = bsdb.Table(table_uri)
+        table = bdb.Table(table_uri)
         table.add_index("vec", "hnsw")
         table.add_index("title", "bm25")
 

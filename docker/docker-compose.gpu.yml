@@ -17,7 +17,7 @@ services:
       dockerfile: docker/Dockerfile.gpu
     image: benodb/quickstart:gpu
     environment:
-      - BSDB_SEARCH_DEVICE=auto
+      - BDB_SEARCH_DEVICE=auto
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     deploy:

@@ -54,7 +54,7 @@ cargo run -p benodb-flight
 |---|---|
 | `BDB_WAREHOUSE` | Base location for `CREATE TABLE` when no `LOCATION` is given. Tables land at `<warehouse>/<schema>/<table>`. |
 | `BDB_CATALOG_NAME` | DataFusion catalog name to bind the external catalog to (default: the catalog type, e.g. `rest`). |
-| `BDB_CONFIG` | Path to a catalog config TOML (Nessie / REST / Glue / Hive / Unity / JDBC). Falls back to `./benostream.toml` then `~/.benostream/config.toml`. |
+| `BDB_CONFIG` | Path to a catalog config TOML (Nessie / REST / Glue / Hive / Unity / JDBC). Falls back to `./benodb.toml` then `~/.benodb/config.toml`. |
 | `BDB_FLIGHT_BIND` | Bind address for the Flight SQL gRPC listener. | `127.0.0.1` |
 | `BDB_FLIGHT_PORT` | Port for the Flight SQL gRPC listener. | `50051` |
 | `BDB_METRICS_BIND` | Bind address for the observability HTTP listener. | `127.0.0.1` |
@@ -98,7 +98,7 @@ The server exposes an HTTP observability surface on
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /metrics` | Prometheus text format — the engine's `benostreamdb_*` metrics. |
+| `GET /metrics` | Prometheus text format — the engine's `benodb_*` metrics. |
 | `GET /health` | Liveness (`200 ok`). |
 | `GET /readyz` | Readiness (`200 ok`). |
 
@@ -309,8 +309,8 @@ Network clients can also invoke maintenance actions directly over Flight RPC:
 ## Session settings
 
 ```sql
-SET benostream.warehouse = 's3://bucket/warehouse';
-SHOW benostream.warehouse;
+SET benodb.warehouse = 's3://bucket/warehouse';
+SHOW benodb.warehouse;
 ```
 
 Session-scoped and allowlisted (`warehouse`, `default_index_algorithm`). SQL

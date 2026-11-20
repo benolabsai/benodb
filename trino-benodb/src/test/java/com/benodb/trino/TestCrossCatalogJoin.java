@@ -39,7 +39,7 @@ public class TestCrossCatalogJoin {
     @BeforeAll
     void setUp() throws Exception {
         assumeTrue(BenoDBJNIBridge.isLoaded(), "libbenodb is not on java.library.path");
-        warehouse = Files.createTempDirectory("benostream-trino-join-");
+        warehouse = Files.createTempDirectory("benodb-trino-join-");
         runner = DistributedQueryRunner.builder(
                         TestingSession.testSessionBuilder()
                                 .setCatalog("benodb")
@@ -51,7 +51,7 @@ public class TestCrossCatalogJoin {
         runner.createCatalog(
                 "benodb",
                 "benodb",
-                Map.of("benostream.warehouse", warehouse.toUri().toString()));
+                Map.of("benodb.warehouse", warehouse.toUri().toString()));
         runner.createCatalog("tpch", "tpch", Map.of());
     }
 

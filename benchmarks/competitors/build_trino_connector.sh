@@ -2,7 +2,7 @@
 # Build the BenoDB Trino connector image for the latest Trino container.
 #
 # The connector needs two artifacts:
-#   1. the plugin ZIP (`connector-artifacts/trino-benostream-java-17.zip`), and
+#   1. the plugin ZIP (`connector-artifacts/trino-benodb-java-17.zip`), and
 #   2. `libbenodb.so` on `java.library.path`.
 #
 # The native lib must be built for the *Trino image's* glibc (Debian, ~2.34),
@@ -34,8 +34,8 @@ fi
 #   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 \
 #     mvn -f trino-benodb/pom.xml clean package -DskipTests
 # `build-connectors.sh` does this and flattens the ZIP for you.
-if [[ ! -f "$ART/trino-benostream-java-17.zip" ]]; then
-  echo "error: $ART/trino-benostream-java-17.zip not found." >&2
+if [[ ! -f "$ART/trino-benodb-java-17.zip" ]]; then
+  echo "error: $ART/trino-benodb-java-17.zip not found." >&2
   echo "Build it with: (cd trino-benodb && JAVA_HOME=<jdk23+> mvn clean package -DskipTests)" >&2
   exit 1
 fi
@@ -55,4 +55,4 @@ echo "staged native lib: $ART/libbenodb.so"
 
 # 3. Build the Trino image.
 docker compose -f "$HERE/docker-compose.bench.yml" build trino
-echo "built bsdb-trino:latest"
+echo "built bdb-trino:latest"

@@ -10,7 +10,7 @@ OpenSearch / Elasticsearch 7.10 and Qdrant REST compatibility gateway for BenoSt
 1. **OpenSearch / Elasticsearch 7.10 REST API** (`/_bulk`, `/{index}/_doc`, `/{index}/_search`, aggregations, index templates).
 2. **Qdrant REST API** (`/collections`, `/collections/{name}/points`, search, scroll).
 
-It runs as a standalone daemon (`bsdb-search`) backed directly by BenoStreamDB tables on local or cloud object storage.
+It runs as a standalone daemon (`bdb-search`) backed directly by BenoStreamDB tables on local or cloud object storage.
 
 ## Installation
 
@@ -28,7 +28,7 @@ pip install benodb-search
 
 ```bash
 # Start server listening on port 9200 (OpenSearch) and 6333 (Qdrant)
-bsdb-search --bind 0.0.0.0 --port 9200 --storage-uri file:///data/benodb
+bdb-search --bind 0.0.0.0 --port 9200 --storage-uri file:///data/benodb
 ```
 
 ## Configuration
@@ -92,7 +92,7 @@ via systemd `LoadCredential=`/`EnvironmentFile=` (mode `0600`).
 
 The gateway is an **untrusted, network-facing connector**: reads and writes are
 governed by the authoritative **catalog storage policy** — a
-`.benostream-policy.json` object in the warehouse/bucket root (a local path or an
+`.benodb-policy.json` object in the warehouse/bucket root (a local path or an
 object store such as `s3://`, resolved through the core object store).
 
 - **Schemas come from the backend — the gateway never creates one.** A schema
@@ -116,7 +116,7 @@ Enforcement is identical across the OpenSearch API (`_search`, `_count`,
 API (search / query / scroll / retrieve / count / recommend / discover plus every
 mutating route).
 
-Example `.benostream-policy.json` at the warehouse root:
+Example `.benodb-policy.json` at the warehouse root:
 
 ```json
 {

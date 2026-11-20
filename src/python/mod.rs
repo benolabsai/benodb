@@ -25,7 +25,7 @@ pub use table::*;
 use pyo3::prelude::*;
 
 /// Register all BenoStreamDB Python bindings into the given module.
-pub fn migrate_benostreamdb(m: &Bound<'_, PyModule>) -> PyResult<()> {
+pub fn migrate_benodb(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Helper functions
     m.add_function(wrap_pyfunction!(helpers::init_logging, m)?)?;
     m.add_function(wrap_pyfunction!(helpers::build_profile, m)?)?;

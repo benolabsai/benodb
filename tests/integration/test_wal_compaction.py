@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import os
 import time
@@ -19,7 +19,7 @@ def test_wal_compaction():
     
     # 1. Write many small batches to trigger compaction
     print("\nPhase 1: Writing 200 small batches...")
-    table = bsdb.Table(uri)
+    table = bdb.Table(uri)
     table.autocommit = False
     
     for i in range(200):
@@ -55,7 +55,7 @@ def test_wal_compaction():
     print("\nPhase 3: Verifying recovery after compaction...")
     del table
     
-    table2 = bsdb.Table(uri)
+    table2 = bdb.Table(uri)
     result = table2.to_pandas()
     assert len(result) == 200, f"Expected 200 rows, got {len(result)}"
     print(f"✓ Recovered {len(result)} rows from compacted WAL")

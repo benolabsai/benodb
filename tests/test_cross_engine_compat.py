@@ -12,7 +12,7 @@ Prerequisites:
 - benodb installed
 """
 
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import pytest
 from pathlib import Path
@@ -23,7 +23,7 @@ import subprocess
 import json
 
 # Test data directory
-TEST_DIR = (Path(tempfile.gettempdir()) / "benostream_compat_tests")
+TEST_DIR = (Path(tempfile.gettempdir()) / "benodb_compat_tests")
 TEST_DIR.mkdir(exist_ok=True)
 
 # The per-PR `ecosystem` job cannot read Iceberg-format tables from the pip
@@ -84,7 +84,7 @@ class TestSparkCompatibility:
     def setup_method(self):
         """Create test table with V2/V3 features"""
         self.table_path = str(TEST_DIR / "spark_test_table")
-        self.table = bsdb.Table(self.table_path)
+        self.table = bdb.Table(self.table_path)
         
         # Write test data with V2 features
         df = pd.DataFrame({
@@ -211,24 +211,40 @@ class TestTrinoCompatibility:
     """Test BenoStreamDB → Trino compatibility"""
     
     def setup_method(self):
-        """Create test table"""
+        """Create and commit the test table.
+
+        The commit is not optional. `write_pandas` buffers into the write ahead
+        log, so a table that is never committed holds no Parquet and no
+        `metadata/version-hint.text`. Trino's `register_table` then has nothing
+        to read, and the test fails four lines later with TABLE_NOT_FOUND rather
+        than with the registration error that caused it.
+        """
         self.table_path = str(TEST_DIR / "trino_test_table")
-        self.table = bsdb.Table(self.table_path)
-        
+        # A table left behind by an earlier run would be appended to, so the row
+        # count assertion would be checking the sum of every run on this machine.
+        # Removing the directory makes each run start from one committed state.
+        shutil.rmtree(self.table_path, ignore_errors=True)
+        self.table = bdb.Table(self.table_path)
+
         df = pd.DataFrame({
             "user_id": range(500),
             "action": ["click", "view", "purchase"] * 166 + ["click", "view"],
             "amount": [i * 1.5 for i in range(500)]
         })
-        
+
         self.table.write_pandas(df)
+        self.table.commit()
     
     def test_trino_read_basic(self):
-        """Trino must read a BenoStreamDB table as an Iceberg table.
+        """Trino must read a BenoDB table as an Iceberg table.
 
-        Requires a Trino server whose Iceberg connector points at the same
-        directory tree (the interop workflow starts one with a filesystem
-        catalog over `TEST_DIR`). Skipped everywhere else.
+        Requires a Trino server whose Iceberg connector is a `hive_metastore`
+        catalog over the same directory tree (the interop workflow starts one).
+        Skipped everywhere else.
+
+        A metastore is required because `register_table` is rejected for Nessie
+        catalogs, and Trino 482 removed the `hadoop` catalog type that once read
+        a directory with no metastore at all.
         """
         host = os.environ.get("TRINO_HOST")
         if not host:
@@ -249,12 +265,33 @@ class TestTrinoCompatibility:
         )
         cur = conn.cursor()
         cur.execute("CREATE SCHEMA IF NOT EXISTS iceberg.default")
+        # A bare path fails with "No factory for location: /tmp/.../metadata",
+        # because the connector resolves locations through a filesystem factory
+        # keyed on a scheme; `file:` plus fs.hadoop.enabled is what the interop
+        # catalog sets. The call is deliberately not wrapped in a bare `except`:
+        # swallowing it is what turned every registration failure into a
+        # TABLE_NOT_FOUND on the next line.
+        location = Path(self.table_path).as_uri()
+        from trino.exceptions import TrinoUserError
+
         try:
             cur.execute(
-                f"CALL iceberg.system.register_table(schema_name => 'default', table_name => 'trino_test_table', table_location => '{self.table_path}')"
+                "CALL iceberg.system.register_table("
+                "schema_name => 'default', table_name => 'trino_test_table', "
+                f"table_location => '{location}')"
             )
-        except Exception:
-            pass
+        except TrinoUserError as exc:
+            # A rerun on the same machine finds the name already registered at
+            # this same location, which setup_method has just rewritten from
+            # scratch, so the stale entry is correct. Anything else is a real
+            # failure and has to surface: a blanket `except: pass` here is what
+            # used to turn registration errors into TABLE_NOT_FOUND.
+            #
+            # DROP TABLE is not the alternative it looks like. On an Iceberg
+            # catalog it deletes the table's data files, so it removes the very
+            # fixture that was just written.
+            if exc.error_name != "ALREADY_EXISTS":
+                raise
         cur.execute('SELECT count(*) FROM iceberg.default."trino_test_table"')
         (count,) = cur.fetchone()
         assert count == 500, f"Trino saw {count} rows, expected 500"
@@ -266,7 +303,7 @@ class TestV2Features:
     def test_sort_order_metadata(self):
         """Verify sort order is written to metadata"""
         table_path = str(TEST_DIR / "sort_order_test")
-        table = bsdb.Table(table_path)
+        table = bdb.Table(table_path)
         
         df = pd.DataFrame({"a": [3, 1, 2], "b": [6, 4, 5]})
         table.set_sort_order(["a"], ascending=[True])
@@ -308,7 +345,7 @@ class TestV2Features:
         """Verify partition spec evolution is tracked"""
         import uuid
         table_path = str(TEST_DIR / f"partition_evolution_test_{uuid.uuid4().hex}")
-        table = bsdb.Table(table_path)
+        table = bdb.Table(table_path)
         
         import pyarrow as pa
         import datetime
@@ -327,7 +364,7 @@ class TestV2Features:
     def test_ndv_statistics(self):
         """Verify NDV statistics are computed"""
         table_path = str(TEST_DIR / "ndv_test")
-        table = bsdb.Table(table_path)
+        table = bdb.Table(table_path)
         
         # Create data with known cardinality
         df = pd.DataFrame({
@@ -347,7 +384,7 @@ class TestV3Features:
     def test_row_lineage_columns(self):
         """Verify V3 metadata columns are added"""
         table_path = str(TEST_DIR / "v3_lineage_test")
-        table = bsdb.Table(table_path)
+        table = bdb.Table(table_path)
         
         df = pd.DataFrame({"value": [1, 2, 3]})
         table.write_pandas(df)
@@ -370,7 +407,7 @@ class TestV3Features:
 def create_sample_table_for_spark():
     """Create a sample table for manual Spark testing"""
     table_path = str(TEST_DIR / "manual_spark_test")
-    table = bsdb.Table(table_path)
+    table = bdb.Table(table_path)
     
     df = pd.DataFrame({
         "id": range(10000),
@@ -392,7 +429,7 @@ def create_sample_table_for_spark():
 def create_sample_table_for_trino():
     """Create a sample table for manual Trino testing"""
     table_path = str(TEST_DIR / "manual_trino_test")
-    table = bsdb.Table(table_path)
+    table = bdb.Table(table_path)
     
     df = pd.DataFrame({
         "user_id": range(5000),

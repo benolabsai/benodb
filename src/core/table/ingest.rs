@@ -314,7 +314,7 @@ impl Table {
     }
 
     /// Ingest a single explicit row range — the serverless thin-runner entry
-    /// point (`bsdb ingest --range …`). Each runner commits independently via CAS.
+    /// point (`bdb ingest --range …`). Each runner commits independently via CAS.
     pub async fn ingest_range_async(
         &self,
         path: &str,

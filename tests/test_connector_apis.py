@@ -1,5 +1,5 @@
 import tempfile
-import benodb as bsdb
+import benodb as bdb
 import pyarrow as pa
 import pandas as pd
 import shutil
@@ -12,7 +12,7 @@ def test_connector_apis():
     tmp_dir = tempfile.mkdtemp()
     try:
         uri = f"file://{tmp_dir}/test_connector_api_table"
-        table = bsdb.Table(uri)
+        table = bdb.Table(uri)
         
         # Create test data
         df = pd.DataFrame({

@@ -141,17 +141,17 @@ def ensure_graph_dataset(
 
 
 def run_benodb(edges: np.ndarray, algorithm: str, source: int, target: int, damping: float, iterations: int) -> Dict[str, Any]:
-    import benodb as bsdb
+    import benodb as bdb
     import pyarrow as pa
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_graph_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_graph_")
     try:
         t_build_0 = time.perf_counter()
         schema = pa.schema([
             ("source", pa.uint64()),
             ("target", pa.uint64()),
         ])
-        table = bsdb.Table.create(tmpdir, schema)
+        table = bdb.Table.create(tmpdir, schema)
         # Configure Forward and Reverse CSR Graph indexes.
         #
         # NOTE: the reverse CSR is registered on the real `target` column. The

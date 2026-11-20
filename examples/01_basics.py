@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import numpy as np
 import os
@@ -26,7 +26,7 @@ def run_demo():
     ctx = None
     for target in ["cuda", "intel"]:
         try:
-            ctx = bsdb.ComputeContext(target)
+            ctx = bdb.ComputeContext(target)
             print(f"Using {target.upper()} GPU compute context")
             break
         except Exception:
@@ -54,7 +54,7 @@ def run_demo():
 
     # 4. Ingest into BenoStreamDB Table
     print("\nIngesting into BenoStreamDB...")
-    table = bsdb.Table(db_path, device=ctx)
+    table = bdb.Table(db_path, device=ctx)
     
     # Overlay indexing: HNSW vector index + Inverted index on text/title
     table.add_index_columns(["embedding", "doc_id", "title"])

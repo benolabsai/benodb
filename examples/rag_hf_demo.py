@@ -3,7 +3,7 @@ import shutil
 import pandas as pd
 import numpy as np
 import requests
-import benodb as bsdb
+import benodb as bdb
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
@@ -64,7 +64,7 @@ df["embedding"] = [list(e) for e in embeddings]
 # 3. Setup BenoStreamDB Table
 table_uri = "./scifact_hf_db"
 shutil.rmtree(table_uri, ignore_errors=True)
-table = bsdb.Table(table_uri)
+table = bdb.Table(table_uri)
 table.add_index_columns(["embedding", "doc_id", "title"])
 table.write_pandas(df)
 table.commit()

@@ -19,20 +19,20 @@ BenoDB supports multiple catalog backends (Nessie, Hive, REST, Glue, Unity). You
 #### 1. Direct Instantiation
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create a Nessie catalog
-catalog = bsdb.create_catalog("nessie", {"url": "http://localhost:19120"})
+catalog = bdb.create_catalog("nessie", {"url": "http://localhost:19120"})
 
 # Create a Hive catalog
 # Note: Requires Thrift connection
-catalog = bsdb.create_catalog("hive", {
+catalog = bdb.create_catalog("hive", {
     "url": "thrift://localhost:9083", 
     "warehouse": "s3://bucket/warehouse"
 })
 
 # Create a Unity Catalog
-catalog = bsdb.create_catalog("unity", {
+catalog = bdb.create_catalog("unity", {
     "url": "https://<host>.cloud.databricks.com",
     "token": "dapi123..."
 })
@@ -49,7 +49,7 @@ You can define your catalog configuration in a standard location. BenoDB searche
 **Load Default Catalog:**
 ```python
 # Automatically loads from the first found config file
-catalog = bsdb.load_default_catalog()
+catalog = bdb.load_default_catalog()
 ```
 
 **Example TOML Config (`benostream.toml`):**
@@ -64,7 +64,7 @@ branch = "main"
 #### 3. Load Config from Specific File
 
 ```python
-catalog = bsdb.create_catalog_from_config("/path/to/my_config.toml")
+catalog = bdb.create_catalog_from_config("/path/to/my_config.toml")
 ```
 
 See [examples/configs/](https://github.com/benolabsai/benodb/tree/main/examples/configs) for example configuration files for each catalog type.
@@ -74,12 +74,12 @@ See [examples/configs/](https://github.com/benolabsai/benodb/tree/main/examples/
 BenoDB centers around the `Table` class, which manages underlying Apache Iceberg Parquet files and rebuildable index overlays.
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import numpy as np
 
 # Open or initialize a table directly from object storage or local path
-table = bsdb.Table("s3://my-bucket/dataset")
+table = bdb.Table("s3://my-bucket/dataset")
 
 # Prepare data
 df = pd.DataFrame({
@@ -121,7 +121,7 @@ matches = table.sql("SELECT id, text FROM t WHERE id > 1 AND text LIKE '%world%'
 print(matches.to_pandas())
 
 # Full DataFusion session across multiple tables
-session = bsdb.Session()
+session = bdb.Session()
 session.register("documents", table)
 res = session.sql("""
     SELECT id, text, embedding <-> '[0.1, 0.2, 0.3]'::vector AS dist
@@ -154,13 +154,13 @@ BenoDB provides dynamic hardware acceleration via the `Device` class, with autom
 
 ```python
 # Auto-detect best available device (CUDA, Apple Silicon Metal, or CPU)
-device = bsdb.Device("auto")
+device = bdb.Device("auto")
 print(f"Active backend: {device.backend}")
 
 # Explicit device selection
-device = bsdb.Device("cuda")   # NVIDIA GPU (or AMD ROCm via HIP alignment)
-device = bsdb.Device("mps")    # Apple Silicon Metal
-device = bsdb.Device("cpu")    # CPU fallback
+device = bdb.Device("cuda")   # NVIDIA GPU (or AMD ROCm via HIP alignment)
+device = bdb.Device("mps")    # Apple Silicon Metal
+device = bdb.Device("cpu")    # CPU fallback
 ```
 
 For stand-alone batch vector distance computations outside tables, see the [Python Vector API Guide)](https://benolabsai.com/docs/guides/python_vector_api.html).

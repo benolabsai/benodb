@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics.pairwise import cosine_similarity
-import benodb as bsdb
+import benodb as bdb
 
 @pytest.fixture
 def test_data():
@@ -40,7 +40,7 @@ def test_recall_vs_sklearn_l2(test_data, tmpdir):
         ("embedding", pa.list_(pa.float32(), 128))
     ])
     
-    table = bsdb.Table.create(uri, schema)
+    table = bdb.Table.create(uri, schema)
     table.write(df)
     table.commit()
     
@@ -85,7 +85,7 @@ def test_recall_vs_sklearn_l2(test_data, tmpdir):
     for sk_dist, hdb_dist in zip(sk_sq_distances, hdb_distances):
         # Allow small floating point differences
         assert np.isclose(sk_dist, hdb_dist, rtol=1e-5, atol=1e-5) or np.isclose(np.sqrt(sk_dist), hdb_dist, rtol=1e-5, atol=1e-5), \
-            f"Distance mismatch: sklearn L2_sq={sk_dist}, L2={np.sqrt(sk_dist)}, bsdb={hdb_dist}"
+            f"Distance mismatch: sklearn L2_sq={sk_dist}, L2={np.sqrt(sk_dist)}, bdb={hdb_dist}"
 
 def test_recall_vs_sklearn_cosine(test_data, tmpdir):
     df, query = test_data
@@ -96,7 +96,7 @@ def test_recall_vs_sklearn_cosine(test_data, tmpdir):
         ("embedding", pa.list_(pa.float32(), 128))
     ])
     
-    table = bsdb.Table.create(uri, schema)
+    table = bdb.Table.create(uri, schema)
     # In benodb, we can pass metric directly to search
     table.write(df)
     table.commit()
@@ -131,7 +131,7 @@ def test_recall_vs_sklearn_cosine(test_data, tmpdir):
     for sk_dist, hdb_dist in zip(sk_distances[0], hdb_distances):
         sk_sim = 1.0 - sk_dist
         assert np.isclose(sk_dist, hdb_dist, rtol=1e-4, atol=1e-4) or np.isclose(sk_sim, hdb_dist, rtol=1e-4, atol=1e-4), \
-            f"Distance mismatch: sklearn dist={sk_dist}, sim={sk_sim}, bsdb={hdb_dist}"
+            f"Distance mismatch: sklearn dist={sk_dist}, sim={sk_sim}, bdb={hdb_dist}"
 
 
 def test_refine_factor_ranks_in_the_index_metric(tmp_path):
@@ -161,7 +161,7 @@ def test_refine_factor_ranks_in_the_index_metric(tmp_path):
     qn = queries / np.linalg.norm(queries, axis=1, keepdims=True)
     truth = np.argsort(1.0 - qn @ dn.T, axis=1)[:, :k]
 
-    table = bsdb.Table(str(tmp_path / "refine_metric"))
+    table = bdb.Table(str(tmp_path / "refine_metric"))
     table.add_index(
         "embedding",
         {"type": "hnsw", "complexity": 16, "quality": 200, "metric": "cosine"},

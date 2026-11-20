@@ -1,7 +1,7 @@
 import tempfile
 import os
 import shutil
-import benodb as bsdb
+import benodb as bdb
 
 def test_query_planning():
     base_dir = f"{tempfile.gettempdir()}/test_query_planning"
@@ -10,7 +10,7 @@ def test_query_planning():
     os.makedirs(base_dir)
 
     uri = f"file://{base_dir}"
-    table = bsdb.Table(uri)
+    table = bdb.Table(uri)
     table.add_index_columns(["id", "val"])
 
     # Create multiple segments to test planning across segments.

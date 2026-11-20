@@ -49,7 +49,7 @@ benodb_remote:
       method: none            # or ldap / jwt, per your coordinator
       host: trino.internal
       port: 8080
-      catalog: benostream     # the catalog backed by trino-benodb
+      catalog: benodb     # the catalog backed by trino-benodb
       schema: default
       threads: 8
 ```
@@ -57,7 +57,7 @@ benodb_remote:
 Notes:
 
 - The catalog name must match the entry in the coordinator's
-  `etc/catalog/benostream.properties` (`connector.name=benostream`).
+  `etc/catalog/benodb.properties` (`connector.name=benodb`).
 - Table functions work remotely too: `system.vector_search`,
   `system.hybrid_search`, `system.list_indexes`, `system.regional_drift_search`.
   `hybrid_search` now honours its `filter` argument, so a filtered hybrid query

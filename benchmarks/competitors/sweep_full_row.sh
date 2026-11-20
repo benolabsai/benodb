@@ -239,7 +239,7 @@ skip_quantized_engine() {
 #
 # How the services are reached: `docker compose -f docker-compose.bench.yml
 # --profile run run --rm bench` starts the `bench` client (image
-# `bsdb-bench-runner:latest`) on the `competitors_bench` network, where the
+# `bdb-bench-runner:latest`) on the `competitors_bench` network, where the
 # long-running services are addressable by service name. Inside that container
 # `run_bench.sh` dispatches: a BenoDB index variant goes to
 # `ann_benchmarks.py` (so pure-index latency is reported too), everything else

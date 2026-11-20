@@ -352,7 +352,7 @@ def _load_nodes_child(quant, delete_shards, row_start, row_end):
     ``BDB_INDEX_BUILD_CONCURRENCY`` (default 2) and the heap is trimmed at flush
     and build boundaries. Chunking remains the demo's belt-and-braces reset.
     """
-    import benodb as bsdb
+    import benodb as bdb
 
     nodes_dir = os.path.join(DB, "nodes")
     nodes_path = os.path.join(DATA, "wiki_nodes.parquet")
@@ -371,10 +371,10 @@ def _load_nodes_child(quant, delete_shards, row_start, row_end):
         schema = schema.append(emb_field)
 
     if _table_loaded(nodes_dir):
-        t = bsdb.Table(f"file://{nodes_dir}")           # later chunks: open existing
+        t = bdb.Table(f"file://{nodes_dir}")           # later chunks: open existing
     else:
         shutil.rmtree(nodes_dir, ignore_errors=True)   # clear crashed-run shell
-        t = bsdb.Table.create(f"file://{nodes_dir}", schema)
+        t = bdb.Table.create(f"file://{nodes_dir}", schema)
 
     # Force CPU index builds: the chunked design keeps memory bounded and CPU
     # builds are fast enough at this scale, so the demo stays deterministic
@@ -466,7 +466,7 @@ def stage_load(rebuild: bool, quant: str, delete_shards: bool,
                chunk_rows: int, row_start: int, row_end: int):
     # benodb self-tunes glibc arenas (mallopt M_ARENA_MAX=2) at import;
     # the chunked design below additionally resets allocator high-water marks.
-    import benodb as bsdb
+    import benodb as bdb
 
     edges_dir = os.path.join(DB, "edges")
     nodes_dir = os.path.join(DB, "nodes")
@@ -478,7 +478,7 @@ def stage_load(rebuild: bool, quant: str, delete_shards: bool,
     # ── edges table + CSR graph index (single pass, cheap memory) ──
     if not _table_loaded(edges_dir):
         schema = pa.schema([("source", pa.int64()), ("target", pa.int64())])
-        t = bsdb.Table.create(f"file://{edges_dir}", schema)
+        t = bdb.Table.create(f"file://{edges_dir}", schema)
         t.add_index("source", {"type": "graph", "src_column": "source", "dst_column": "target"})
         t0 = time.time()
         n = 0
@@ -508,7 +508,7 @@ def stage_load(rebuild: bool, quant: str, delete_shards: bool,
     loaded = 0
     if _table_loaded(nodes_dir):
         try:
-            loaded = len(bsdb.Table(f"file://{nodes_dir}"))
+            loaded = len(bdb.Table(f"file://{nodes_dir}"))
         except Exception as e:  # noqa: BLE001
             log(f"load nodes: could not count existing rows ({e}); starting fresh")
             loaded = 0
@@ -567,7 +567,7 @@ def stage_compact(min_file_size_bytes: int = 2_000_000_000):
     their vector/inverted indexes (the engine carries the table's index config
     into the compactor; the config itself is restored from the manifest on open).
     """
-    import benodb as bsdb
+    import benodb as bdb
 
     nodes_dir = os.path.join(DB, "nodes")
     if not _table_loaded(nodes_dir):
@@ -576,7 +576,7 @@ def stage_compact(min_file_size_bytes: int = 2_000_000_000):
     before = _count_segments(nodes_dir)
     log(f"compact: {before} segments -> target {min_file_size_bytes * 2 / 1e9:.1f} GB "
         f"(min {min_file_size_bytes / 1e9:.1f} GB)")
-    t = bsdb.Table(f"file://{nodes_dir}")
+    t = bdb.Table(f"file://{nodes_dir}")
     t0 = time.time()
     t.rewrite_data_files(min_file_size_bytes)
     after = _count_segments(nodes_dir)
@@ -601,7 +601,7 @@ def main():
     ap.add_argument("--lead-chars", type=int, default=256, help="embed only the article lead (chars) for the centroid")
     ap.add_argument("--quant", choices=["tq4", "tq8", "none"], default="tq8")
     ap.add_argument("--keep-shards", action="store_true", help="don't delete embeddings after load")
-    ap.add_argument("--rebuild", action="store_true", help="force-rebuild bsdb tables in stage load")
+    ap.add_argument("--rebuild", action="store_true", help="force-rebuild bdb tables in stage load")
     ap.add_argument("--load-chunk-rows", type=int, default=None,
                     help="rows per fresh-process load chunk (resets allocator high-water marks; "
                          "index builds strand ~2.6-4.5 GB freed-but-unreturnable memory per "

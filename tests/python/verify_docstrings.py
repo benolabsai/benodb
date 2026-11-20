@@ -35,7 +35,7 @@ def check_docstring(func_name, func):
 
 def main():
     try:
-        import benodb as bsdb
+        import benodb as bdb
     except ImportError:
         print("❌ Cannot import benodb. Make sure it's built and installed.")
         sys.exit(1)
@@ -45,36 +45,36 @@ def main():
     # List of all functions to check
     functions = [
         # Single-pair distance functions
-        ("l2", bsdb.l2),
-        ("cosine", bsdb.cosine),
-        ("inner_product", bsdb.inner_product),
-        ("l1", bsdb.l1),
-        ("hamming", bsdb.hamming),
-        ("jaccard", bsdb.jaccard),
+        ("l2", bdb.l2),
+        ("cosine", bdb.cosine),
+        ("inner_product", bdb.inner_product),
+        ("l1", bdb.l1),
+        ("hamming", bdb.hamming),
+        ("jaccard", bdb.jaccard),
         
         # Batch distance functions
-        ("l2_batch", bsdb.l2_batch),
-        ("cosine_batch", bsdb.cosine_batch),
-        ("inner_product_batch", bsdb.inner_product_batch),
-        ("l1_batch", bsdb.l1_batch),
-        ("hamming_batch", bsdb.hamming_batch),
-        ("jaccard_batch", bsdb.jaccard_batch),
+        ("l2_batch", bdb.l2_batch),
+        ("cosine_batch", bdb.cosine_batch),
+        ("inner_product_batch", bdb.inner_product_batch),
+        ("l1_batch", bdb.l1_batch),
+        ("hamming_batch", bdb.hamming_batch),
+        ("jaccard_batch", bdb.jaccard_batch),
         
         # Sparse distance functions
-        ("l2_sparse", bsdb.l2_sparse),
-        ("cosine_sparse", bsdb.cosine_sparse),
-        ("inner_product_sparse", bsdb.inner_product_sparse),
+        ("l2_sparse", bdb.l2_sparse),
+        ("cosine_sparse", bdb.cosine_sparse),
+        ("inner_product_sparse", bdb.inner_product_sparse),
         
         # Binary distance functions
-        ("hamming_packed", bsdb.hamming_packed),
-        ("hamming_auto", bsdb.hamming_auto),
-        ("jaccard_packed", bsdb.jaccard_packed),
-        ("jaccard_auto", bsdb.jaccard_auto),
+        ("hamming_packed", bdb.hamming_packed),
+        ("hamming_auto", bdb.hamming_auto),
+        ("jaccard_packed", bdb.jaccard_packed),
+        ("jaccard_auto", bdb.jaccard_auto),
     ]
     
     classes = [
-        ("SparseVector", bsdb.SparseVector),
-        ("ComputeContext", bsdb.ComputeContext),
+        ("SparseVector", bdb.SparseVector),
+        ("ComputeContext", bdb.ComputeContext),
     ]
     
     all_good = True

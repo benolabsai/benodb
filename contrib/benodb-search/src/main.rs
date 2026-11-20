@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-//! `bsdb-search` — OpenSearch / Elasticsearch 7.10-compatible REST server.
+//! `bdb-search` — OpenSearch / Elasticsearch 7.10-compatible REST server.
 //!
 //! Binds to `BDB_SEARCH_BIND:BDB_SEARCH_PORT` (default `127.0.0.1:9200`)
 //! and stores indexes under `BDB_SEARCH_STORAGE_URI`
@@ -54,10 +54,10 @@ async fn main() {
         .unwrap_or_else(|e| tracing::warn!("Failed to initialize rayon thread pool: {}", e));
     // Structured-logging-only panic hook (no println in this crate).
     std::panic::set_hook(Box::new(|info| {
-        tracing::error!(panic = ?info, "bsdb-search panicked");
+        tracing::error!(panic = ?info, "bdb-search panicked");
     }));
 
-    let _telemetry_guard = match benodb::telemetry::tracing::init_tracing("bsdb-search") {
+    let _telemetry_guard = match benodb::telemetry::tracing::init_tracing("bdb-search") {
         Ok(guard) => guard,
         Err(e) => {
             tracing::error!(error = %e, "Failed to initialize tracing");
@@ -127,7 +127,7 @@ async fn main() {
         if require_policy {
             tracing::error!(
                 "BDB_SEARCH_REQUIRE_POLICY is set but no writable schema is configured \
-                 (publish a .benostream-policy.json); refusing to start in read-only mode"
+                 (publish a .benodb-policy.json); refusing to start in read-only mode"
             );
             std::process::exit(1);
         }
@@ -360,7 +360,7 @@ async fn main() {
         .with_graceful_shutdown(shutdown_signal())
         .await
     {
-        tracing::error!(error = %e, "bsdb-search server error");
+        tracing::error!(error = %e, "bdb-search server error");
         std::process::exit(1);
     }
 }

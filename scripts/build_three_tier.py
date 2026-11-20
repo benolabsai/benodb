@@ -524,11 +524,11 @@ def stage_load(args, repo_root: str) -> None:
     import pyarrow.parquet as pq
 
     sys.path.insert(0, os.path.join(repo_root, "python"))
-    import benodb as bsdb
+    import benodb as bdb
 
     os.makedirs(args.table_dir, exist_ok=True)
     try:
-        gpu = bsdb.Device.auto_detect()
+        gpu = bdb.Device.auto_detect()
         gpu.activate()
         log(f"load: GPU {gpu}")
     except Exception:  # noqa: BLE001
@@ -538,14 +538,14 @@ def stage_load(args, repo_root: str) -> None:
     sections = pl.read_parquet(os.path.join(args.out_dir, "sections.parquet")).sort("article_id")
 
     articles_uri = f"file://{os.path.abspath(args.table_dir)}/articles"
-    art = bsdb.Table.create(articles_uri, pa.schema([
+    art = bdb.Table.create(articles_uri, pa.schema([
         ("id", pa.int64()), ("page_id", pa.large_string()), ("title", pa.large_string()),
     ]))
     _write_batched(art, articles, "articles", args.load_batch)
 
     # Edge table: article --[has_section]--> section (vertex-centric CSR).
     sections_uri = f"file://{os.path.abspath(args.table_dir)}/sections"
-    sec = bsdb.Table.create_edge_table(sections_uri, pa.schema([
+    sec = bdb.Table.create_edge_table(sections_uri, pa.schema([
         ("source", pa.int64()), ("target", pa.int64()),
         ("section_title", pa.large_string()), ("level", pa.int32()),
     ]))
@@ -560,7 +560,7 @@ def stage_load(args, repo_root: str) -> None:
     texts_path = os.path.join(args.out_dir, "section_texts.parquet")
     if os.path.exists(texts_path):
         texts_uri = f"file://{os.path.abspath(args.table_dir)}/section_texts"
-        txt = bsdb.Table.create(texts_uri, pa.schema([
+        txt = bdb.Table.create(texts_uri, pa.schema([
             ("section_id", pa.int64()), ("text", pa.large_string()),
         ]))
         pq_texts = pq.ParquetFile(texts_path)
@@ -585,7 +585,7 @@ def stage_load(args, repo_root: str) -> None:
 
     if emb_files:
         emb_uri = f"file://{os.path.abspath(args.table_dir)}/section_embeds"
-        embt = bsdb.Table.create(emb_uri, pa.schema([
+        embt = bdb.Table.create(emb_uri, pa.schema([
             ("section_id", pa.int64()), ("embedding", pa.list_(pa.float32())),
         ]))
         total_emb = sum(pq.ParquetFile(f).metadata.num_rows for f in emb_files)

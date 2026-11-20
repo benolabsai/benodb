@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import os
 import shutil
@@ -8,7 +8,7 @@ uri = "file://" + os.getcwd() + "/test_admin_table"
 if os.path.exists("test_admin_table"):
     shutil.rmtree("test_admin_table")
 
-table = bsdb.Table(uri)
+table = bdb.Table(uri)
 
 # v0.4.1+: Default autocommit is False (opt-in for explicit transaction control)
 print(f"Default autocommit: {table.autocommit}")

@@ -53,8 +53,8 @@ BenoDB refuses silent data truncation when mid-stream corruption is detected ins
 2. Inspect the directory (`ls -la` sorted chronologically; filenames encode nanosecond timestamps and sequence numbers). Keep all undamaged segments in place.
 3. Quarantine only the failing segment outside the WAL directory:
    ```bash
-   mkdir -p /var/backups/bsdb-wal-quarantine
-   mv /path/to/table/_wal/log_0001762780000000000_004210_00000003.arrow /var/backups/bsdb-wal-quarantine/
+   mkdir -p /var/backups/bdb-wal-quarantine
+   mv /path/to/table/_wal/log_0001762780000000000_004210_00000003.arrow /var/backups/bdb-wal-quarantine/
    ```
 4. Restart the process.
 5. **Result:** Startup replays all valid WAL segments, skips already-committed transactions idempotently, and resumes serving traffic. Only uncommitted batches contained after the corruption point in the quarantined segment are absent.

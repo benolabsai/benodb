@@ -4,12 +4,12 @@ Unit tests for GPU Context API
 Tests Requirements: 2.1, 2.2, 2.3, 2.6
 """
 import pytest
-import benodb as bsdb
+import benodb as bdb
 
 
 def test_auto_detect():
     """Test that auto_detect returns a valid ComputeContext"""
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     assert ctx is not None
     assert isinstance(ctx.backend, str)
     assert ctx.backend in ['cpu', 'cuda', 'rocm', 'mps', 'intel']
@@ -19,38 +19,38 @@ def test_auto_detect():
 
 def test_cpu_backend_creation():
     """Test creating a CPU backend context"""
-    ctx = bsdb.ComputeContext('cpu')
+    ctx = bdb.ComputeContext('cpu')
     assert ctx.backend == 'cpu'
     assert ctx.device_id == -1  # Default CPU index
 
 
 def test_cpu_backend_with_device_id():
     """Test creating a CPU backend with custom device_id"""
-    ctx = bsdb.ComputeContext('cpu', index=-1)
+    ctx = bdb.ComputeContext('cpu', index=-1)
     assert ctx.backend == 'cpu'
     assert ctx.device_id == -1
 
 
 def test_backend_property():
     """Test that backend property returns the correct backend name"""
-    ctx = bsdb.ComputeContext('cpu')
+    ctx = bdb.ComputeContext('cpu')
     assert ctx.backend == 'cpu'
     
     # Test with auto_detect
-    ctx2 = bsdb.ComputeContext.auto_detect()
+    ctx2 = bdb.ComputeContext.auto_detect()
     backend = ctx2.backend
     assert backend in ['cpu', 'cuda', 'rocm', 'mps', 'intel']
 
 
 def test_device_id_property():
     """Test that device_id property returns the correct device ID"""
-    ctx = bsdb.ComputeContext('cpu', index=5)
+    ctx = bdb.ComputeContext('cpu', index=5)
     assert ctx.device_id == 5
 
 
 def test_list_available_backends():
     """Test that list_available_backends returns a list of backend names"""
-    backends = bsdb.ComputeContext.list_available_backends()
+    backends = bdb.ComputeContext.list_available_backends()
     assert isinstance(backends, list)
     assert len(backends) > 0
     assert 'cpu' in backends  # CPU should always be available
@@ -65,7 +65,7 @@ def test_list_available_backends():
 
 def test_unavailable_backend_error():
     """Test that requesting an unavailable backend falls back to CPU or raises RuntimeError"""
-    backends = bsdb.ComputeContext.list_available_backends()
+    backends = bdb.ComputeContext.list_available_backends()
 
     # When cuda is not available, the engine now falls back to CPU
     # rather than hard-erroring (it probes and degrades gracefully).
@@ -75,7 +75,7 @@ def test_unavailable_backend_error():
 
     for backend in unavailable:
         # Unavailable backends now fall back to CPU instead of raising
-        ctx = bsdb.ComputeContext(backend)
+        ctx = bdb.ComputeContext(backend)
         assert ctx.backend == 'cpu', \
             f"Unavailable backend '{backend}' should fall back to cpu, got '{ctx.backend}'"
         print(f"Unavailable backend '{backend}' correctly fell back to cpu")
@@ -84,7 +84,7 @@ def test_unavailable_backend_error():
 def test_invalid_backend_error():
     """Test that requesting an invalid backend raises ValueError"""
     with pytest.raises(ValueError) as exc_info:
-        bsdb.ComputeContext('invalid_backend')
+        bdb.ComputeContext('invalid_backend')
     
     error_msg = str(exc_info.value)
     assert 'unknown device type' in error_msg.lower()
@@ -93,7 +93,7 @@ def test_invalid_backend_error():
 
 def test_get_stats():
     """Test that get_stats returns a dictionary with performance metrics"""
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     stats = ctx.get_stats()
     
     assert isinstance(stats, dict)
@@ -122,7 +122,7 @@ def test_get_stats():
 
 def test_reset_stats():
     """Test that reset_stats clears all performance counters"""
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     
     # Get initial stats
     stats1 = ctx.get_stats()
@@ -141,7 +141,7 @@ def test_reset_stats():
 
 def test_repr():
     """Test that __repr__ returns a useful string representation"""
-    ctx = bsdb.ComputeContext('cpu', index=-1)
+    ctx = bdb.ComputeContext('cpu', index=-1)
     repr_str = repr(ctx)
     
     assert isinstance(repr_str, str)
@@ -154,13 +154,13 @@ def test_repr():
 
 def test_case_insensitive_backend():
     """Test that backend names are case-insensitive"""
-    ctx1 = bsdb.ComputeContext('CPU')
+    ctx1 = bdb.ComputeContext('CPU')
     assert ctx1.backend == 'cpu'
     
-    ctx2 = bsdb.ComputeContext('Cpu')
+    ctx2 = bdb.ComputeContext('Cpu')
     assert ctx2.backend == 'cpu'
     
-    ctx3 = bsdb.ComputeContext('cpu')
+    ctx3 = bdb.ComputeContext('cpu')
     assert ctx3.backend == 'cpu'
 
 
@@ -170,12 +170,12 @@ def test_explicit_device_is_initialized():
     Regression: `Device("cpu")` used to store `implementation: None`, so every
     cdist fell back to the global auto-detected CUDA device.
     """
-    cpu = bsdb.Device("cpu")
+    cpu = bdb.Device("cpu")
     assert cpu.initialized is True
     assert cpu.backend == "cpu"
 
-    if bsdb.Device.is_available("cuda"):
-        cuda = bsdb.Device("cuda:0")
+    if bdb.Device.is_available("cuda"):
+        cuda = bdb.Device("cuda:0")
         assert cuda.initialized is True
         assert cuda.backend == "cuda"
         assert cuda.device_id == 0
@@ -185,17 +185,17 @@ def test_device_construction_is_cached():
     """Repeated Device construction must not re-initialise the backend."""
     import time
 
-    bsdb.Device("cpu")  # warm (no-op for CPU)
+    bdb.Device("cpu")  # warm (no-op for CPU)
     t0 = time.perf_counter()
     for _ in range(100):
-        bsdb.Device("cpu")
+        bdb.Device("cpu")
     assert time.perf_counter() - t0 < 1.0
 
-    if bsdb.Device.is_available("cuda"):
-        bsdb.Device("cuda:0")  # pay driver init once
+    if bdb.Device.is_available("cuda"):
+        bdb.Device("cuda:0")  # pay driver init once
         t0 = time.perf_counter()
         for _ in range(50):
-            bsdb.Device("cuda:0")
+            bdb.Device("cuda:0")
         elapsed = time.perf_counter() - t0
         assert elapsed < 1.0, f"cached Device construction took {elapsed:.2f}s"
 

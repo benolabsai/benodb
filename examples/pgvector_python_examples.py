@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
-import benodb as bsdb
+import benodb as bdb
 
 # Global embedding model cache
 _model = None
@@ -61,12 +61,12 @@ def setup_session():
 
     db_path = "/tmp/pgv_demo_db"
     shutil.rmtree(db_path, ignore_errors=True)
-    table = bsdb.Table(db_path)
+    table = bdb.Table(db_path)
     table.add_index_columns(["embedding", "category", "doc_id"])
     table.write_pandas(df)
     table.commit()
 
-    session = bsdb.Session()
+    session = bdb.Session()
     session.register("documents", table)
     print(f"Registered {len(df)} peer-reviewed documents in BenoStreamDB pgvector session.")
     return session, model
@@ -78,7 +78,7 @@ def vec_to_sql_literal(vec: List[float]) -> str:
     return f"'[{formatted}]'::vector"
 
 
-def basic_distance_queries(session: bsdb.Session, query_vector: List[float]):
+def basic_distance_queries(session: bdb.Session, query_vector: List[float]):
     """Examples of basic pgvector distance operator queries."""
     vec_lit = vec_to_sql_literal(query_vector)
 
@@ -120,7 +120,7 @@ def basic_distance_queries(session: bsdb.Session, query_vector: List[float]):
 # 2. HYBRID SEARCH (VECTOR + FILTERS)
 # ============================================================================
 
-def hybrid_search(session: bsdb.Session, query_vector: List[float], 
+def hybrid_search(session: bdb.Session, query_vector: List[float], 
                   category: str, k: int = 5):
     """Perform hybrid search with vector similarity and scalar filters."""
     vec_literal = vec_to_sql_literal(query_vector)
@@ -135,7 +135,7 @@ def hybrid_search(session: bsdb.Session, query_vector: List[float],
     return results.to_pandas()
 
 
-def multi_filter_search(session: bsdb.Session, query_vector: List[float]):
+def multi_filter_search(session: bdb.Session, query_vector: List[float]):
     """Search with multiple metadata predicates."""
     vec_literal = vec_to_sql_literal(query_vector)
     results = session.sql(f"""
@@ -151,7 +151,7 @@ def multi_filter_search(session: bsdb.Session, query_vector: List[float]):
     return results.to_pandas()
 
 
-def distance_threshold_search(session: bsdb.Session, query_vector: List[float],
+def distance_threshold_search(session: bdb.Session, query_vector: List[float],
                                threshold: float = 1.0):
     """Find all documents within a cosine distance threshold."""
     vec_literal = vec_to_sql_literal(query_vector)
@@ -170,7 +170,7 @@ def distance_threshold_search(session: bsdb.Session, query_vector: List[float],
 # 3. PAGINATION
 # ============================================================================
 
-def paginated_search(session: bsdb.Session, query_vector: List[float],
+def paginated_search(session: bdb.Session, query_vector: List[float],
                      page: int = 1, page_size: int = 5):
     """Perform keyset/offset paginated vector search."""
     offset = (page - 1) * page_size
@@ -189,7 +189,7 @@ def paginated_search(session: bsdb.Session, query_vector: List[float],
 # 4. VECTOR AGGREGATIONS
 # ============================================================================
 
-def compute_centroids(session: bsdb.Session):
+def compute_centroids(session: bdb.Session):
     """Compute centroids for each category."""
     results = session.sql("""
         SELECT category,
@@ -205,7 +205,7 @@ def compute_centroids(session: bsdb.Session):
 # 5. CONFIGURATION & BENCHMARKS
 # ============================================================================
 
-def benchmark_configurations(session: bsdb.Session, query_vector: List[float]):
+def benchmark_configurations(session: bdb.Session, query_vector: List[float]):
     """Benchmark different configuration settings."""
     vec_literal = vec_to_sql_literal(query_vector)
     configs = [
@@ -240,7 +240,7 @@ def benchmark_configurations(session: bsdb.Session, query_vector: List[float]):
     return pd.DataFrame(results)
 
 
-def measure_recall(session: bsdb.Session, query_vector: List[float], k: int = 10) -> float:
+def measure_recall(session: bdb.Session, query_vector: List[float], k: int = 10) -> float:
     """Measure recall of indexed search against exact scan."""
     vec_literal = vec_to_sql_literal(query_vector)
     res = session.sql(f"""
@@ -251,7 +251,7 @@ def measure_recall(session: bsdb.Session, query_vector: List[float], k: int = 10
     return 1.0 if len(res) > 0 else 0.0
 
 
-def measure_latency(session: bsdb.Session, query_vector: List[float], num_queries: int = 20):
+def measure_latency(session: bdb.Session, query_vector: List[float], num_queries: int = 20):
     """Measure latency distribution."""
     vec_literal = vec_to_sql_literal(query_vector)
     latencies = []

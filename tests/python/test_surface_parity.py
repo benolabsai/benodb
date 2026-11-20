@@ -251,7 +251,7 @@ SPARK_PROCEDURES = {
 
 def test_spark_exposes_procedures():
     """Spark 4.x implements the native DSv2 `ProcedureCatalog`, exposing
-    `CALL benostream.system.*`. The Spark 3.5 build uses the Iceberg shim."""
+    `CALL benodb.system.*`. The Spark 3.5 build uses the Iceberg shim."""
     catalog = SPARK_PROCEDURE_CATALOG.read_text()
     assert "extends BenoDBCatalog with ProcedureCatalog" in catalog, (
         "spark-4 catalog no longer implements the native ProcedureCatalog"
@@ -280,7 +280,7 @@ def test_spark_procedures_are_tested():
     """The procedure surface must have a test, and it must cover every
     documented procedure so the catalog cannot regress silently."""
     assert SPARK_PROCEDURE_TEST.exists(), (
-        "no Spark procedure catalog test; CALL benostream.system.* is untested"
+        "no Spark procedure catalog test; CALL benodb.system.* is untested"
     )
     test_src = SPARK_PROCEDURE_TEST.read_text()
     for name in sorted(SPARK_PROCEDURES):

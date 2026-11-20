@@ -42,14 +42,14 @@ metrics bridge) all expose the same registry, so one pipeline covers every host.
 
 ## Dashboard
 
-`grafana/dashboards/benodb.json` panels (all `bsdb_*` metrics):
+`grafana/dashboards/benodb.json` panels (all `bdb_*` metrics):
 
 - Ingest rows/sec, total rows, ingest RSS, back-pressure pauses/sec
-- Vector search latency p50/p99 (`bsdb_search_latency_seconds`)
-- Query latency p99 (`bsdb_query_latency_seconds`)
-- Cache hit ratio (`bsdb_cache_hits_total` / `bsdb_cache_misses_total`)
-- Commit and compaction latency p99 (`bsdb_commit_duration_seconds`,
-  `bsdb_compaction_duration_seconds`)
+- Vector search latency p50/p99 (`bdb_search_latency_seconds`)
+- Query latency p99 (`bdb_query_latency_seconds`)
+- Cache hit ratio (`bdb_cache_hits_total` / `bdb_cache_misses_total`)
+- Commit and compaction latency p99 (`bdb_commit_duration_seconds`,
+  `bdb_compaction_duration_seconds`)
 - Active files/segments, manifest conflicts/sec
 - I/O bytes/sec (read/write), index-build gate wait p99
 

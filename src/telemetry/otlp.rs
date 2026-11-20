@@ -237,7 +237,7 @@ pub fn spawn_pusher() {
     let interval = push_interval();
     let name = service_name();
     let spawned = std::thread::Builder::new()
-        .name("bsdb-otlp-push".to_string())
+        .name("bdb-otlp-push".to_string())
         .spawn(move || {
             tracing::info!(
                 "OTLP metrics push enabled → {endpoint}/v1/metrics (every {:?})",
@@ -276,15 +276,13 @@ mod tests {
             .as_array()
             .expect("metrics");
         assert!(
-            metrics
-                .iter()
-                .any(|m| m["name"] == "bsdb_ingest_rows_total"),
+            metrics.iter().any(|m| m["name"] == "bdb_ingest_rows_total"),
             "converted OTLP body is missing a registered counter: {body}"
         );
         // Counters must be cumulative + monotonic sums.
         let counter = metrics
             .iter()
-            .find(|m| m["name"] == "bsdb_ingest_rows_total")
+            .find(|m| m["name"] == "bdb_ingest_rows_total")
             .expect("counter");
         assert_eq!(counter["sum"]["aggregationTemporality"], 2);
         assert_eq!(counter["sum"]["isMonotonic"], true);

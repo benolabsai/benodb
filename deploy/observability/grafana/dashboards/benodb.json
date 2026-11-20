@@ -19,7 +19,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "rowsps" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(bsdb_ingest_rows_total[1m]))" }
+        { "refId": "A", "expr": "sum(rate(bdb_ingest_rows_total[1m]))" }
       ]
     },
     {
@@ -30,7 +30,7 @@
       "gridPos": { "h": 8, "w": 4, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(bsdb_ingest_rows_total)" }
+        { "refId": "A", "expr": "sum(bdb_ingest_rows_total)" }
       ]
     },
     {
@@ -41,20 +41,20 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "decmbytes" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "bsdb_ingest_rss_bytes / 1048576" }
+        { "refId": "A", "expr": "bdb_ingest_rss_bytes / 1048576" }
       ]
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Vector search latency (s)",
-      "description": "p50 and p99 of bsdb_search_latency_seconds",
+      "description": "p50 and p99 of bdb_search_latency_seconds",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
-        { "refId": "p50", "legendFormat": "p50", "expr": "histogram_quantile(0.50, sum(rate(bsdb_search_latency_seconds_bucket[5m])) by (le))" },
-        { "refId": "p99", "legendFormat": "p99", "expr": "histogram_quantile(0.99, sum(rate(bsdb_search_latency_seconds_bucket[5m])) by (le))" }
+        { "refId": "p50", "legendFormat": "p50", "expr": "histogram_quantile(0.50, sum(rate(bdb_search_latency_seconds_bucket[5m])) by (le))" },
+        { "refId": "p99", "legendFormat": "p99", "expr": "histogram_quantile(0.99, sum(rate(bdb_search_latency_seconds_bucket[5m])) by (le))" }
       ]
     },
     {
@@ -65,7 +65,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bsdb_query_latency_seconds_bucket[5m])) by (le))" }
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bdb_query_latency_seconds_bucket[5m])) by (le))" }
       ]
     },
     {
@@ -76,7 +76,7 @@
       "gridPos": { "h": 8, "w": 6, "x": 0, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(bsdb_cache_hits_total[5m])) / clamp_min(sum(rate(bsdb_cache_hits_total[5m])) + sum(rate(bsdb_cache_misses_total[5m])), 1e-9)" }
+        { "refId": "A", "expr": "sum(rate(bdb_cache_hits_total[5m])) / clamp_min(sum(rate(bdb_cache_hits_total[5m])) + sum(rate(bdb_cache_misses_total[5m])), 1e-9)" }
       ]
     },
     {
@@ -87,7 +87,7 @@
       "gridPos": { "h": 8, "w": 9, "x": 6, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bsdb_commit_duration_seconds_bucket[5m])) by (le))" }
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bdb_commit_duration_seconds_bucket[5m])) by (le))" }
       ]
     },
     {
@@ -98,7 +98,7 @@
       "gridPos": { "h": 8, "w": 9, "x": 15, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bsdb_compaction_duration_seconds_bucket[5m])) by (le))" }
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bdb_compaction_duration_seconds_bucket[5m])) by (le))" }
       ]
     },
     {
@@ -109,8 +109,8 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "files", "legendFormat": "active_files", "expr": "bsdb_active_files" },
-        { "refId": "segs", "legendFormat": "active_segments", "expr": "bsdb_active_segments" }
+        { "refId": "files", "legendFormat": "active_files", "expr": "bdb_active_files" },
+        { "refId": "segs", "legendFormat": "active_segments", "expr": "bdb_active_segments" }
       ]
     },
     {
@@ -121,7 +121,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(bsdb_manifest_conflicts_total[5m]))" }
+        { "refId": "A", "expr": "sum(rate(bdb_manifest_conflicts_total[5m]))" }
       ]
     },
     {
@@ -132,8 +132,8 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
       "targets": [
-        { "refId": "read", "legendFormat": "read", "expr": "sum(rate(bsdb_io_bytes_read_total[1m]))" },
-        { "refId": "write", "legendFormat": "write", "expr": "sum(rate(bsdb_io_bytes_written_total[1m]))" }
+        { "refId": "read", "legendFormat": "read", "expr": "sum(rate(bdb_io_bytes_read_total[1m]))" },
+        { "refId": "write", "legendFormat": "write", "expr": "sum(rate(bdb_io_bytes_written_total[1m]))" }
       ]
     },
     {
@@ -144,7 +144,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(bsdb_ingest_backpressure_pauses_total[1m]))" }
+        { "refId": "A", "expr": "sum(rate(bdb_ingest_backpressure_pauses_total[1m]))" }
       ]
     },
     {
@@ -155,7 +155,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bsdb_index_build_gate_wait_seconds_bucket[5m])) by (le))" }
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum(rate(bdb_index_build_gate_wait_seconds_bucket[5m])) by (le))" }
       ]
     }
   ]

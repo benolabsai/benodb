@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import os
 import pytest
 from benodb import PyNessieCatalog, PyHiveCatalog
@@ -6,18 +6,18 @@ from benodb import PyNessieCatalog, PyHiveCatalog
 def test_create_catalog_direct():
     print("Testing create_catalog (direct)...")
     # Nessie
-    catalog = bsdb.create_catalog("nessie", {"url": "http://localhost:19120"})
+    catalog = bdb.create_catalog("nessie", {"url": "http://localhost:19120"})
     assert isinstance(catalog, PyNessieCatalog)
     print("Direct Nessie creation passed.")
 
     # Hive (simulated)
-    catalog = bsdb.create_catalog("hive", {"url": "thrift://localhost:9083"})
+    catalog = bdb.create_catalog("hive", {"url": "thrift://localhost:9083"})
     assert isinstance(catalog, PyHiveCatalog)
     print("Direct Hive creation passed.")
     
     # Error case
     with pytest.raises(ValueError):
-        bsdb.create_catalog("unknown", {})
+        bdb.create_catalog("unknown", {})
     print("Error handling passed.")
 
 def test_create_catalog_from_config(tmp_path):
@@ -29,7 +29,7 @@ def test_create_catalog_from_config(tmp_path):
         'catalog_type = "nessie"\n\n[config]\nurl = "http://localhost:19120"\n'
     )
 
-    catalog = bsdb.create_catalog_from_config(str(config_path))
+    catalog = bdb.create_catalog_from_config(str(config_path))
     assert isinstance(catalog, PyNessieCatalog)
     print("TOML Nessie creation passed.")
 

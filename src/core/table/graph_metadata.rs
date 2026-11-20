@@ -308,7 +308,7 @@ mod tests {
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
-        let dir = std::env::temp_dir().join(format!("bsdb_edge_idx_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdb_edge_idx_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let schema = Arc::new(Schema::new(vec![
             Field::new("source", DataType::UInt64, false),

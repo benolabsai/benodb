@@ -26,7 +26,7 @@
   `hybrid_search`, `graph_neighbors`, `graph_shortest_path`, `graph_subgraph`,
   `list_indexes`, `regional_drift`, `graph_rag_search`.
 - **Two scope corrections, recorded so this does not reopen.** (a) A Spark
-  `bsdb_query(sql)` table function is **not implementable**: Spark has no public
+  `bdb_query(sql)` table function is **not implementable**: Spark has no public
   DSv2 `TableFunction` interface (its `TableFunctionRegistry`/`SQLTableFunction`
   are catalyst-internal, for `CREATE FUNCTION … RETURNS TABLE` with a declared
   output), and `BoundFunction.resultType()` is fixed at bind time, so a function
@@ -151,7 +151,7 @@ Net: 2 Spark artifacts (2.12, 2.13) + 1 Trino, not per-minor.
 3. [Native row-level] DELETE→deleteRows; UPDATE/MERGE→mergeRows; verify with
    value assertions (the thing the Iceberg wrapper silently broke).
 4. [Native catalog/DDL] BenoDBCatalog + DefaultSource; drop Iceberg dep.
-5. [Spark UDFs] Pass-through `query` option + Spark 4 `bsdb_query` table function
+5. [Spark UDFs] Pass-through `query` option + Spark 4 `bdb_query` table function
    + typed table functions (vector_search, graph_neighbors, drift, keyword, hybrid).
 6. [Trino UDFs] `ConnectorTableFunction` set (vector_search, graph_neighbors, …).
 7. [Matrix/CI] Build 2.12 + 2.13 artifacts; add spark-4.2 to build matrix; docs.

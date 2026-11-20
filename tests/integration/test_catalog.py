@@ -1,6 +1,6 @@
 import sys
 import os
-import benodb as bsdb
+import benodb as bdb
 import pytest
 import time
 import requests
@@ -14,13 +14,13 @@ def test_catalog_flow():
     
     # 1. Initialize Catalog
     try:
-        catalog = bsdb.PyNessieCatalog(NESSIE_URL)
+        catalog = bdb.PyNessieCatalog(NESSIE_URL)
     except AttributeError:
         # Fallback if class name differs or not exposed
         # The rust generic name is PyNessieCatalog, exposed as?
         # In lib.rs: m.add_class::<python_binding::PyNessieCatalog>()?;
-        # So it should be bsdb.PyNessieCatalog or bsdb.NessieCatalog if renamed.
-        # It's bsdb.PyNessieCatalog.
+        # So it should be bdb.PyNessieCatalog or bdb.NessieCatalog if renamed.
+        # It's bdb.PyNessieCatalog.
         print("AttributeError: PyNessieCatalog not found in module.")
         sys.exit(1)
 

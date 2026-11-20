@@ -45,7 +45,7 @@ static GPU_POOL_NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomic
 /// Process-wide cache of initialised backends, keyed by `(backend, device_id)`.
 ///
 /// Building a CUDA/ROCm backend costs hundreds of milliseconds (driver init,
-/// PTX module load), and it used to happen on every `bsdb.Device(...)` and
+/// PTX module load), and it used to happen on every `bdb.Device(...)` and
 /// every thread that received a device from the pool. Cached contexts share one
 /// backend instance, so constructing a device is a hash lookup after the first
 /// use. Contexts are wrapped in [`NoDropBackend`] by `from_backend_with_device`,

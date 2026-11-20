@@ -93,7 +93,7 @@ def main():
     backend = m.configure_embedding("bge-large", device="auto", dtype="auto", max_seq_length=0)
     print(f"[parity] Retrieval embedder: {backend.describe()}", flush=True)
 
-    import benodb as bsdb
+    import benodb as bdb
 
     dataset_path = m.ensure_dataset(args.data_dir)
     records = m.load_musique_records(dataset_path, args.max_questions)
@@ -117,13 +117,13 @@ def main():
 
     if args.rebuild or not os.path.exists(corpus_dir) or not os.path.exists(edge_dir):
         corpus_table, edge_table, unique_passages = m.build_tables(
-            bsdb, args.scratch_dir, records, mode=args.mode, backend=backend,
+            bdb, args.scratch_dir, records, mode=args.mode, backend=backend,
             corpus_json=args.corpus_json, triplets_json=args.triplets_json,
         )
     else:
         print(f"[parity] Reusing tables at {args.scratch_dir}...", flush=True)
-        corpus_table = bsdb.Table(corpus_dir)
-        edge_table = bsdb.Table(edge_dir)
+        corpus_table = bdb.Table(corpus_dir)
+        edge_table = bdb.Table(edge_dir)
         unique_passages = {}
         tbl = corpus_table.to_arrow(columns=["id", "doc_key", "title"])
         for pid, pkey, ptitle in zip(

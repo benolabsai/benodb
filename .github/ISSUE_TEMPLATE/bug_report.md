@@ -29,7 +29,7 @@ A clear and concise description of what the bug is.
 Please provide a self-contained, minimal script or SQL snippet that reproduces the issue without requiring external credentials or proprietary data:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Minimal reproduction script here
 ```

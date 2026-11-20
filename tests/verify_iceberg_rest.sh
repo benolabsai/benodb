@@ -29,11 +29,11 @@ done
 echo "Verifying /v1/config..."
 curl -s http://localhost:8181/v1/config | jq .
 
-echo "Verifying /v1/bsdb/namespaces..."
-curl -s http://localhost:8181/v1/bsdb/namespaces | jq .
+echo "Verifying /v1/bdb/namespaces..."
+curl -s http://localhost:8181/v1/bdb/namespaces | jq .
 
-echo "Verifying /v1/bsdb/namespaces/default/tables..."
-curl -s http://localhost:8181/v1/bsdb/namespaces/default/tables | jq .
+echo "Verifying /v1/bdb/namespaces/default/tables..."
+curl -s http://localhost:8181/v1/bdb/namespaces/default/tables | jq .
 
-echo "Verifying /v1/bsdb/namespaces/default/tables/sample_table..."
-curl -s http://localhost:8181/v1/bsdb/namespaces/default/tables/sample_table | jq .
+echo "Verifying /v1/bdb/namespaces/default/tables/sample_table..."
+curl -s http://localhost:8181/v1/bdb/namespaces/default/tables/sample_table | jq .

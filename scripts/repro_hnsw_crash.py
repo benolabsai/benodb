@@ -22,7 +22,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 sys.path.insert(0, os.path.abspath("python"))
-import benodb as bsdb  # noqa: E402
+import benodb as bdb  # noqa: E402
 
 
 def main() -> int:
@@ -54,7 +54,7 @@ def main() -> int:
     schema = pa.schema(
         [("section_id", pa.int64()), ("embedding", pa.list_(pa.float32()))]
     )
-    t = bsdb.Table.create(uri, schema)
+    t = bdb.Table.create(uri, schema)
     t.set_default_device(args.device)
 
     pf = pq.ParquetFile(args.part)

@@ -19,7 +19,7 @@ services:
   # ---------------------
   rustfs:
     image: rustfs/rustfs:latest
-    container_name: bsdb-rustfs
+    container_name: bdb-rustfs
     environment:
       - RUSTFS_ROOT_USER=rustfsadmin
       - RUSTFS_ROOT_PASSWORD=rustfsadmin
@@ -30,7 +30,7 @@ services:
       - rustfs-data:/data
     command: server /data --console-address ":9001"
     networks:
-      - benostream_net
+      - benodb_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/rustfs/health/live"]
       interval: 10s
@@ -40,9 +40,9 @@ services:
   # RustFS bucket initialization
   rustfs-init:
     image: rustfs/mc:latest
-    container_name: bsdb-rustfs-init
+    container_name: bdb-rustfs-init
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -50,9 +50,9 @@ services:
       /bin/sh -c "
       mc alias set rustfs http://rustfs:9000 rustfsadmin rustfsadmin;
       mc mb rustfs/warehouse --ignore-existing;
-      mc mb rustfs/benostream --ignore-existing;
+      mc mb rustfs/benodb --ignore-existing;
       mc policy set public rustfs/warehouse;
-      mc policy set public rustfs/benostream;
+      mc policy set public rustfs/benodb;
       exit 0;
       "
 
@@ -61,7 +61,7 @@ services:
   # ---------------------
   nessie:
     image: ghcr.io/projectnessie/nessie:0.105.5
-    container_name: bsdb-nessie
+    container_name: bdb-nessie
     ports:
       - "19120:19120"
     environment:
@@ -77,7 +77,7 @@ services:
       - nessie.catalog.s3.path-style-access=true
       - nessie.server.authentication.enabled=false
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -95,7 +95,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     image: benodb/quickstart:latest
-    container_name: bsdb-server
+    container_name: bdb-server
     restart: unless-stopped
     # Bind the host ports to loopback only: the quickstart is for local
     # development, not for exposing the database on a network. Use
@@ -107,15 +107,15 @@ services:
     environment:
       # The container must bind 0.0.0.0 for the port mapping to work, and the
       # server fails closed on a non-loopback bind without credentials — so the
-      # quickstart sets a local dev key. Override BSDB_API_KEY for anything
+      # quickstart sets a local dev key. Override BDB_API_KEY for anything
       # beyond local development.
-      - BSDB_SEARCH_BIND=0.0.0.0
-      - BSDB_SEARCH_PORT=9200
-      - BSDB_QDRANT_BIND=0.0.0.0
-      - BSDB_QDRANT_PORT=6333
-      - BSDB_API_KEY=${BSDB_API_KEY:-bsdb-quickstart-local}
-      - BSDB_SEARCH_STORAGE_URI=s3://benostream/
-      - BSDB_SEARCH_AUTO_REFRESH_SECS=5
+      - BDB_SEARCH_BIND=0.0.0.0
+      - BDB_SEARCH_PORT=9200
+      - BDB_QDRANT_BIND=0.0.0.0
+      - BDB_QDRANT_PORT=6333
+      - BDB_API_KEY=${BDB_API_KEY:-bdb-quickstart-local}
+      - BDB_SEARCH_STORAGE_URI=s3://benodb/
+      - BDB_SEARCH_AUTO_REFRESH_SECS=5
       - AWS_ACCESS_KEY_ID=rustfsadmin
       - AWS_SECRET_ACCESS_KEY=rustfsadmin
       - AWS_ENDPOINT=http://rustfs:9000
@@ -128,9 +128,9 @@ services:
           memory: 4G
           cpus: "2.0"
     volumes:
-      - bsdb-cache:/home/benostream/.benodb
+      - bdb-cache:/home/benodb/.benodb
     networks:
-      - benostream_net
+      - benodb_net
     depends_on:
       rustfs:
         condition: service_healthy
@@ -138,9 +138,9 @@ services:
 volumes:
   rustfs-data:
     driver: local
-  bsdb-cache:
+  bdb-cache:
     driver: local
 
 networks:
-  benostream_net:
+  benodb_net:
     driver: bridge

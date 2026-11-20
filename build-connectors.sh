@@ -147,7 +147,7 @@ for java_version in "17" "21"; do
     
     for spark_version in "3.5" "4.0"; do
         build_with_java "$java_home" "spark-$spark_version,java-$java_version" "" "spark-benodb"
-        cp spark-benodb/target/spark-benostream-*.jar "connector-artifacts/spark-benostream-spark-${spark_version}-java-${java_version}${ARTIFACT_SUFFIX}.jar"
+        cp spark-benodb/target/spark-benodb-*.jar "connector-artifacts/spark-benodb-spark-${spark_version}-java-${java_version}${ARTIFACT_SUFFIX}.jar"
     done
 done
 
@@ -171,15 +171,15 @@ for trino_target in "482:d" "484:e"; do
         -f trino-benodb/pom.xml
     # For Trino, the main JAR is in target/ but the ZIP contains all deps.
     # The artifact version tracks the core engine version (`${revision}`).
-    cp "trino-benodb/target/trino-benostream-${CORE_VERSION}.jar" "connector-artifacts/trino-benostream-${trino_version}${ARTIFACT_SUFFIX}.jar"
+    cp "trino-benodb/target/trino-benodb-${CORE_VERSION}.jar" "connector-artifacts/trino-benodb-${trino_version}${ARTIFACT_SUFFIX}.jar"
     # Flatten the plugin ZIP. Trino's plugin loader only scans JARs *directly*
     # in the plugin dir (it does not recurse), but the `trino-plugin` packaging
-    # nests them under `trino-benostream-<version>/`, which fails with
+    # nests them under `trino-benodb-<version>/`, which fails with
     # "No service providers of type io.trino.spi.Plugin in the classpath".
-    flat_zip="$(pwd)/connector-artifacts/trino-benostream-${trino_version}${ARTIFACT_SUFFIX}.zip"
+    flat_zip="$(pwd)/connector-artifacts/trino-benodb-${trino_version}${ARTIFACT_SUFFIX}.zip"
     tmp_zip="$(mktemp -d)"
-    unzip -q "trino-benodb/target/trino-benostream-${CORE_VERSION}.zip" -d "$tmp_zip"
-    ( cd "$tmp_zip/trino-benostream-${CORE_VERSION}" && zip -q -r "$flat_zip" . )
+    unzip -q "trino-benodb/target/trino-benodb-${CORE_VERSION}.zip" -d "$tmp_zip"
+    ( cd "$tmp_zip/trino-benodb-${CORE_VERSION}" && zip -q -r "$flat_zip" . )
     rm -rf "$tmp_zip"
 done
 

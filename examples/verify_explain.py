@@ -3,7 +3,7 @@ import shutil
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
-import benodb as bsdb
+import benodb as bdb
 
 def verify_explain():
     print("=== Verifying BenoStreamDB EXPLAIN (SciFact Scientific Benchmark) ===")
@@ -29,7 +29,7 @@ def verify_explain():
     df["embedding"] = [list(e) for e in embeddings]
 
     # 2. Setup Table & Indexes
-    table = bsdb.Table(db_path)
+    table = bdb.Table(db_path)
     table.add_index_columns(["embedding", "category", "doc_id"])
     table.write_pandas(df)
     table.commit()

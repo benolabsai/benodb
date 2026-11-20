@@ -30,17 +30,15 @@ public class BenoDBConnectorFactory implements ConnectorFactory {
 
     @Override
     public Connector create(String catalogName, Map<String, String> config, ConnectorContext context) {
-        String gpuDevice = config.getOrDefault(
-                "benodb.gpu-device",
-                config.getOrDefault("benostream.gpu-device", "auto"));
-        String warehouse = config.getOrDefault(
-                "benodb.warehouse",
-                config.getOrDefault("benostream.warehouse", BenoDBTableUri.DEFAULT_WAREHOUSE));
+        // The `benodb.*` spellings were removed with the rename, so a catalog
+        // file that still carries them now falls through to the default instead
+        // of being half honoured by a fallback that no longer names anything.
+        String gpuDevice = config.getOrDefault("benodb.gpu-device", "auto");
+        String warehouse =
+                config.getOrDefault("benodb.warehouse", BenoDBTableUri.DEFAULT_WAREHOUSE);
         // Opt-in: one split per Parquet file for plain, unfiltered scans.
         boolean fileGranularity =
-                Boolean.parseBoolean(config.getOrDefault(
-                        "benodb.split.file-granularity",
-                        config.getOrDefault("benostream.split.file-granularity", "false")));
+                Boolean.parseBoolean(config.getOrDefault("benodb.split.file-granularity", "false"));
         return new BenoDBConnector(
                 warehouse, gpuDevice, fileGranularity, new BenoDBProcedures(warehouse));
     }

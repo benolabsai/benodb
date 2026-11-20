@@ -126,7 +126,7 @@ def run_concurrent_sweep(args) -> Dict[str, Any]:
     dim = 128
 
     if not db_path or not os.path.exists(db_path):
-        temp_dir = tempfile.mkdtemp(prefix="bsdb_conc_")
+        temp_dir = tempfile.mkdtemp(prefix="benodb_conc_")
         print(f"Creating benchmark table in {temp_dir} (20,000 vectors, 128-d, HNSW-TQ8)...", flush=True)
         t_build_0 = time.time()
         create_benchmark_table(temp_dir, n_rows=20000, dim=dim)
@@ -191,7 +191,7 @@ def run_concurrent_sweep(args) -> Dict[str, Any]:
 
 
 def run_maintenance(args) -> Dict[str, Any]:
-    temp_dir = tempfile.mkdtemp(prefix="bsdb_maint_")
+    temp_dir = tempfile.mkdtemp(prefix="benodb_maint_")
     print(f"Generating disposable synthetic dataset for maintenance test in {temp_dir}...")
 
     dim = 384

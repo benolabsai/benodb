@@ -87,7 +87,7 @@ pub struct CommitMetadata {
     /// strictly contiguous non-overlapping `_row_id` ranges).
     pub expected_version: Option<u64>,
     /// WAL transaction UUIDs to merge atomically into the manifest's
-    /// `benostream.committed_wal_tx` property inside the OCC commit loop so
+    /// `benodb.committed_wal_tx` property inside the OCC commit loop so
     /// concurrent writers never overwrite one another's idempotency markers.
     pub append_committed_wal_tx: Vec<String>,
 }
@@ -202,7 +202,7 @@ impl ManifestManager {
     /// The manifest (`_manifest/vN.json`) is this engine's source of truth, but
     /// external readers (Spark, Trino, PyIceberg, and the Iceberg REST catalog)
     /// only read `TableMetadata`. Without this mirror, `SET TBLPROPERTIES`
-    /// values — including the MCP's `benostream.embedding.*` provenance — stay
+    /// values — including the MCP's `benodb.embedding.*` provenance — stay
     /// invisible outside the engine.
     ///
     /// Failures are returned so callers can log them, but they must not roll

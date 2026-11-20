@@ -51,8 +51,8 @@ versioned folder, so flatten it before installing:
 
 ```bash
 mkdir -p /usr/lib/trino/plugin/benodb
-unzip -q trino-benodb-<version>.zip -d /tmp/bsdb-plugin
-cp /tmp/bsdb-plugin/trino-benodb-<version>/*.jar /usr/lib/trino/plugin/benodb/
+unzip -q trino-benodb-<version>.zip -d /tmp/bdb-plugin
+cp /tmp/bdb-plugin/trino-benodb-<version>/*.jar /usr/lib/trino/plugin/benodb/
 ```
 
 The native library is **not** bundled in the plugin JAR: Trino loads it from

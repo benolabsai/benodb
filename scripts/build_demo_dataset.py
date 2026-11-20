@@ -197,15 +197,15 @@ def load_into_hdb(tmp_uri: str, edges_int: str):
     for rg in range(pf.metadata.num_row_groups):
         table.write(pf.read_row_group(rg))
         if (rg + 1) % 32 == 0:
-            log(f"  bsdb ingest: {rg + 1}/{pf.metadata.num_row_groups} row groups")
+            log(f"  bdb ingest: {rg + 1}/{pf.metadata.num_row_groups} row groups")
     table.commit()
     table.wait_for_background_tasks()
-    log(f"  bsdb ingest + commit in {time.time() - t0:.1f}s")
+    log(f"  bdb ingest + commit in {time.time() - t0:.1f}s")
     return table
 
 
 def largest_component(table) -> np.ndarray:
-    """Node ids of the largest weakly connected component (computed in bsdb)."""
+    """Node ids of the largest weakly connected component (computed in bdb)."""
     log("  running connected_components() in BenoStreamDB...")
     t0 = time.time()
     cc = table.connected_components()

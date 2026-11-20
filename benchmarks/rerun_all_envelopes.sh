@@ -44,8 +44,8 @@ WHEELS="${WHEELS:-$ROOT_DIR/dist}"
 LOGS="${LOGS:-/tmp}"
 WHAT="${1:-all}"
 
-NEURIPS_IMAGE="bsdb-neurips:latest"
-MUSIQUE_IMAGE="bsdb-musique:local"
+NEURIPS_IMAGE="benodb-neurips:latest"
+MUSIQUE_IMAGE="benodb-musique:local"
 
 require() {
     command -v "$1" >/dev/null 2>&1 || { echo "missing required tool: $1" >&2; exit 1; }
@@ -83,7 +83,7 @@ run_neurips() {
     local flavour="$1" data="$2"
     shift 2
     echo "=== NeurIPS harness ($flavour) under d8lds: 8 vCPU / 16 GiB ==="
-    docker run --rm --name "bsdb-neurips-$flavour" \
+    docker run --rm --name "benodb-neurips-$flavour" \
         --cpus=8 --memory=16g --memory-swap=16g \
         -v "$data:/data/vectors:ro" \
         -v "$SCRATCH:/work/scratch" \
@@ -162,7 +162,7 @@ musique_parity() {
         echo "Hugging Face cache not found at $HF_CACHE (set HF_CACHE)" >&2
         exit 1
     }
-    docker run --rm --name bsdb-musique-parity \
+    docker run --rm --name benodb-musique-parity \
         --cpus=8 --memory=32g --memory-swap=32g \
         -v "$BDB_DATA_ROOT/musique:/data/musique" \
         -v "$BENCH_DIR:/opt/bench:ro" \

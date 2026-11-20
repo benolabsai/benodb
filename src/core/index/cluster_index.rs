@@ -159,7 +159,7 @@ fn sweep_stale_spill_dirs(root: &std::path::Path) {
         if !entry
             .file_name()
             .to_string_lossy()
-            .starts_with("bsdb-cluster-")
+            .starts_with("bdb-cluster-")
         {
             continue;
         }
@@ -1093,7 +1093,7 @@ impl ClusterIndex {
             }
         }
 
-        let tmp_dir = spill_root.join(format!("bsdb-cluster-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = spill_root.join(format!("bdb-cluster-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir)
             .with_context(|| format!("creating build temp dir {}", tmp_dir.display()))?;
 
@@ -3627,7 +3627,7 @@ fn build_cluster_blobs(
     };
 
     let tmp_base = std::env::temp_dir().join(format!(
-        "bsdb-cluster-graph-{}-{}",
+        "bdb-cluster-graph-{}-{}",
         uuid::Uuid::new_v4(),
         cluster_id
     ));

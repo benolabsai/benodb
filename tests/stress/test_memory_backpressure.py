@@ -11,7 +11,7 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 np = pytest.importorskip("numpy")
-bsdb = pytest.importorskip("benodb")
+bdb = pytest.importorskip("benodb")
 
 DIM = 128
 ROWS = 20_000
@@ -36,7 +36,7 @@ def test_low_ram_limit_pauses_without_oom(monkeypatch, table_uri, rows_of, rss_g
     monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "1")
     monkeypatch.setenv("BDB_INGEST_BACKPRESSURE_GRACE_SECS", "10")
 
-    table = bsdb.Table.create(
+    table = bdb.Table.create(
         table_uri,
         pa.schema([("id", pa.int64()), ("embedding", pa.list_(pa.float32(), DIM))]),
     )

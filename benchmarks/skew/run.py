@@ -27,7 +27,7 @@ import networkx as nx
 import numpy as np
 import pyarrow as pa
 
-import benodb as bsdb
+import benodb as bdb
 
 
 def generate_powerlaw_graph(nodes: int = 20000, edges_target: int = 100000, seed: int = 42):
@@ -61,14 +61,14 @@ def benchmark_graph_skew(nodes: int = 20000, edges_target: int = 100000) -> Dict
         "Supernode Hub (p99+)": [n for n, d in degrees.items() if d >= p99_deg],
     }
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_skew_graph_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_skew_graph_")
     try:
         t0 = time.perf_counter()
         schema = pa.schema([
             ("source", pa.uint64()),
             ("target", pa.uint64()),
         ])
-        table = bsdb.Table.create(tmpdir, schema)
+        table = bdb.Table.create(tmpdir, schema)
         table.add_index("source", {"type": "graph", "src_column": "source", "dst_column": "target"})
         table.add_index("target", {"type": "graph", "src_column": "target", "dst_column": "source"})
 
@@ -171,10 +171,10 @@ def benchmark_relational_skew(n_rows: int = 200000, num_keys: int = 10000) -> Di
     hot_mass = sum(weights[:top_1pct_count]) * 100.0
     print(f"Top 1% hot keys ({top_1pct_count} keys) contain {hot_mass:.1f}% of total data volume")
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_skew_sql_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_skew_sql_")
     try:
         t0 = time.perf_counter()
-        table = bsdb.Table(f"file://{tmpdir}/tbl")
+        table = bdb.Table(f"file://{tmpdir}/tbl")
         table.write(pa_table)
         table.commit()
         table.wait_for_background_tasks()

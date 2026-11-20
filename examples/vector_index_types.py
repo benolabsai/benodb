@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
-import benodb as bsdb
+import benodb as bdb
 
 # -------------------------------------------------------------
 # 1. Download Real Scientific Dataset from Hugging Face
@@ -48,7 +48,7 @@ print("Example 1: Standard Uncompressed HNSW Index (Float32 Baseline)")
 table_path_hnsw = "file:///tmp/scifact_hnsw"
 shutil.rmtree("/tmp/scifact_hnsw", ignore_errors=True)
 
-table_hnsw = bsdb.Table(table_path_hnsw)
+table_hnsw = bdb.Table(table_path_hnsw)
 table_hnsw.write_pandas(df)
 table_hnsw.add_index("embedding", "hnsw")
 table_hnsw.commit()
@@ -70,7 +70,7 @@ print("Example 2: TurboQuant 8-bit (hnsw_tq8: 4x Compression, >99% Recall)")
 table_path_tq8 = "file:///tmp/scifact_tq8"
 shutil.rmtree("/tmp/scifact_tq8", ignore_errors=True)
 
-table_tq8 = bsdb.Table(table_path_tq8)
+table_tq8 = bdb.Table(table_path_tq8)
 table_tq8.write_pandas(df)
 table_tq8.add_index("embedding", "hnsw_tq8")
 table_tq8.commit()
@@ -92,7 +92,7 @@ print("Example 3: TurboQuant 4-bit (hnsw_tq4: 8x Compression)")
 table_path_tq4 = "file:///tmp/scifact_tq4"
 shutil.rmtree("/tmp/scifact_tq4", ignore_errors=True)
 
-table_tq4 = bsdb.Table(table_path_tq4)
+table_tq4 = bdb.Table(table_path_tq4)
 table_tq4.write_pandas(df)
 table_tq4.add_index("embedding", "hnsw_tq4")
 table_tq4.commit()
@@ -114,7 +114,7 @@ print("Example 4: Explicit table.quantize() Configuration")
 table_path_custom = "file:///tmp/scifact_custom_tq"
 shutil.rmtree("/tmp/scifact_custom_tq", ignore_errors=True)
 
-table_custom = bsdb.Table(table_path_custom)
+table_custom = bdb.Table(table_path_custom)
 table_custom.write_pandas(df)
 table_custom.quantize(
     column="embedding",

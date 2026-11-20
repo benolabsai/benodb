@@ -295,7 +295,7 @@ impl Compactor {
                     .commit(&all_new_entries, &all_old_paths, commit_meta)
                     .await?,
             );
-            metrics::counter!("bsdb_data_files_compacted").increment(all_old_paths.len() as u64);
+            metrics::counter!("bdb_data_files_compacted").increment(all_old_paths.len() as u64);
 
             for old_path in &all_old_paths {
                 crate::core::cache::invalidate_file_caches(&self.root_uri, old_path).await;
@@ -319,7 +319,7 @@ impl Compactor {
 
         // A. Setup Local Temp Environment
         let temp_id = uuid::Uuid::new_v4();
-        let temp_dir_path = std::env::temp_dir().join(format!("benostream_compact_{}", temp_id));
+        let temp_dir_path = std::env::temp_dir().join(format!("benodb_compact_{}", temp_id));
         fs::create_dir_all(&temp_dir_path).await?;
         let temp_dir_str = temp_dir_path
             .to_str()
@@ -584,7 +584,7 @@ impl Compactor {
                 if is_data_parquet {
                     main_parquet_path = remote_path.to_string();
                     main_parquet_size = file_size;
-                    metrics::counter!("bsdb_compaction_bytes_written").increment(file_size);
+                    metrics::counter!("bdb_compaction_bytes_written").increment(file_size);
                 }
             }
 

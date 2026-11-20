@@ -21,10 +21,10 @@ An edge table in BenoDB represents relationships between entities. To guarantee 
 You can create a standardized edge table with automated indexing using `Table.create_edge_table`:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create an edge table with automated sidecar index generation
-edge_table = bsdb.Table.create_edge_table(
+edge_table = bdb.Table.create_edge_table(
     uri="file:///data/knowledge_graph/edges",
     node_id_type="uint64",          # 'uint64' (optimal for Graph UDFs) or 'string'
     embedding_dim=384,               # Vector dimension for edge semantics
@@ -60,7 +60,7 @@ BenoDB provides complete bi-directional interoperability with NetworkX, supporti
 
 ```python
 import networkx as nx
-import benodb as bsdb
+import benodb as bdb
 
 # Build or load a graph in NetworkX
 G = nx.DiGraph()
@@ -69,7 +69,7 @@ G.add_edge(2, 3, relation="co_author", weight=1.0)
 G.add_edge(3, 1, relation="mentions", weight=0.8)
 
 # Ingest directly into an Iceberg edge table with sidecar indexes
-table = bsdb.Table.from_networkx(
+table = bdb.Table.from_networkx(
     uri="file:///data/graphs/citation_graph",
     graph=G,
     index_endpoints=True

@@ -90,7 +90,7 @@ Clusters [0 .. K0]             Clusters [K0+1 .. K1]          Clusters [K1+1 .. 
 
 ---
 
-## Multi-Protocol Search Gateway (`bsdb-search`)
+## Multi-Protocol Search Gateway (`bdb-search`)
 
 BenoDB exposes its columnar storage and index overlays via standard REST protocols:
 *   **OpenSearch / Elasticsearch 7.10 API (Port 9200)**: Drop-in compatibility for `_search`, `_bulk`, `_mapping`, and `_cat/indices`.

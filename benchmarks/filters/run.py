@@ -28,7 +28,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 try:
-    import benodb as bsdb
+    import benodb as bdb
 except ImportError:
     pass
 
@@ -149,7 +149,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
     print(f"Generating synthetic dataset with {rows:,} rows...", flush=True)
     pa_table = generate_synthetic_dataset(rows)
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_filters_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_filters_")
     parquet_path = os.path.join(tmpdir, "table.parquet")
     pq.write_table(pa_table, parquet_path, row_group_size=20_000)
 
@@ -157,12 +157,12 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
         # 1. Setup BenoDB Table
         print("Ingesting into BenoDB (Apache Iceberg native table)...", flush=True)
         t_ingest_0 = time.perf_counter()
-        bsdb_table = bsdb.Table(f"file://{tmpdir}/bsdb_table")
-        bsdb_table.write(pa_table)
-        bsdb_table.commit()
-        bsdb_table.wait_for_background_tasks()
-        bsdb_ingest_s = time.perf_counter() - t_ingest_0
-        print(f"BenoDB ingest took {bsdb_ingest_s:.2f}s", flush=True)
+        bdb_table = bdb.Table(f"file://{tmpdir}/bdb_table")
+        bdb_table.write(pa_table)
+        bdb_table.commit()
+        bdb_table.wait_for_background_tasks()
+        bdb_ingest_s = time.perf_counter() - t_ingest_0
+        print(f"BenoDB ingest took {bdb_ingest_s:.2f}s", flush=True)
 
         # 2. Setup DuckDB Oracle
         con = duckdb.connect()
@@ -176,7 +176,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
         session_baseline_samples = []
         for _ in range(10):
             t0 = time.perf_counter()
-            _ = bsdb_table.sql("SELECT 1")
+            _ = bdb_table.sql("SELECT 1")
             session_baseline_samples.append((time.perf_counter() - t0) * 1000.0)
         session_overhead_ms = float(np.median(session_baseline_samples))
         print(f"DataFusion baseline session overhead: {session_overhead_ms:.2f} ms", flush=True)
@@ -209,37 +209,37 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
             duck_hash = hash_arrow_table(duck_res_arrow)
 
             # BenoDB
-            bsdb_warm = []
-            bsdb_res_arrow = None
+            bdb_warm = []
+            bdb_res_arrow = None
             for i in range(warm_runs + 1):
                 t0 = time.perf_counter()
-                bsdb_res = bsdb_table.sql(sql)
+                bdb_res = bdb_table.sql(sql)
                 elapsed_ms = (time.perf_counter() - t0) * 1000.0
                 if i > 0:
-                    bsdb_warm.append(elapsed_ms)
+                    bdb_warm.append(elapsed_ms)
                 else:
-                    bsdb_res_arrow = bsdb_res
+                    bdb_res_arrow = bdb_res
 
-            bsdb_p50 = float(np.median(bsdb_warm))
-            bsdb_rows = len(bsdb_res_arrow)
-            bsdb_hash = hash_arrow_table(bsdb_res_arrow)
+            bdb_p50 = float(np.median(bdb_warm))
+            bdb_rows = len(bdb_res_arrow)
+            bdb_hash = hash_arrow_table(bdb_res_arrow)
 
             # Pure compute estimate (excluding per-query SessionContext init & UDF registration)
-            pure_compute_ms = max(0.1, bsdb_p50 - session_overhead_ms)
+            pure_compute_ms = max(0.1, bdb_p50 - session_overhead_ms)
 
             # Differential Oracle Verification
-            count_match = (duck_rows == bsdb_rows)
-            hash_match = (duck_hash == bsdb_hash)
+            count_match = (duck_rows == bdb_rows)
+            hash_match = (duck_hash == bdb_hash)
             oracle_pass = count_match and hash_match
 
-            selectivity = (bsdb_rows / rows) * 100.0 if "count(" not in sql.lower() else (
-                float(bsdb_res_arrow.to_pylist()[0].get("cnt", bsdb_rows)) / rows * 100.0
+            selectivity = (bdb_rows / rows) * 100.0 if "count(" not in sql.lower() else (
+                float(bdb_res_arrow.to_pylist()[0].get("cnt", bdb_rows)) / rows * 100.0
             )
 
             status_str = "PASS" if oracle_pass else "FAIL"
             print(
-                f"  -> Match: {status_str} | Rows: {bsdb_rows:,} | "
-                f"BSDB Total: {bsdb_p50:.2f} ms (Compute: {pure_compute_ms:.2f} ms, Overhead: {session_overhead_ms:.2f} ms) | "
+                f"  -> Match: {status_str} | Rows: {bdb_rows:,} | "
+                f"BSDB Total: {bdb_p50:.2f} ms (Compute: {pure_compute_ms:.2f} ms, Overhead: {session_overhead_ms:.2f} ms) | "
                 f"DuckDB: {duck_p50:.2f} ms",
                 flush=True,
             )
@@ -249,9 +249,9 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
                 "description": desc,
                 "sql": sql,
                 "selectivity_pct": round(selectivity, 2),
-                "bsdb_rows": bsdb_rows,
+                "bdb_rows": bdb_rows,
                 "duckdb_rows": duck_rows,
-                "bsdb_total_p50_ms": round(bsdb_p50, 2),
+                "bdb_total_p50_ms": round(bdb_p50, 2),
                 "session_overhead_ms": round(session_overhead_ms, 2),
                 "pure_compute_p50_ms": round(pure_compute_ms, 2),
                 "duckdb_p50_ms": round(duck_p50, 2),
@@ -287,7 +287,7 @@ def run_benchmark(rows: int = 200_000, warm_runs: int = 3) -> Dict[str, Any]:
             status_icon = "✅ PASS" if c["oracle_pass"] else "❌ FAIL"
             md_lines.append(
                 f"| **{c['name']}** | {c['selectivity_pct']}% | "
-                f"**{c['bsdb_total_p50_ms']:.2f} ms** | {c['session_overhead_ms']:.2f} ms | "
+                f"**{c['bdb_total_p50_ms']:.2f} ms** | {c['session_overhead_ms']:.2f} ms | "
                 f"**{c['pure_compute_p50_ms']:.2f} ms** | {c['duckdb_p50_ms']:.2f} ms | "
                 f"{oracle_icon} | {status_icon} |"
             )

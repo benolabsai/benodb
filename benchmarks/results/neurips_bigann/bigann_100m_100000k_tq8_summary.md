@@ -1,6 +1,6 @@
 # BigANN 100M — BenoStreamDB v0.17.0 Benchmark Report
 
-Generated: `2026-11-17T02:01:31Z`  ·  engine `benostreamdb 0.17.0` (`94771684`, dirty=false)
+Generated: `2026-11-17T02:01:31Z`  ·  engine `benodb 0.17.0` (`94771684`, dirty=false)
 
 > [!IMPORTANT]
 > **Hardware Envelope & Storage Disclosure:**

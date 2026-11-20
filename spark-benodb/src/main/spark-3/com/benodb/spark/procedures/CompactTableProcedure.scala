@@ -22,7 +22,7 @@ class CompactTableProcedure extends Procedure {
     val table = inputArgs.getString(0)
 
     val jniBridge = com.benodb.spark.jni.BenoDBJNIBridge.getInstance()
-    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benostream.gpu.device", "auto")
+    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benodb.gpu.device", "auto")
     jniBridge.setGpuContext(gpuDevice)
     val tableIdentifier = BenoDBTableResolver.resolveFromSession(table)
     jniBridge.compactTable(tableIdentifier)

@@ -33,7 +33,7 @@ class RebuildClusterIndexProcedure extends Procedure {
     val shardBytes = targetMb * 1024L * 1024L
     
     val jniBridge = com.benodb.spark.jni.BenoDBJNIBridge.getInstance()
-    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benostream.gpu.device", "auto")
+    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benodb.gpu.device", "auto")
     jniBridge.setGpuContext(gpuDevice)
     val ok = jniBridge.rebuildClusterIndex(BenoDBTableResolver.resolveFromSession(table), col, k, m, efConstruction, shardBytes)
     

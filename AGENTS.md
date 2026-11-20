@@ -73,7 +73,7 @@ When bumping versions for any release:
 - `Table.sql(query)` binds the table directly to the default alias `'t'` (`SELECT ... FROM t`).
 - To query tables by named identifiers (`SELECT ... FROM events`), register the table in an in-process `Session`:
   ```python
-  session = bsdb.Session()
+  session = bdb.Session()
   session.register("events", table)
   df = session.sql("SELECT * FROM events ...")
   ```

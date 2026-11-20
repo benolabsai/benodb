@@ -3,7 +3,7 @@ import os
 import shutil
 import pyarrow as pa
 from pyiceberg.catalog.sql import SqlCatalog
-import benodb as bsdb
+import benodb as bdb
 
 def test_compatibility():
     print("=== STARTING PYICEBERG COMPATIBILITY TEST ===")
@@ -80,7 +80,7 @@ def test_compatibility():
 
     # 5. Register table with BenoStreamDB
     print("Registering external Iceberg table with BenoStreamDB...")
-    hdb_table = bsdb.Table.register_external(f"file://{hdb_cache_path}", metadata_path)
+    hdb_table = bdb.Table.register_external(f"file://{hdb_cache_path}", metadata_path)
     print("Successfully registered external table.")
 
     # 6. Read table using BenoStreamDB

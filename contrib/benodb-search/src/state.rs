@@ -44,7 +44,7 @@ pub struct AppState {
     pub catalog_namespace: String,
     /// Catalog storage policy enforced for this untrusted connector.
     ///
-    /// Computed once from the authoritative `.benostream-policy.json` at the
+    /// Computed once from the authoritative `.benodb-policy.json` at the
     /// warehouse root. Flight SQL is trusted and bypasses this entirely; the
     /// Search REST API (an untrusted connector) applies it to every mutation.
     pub permissions: SchemaPermissions,
@@ -156,7 +156,7 @@ impl AppState {
         );
 
         // Resolve the catalog storage policy once, at startup. The resolver is
-        // storage-aware: it reads `.benostream-policy.json` through the core
+        // storage-aware: it reads `.benodb-policy.json` through the core
         // object store, so both local paths and remote URIs (s3://, gs://, ...)
         // adopt the admin policy. When no policy exists (or the object store is
         // unreachable) it fails closed to read-only-except-scratch.
@@ -171,7 +171,7 @@ impl AppState {
             tracing::warn!(
                 storage_root = %storage_root,
                 "search gateway is READ-ONLY: no writable schema. Publish a \
-                 .benostream-policy.json naming readwrite_schemas to enable writes, \
+                 .benodb-policy.json naming readwrite_schemas to enable writes, \
                  or set BDB_SEARCH_REQUIRE_POLICY=1 to refuse to start instead"
             );
         } else {
@@ -651,7 +651,7 @@ impl AppState {
 
     /// Fetch an index file from the object store, serving it from the
     /// [`IndexFileCache`] on a hit. On a miss the file is downloaded, counted
-    /// in `bsdb_search_index_fetch_bytes_total`, and cached for future reads.
+    /// in `bdb_search_index_fetch_bytes_total`, and cached for future reads.
     ///
     /// `object_path` is relative to the index's table root (e.g.
     /// `indexes/<segment>/<column>.inv.parquet`).
@@ -746,10 +746,10 @@ impl Metrics {
     pub fn new() -> Self {
         let registry = Registry::new();
         let active_requests =
-            IntGauge::new("bsdb_search_active_requests", "In-flight HTTP requests").unwrap();
+            IntGauge::new("bdb_search_active_requests", "In-flight HTTP requests").unwrap();
         let http_requests_total = IntCounterVec::new(
             Opts::new(
-                "bsdb_search_http_requests_total",
+                "bdb_search_http_requests_total",
                 "Total HTTP requests by method and route class",
             ),
             &["method", "route"],
@@ -757,7 +757,7 @@ impl Metrics {
         .unwrap();
         let http_request_duration_seconds = HistogramVec::new(
             HistogramOpts::new(
-                "bsdb_search_http_request_duration_seconds",
+                "bdb_search_http_request_duration_seconds",
                 "HTTP request latency in seconds by method and route class",
             ),
             &["method", "route"],
@@ -765,25 +765,25 @@ impl Metrics {
         .unwrap();
         let docs_indexed_total = IntCounterVec::new(
             Opts::new(
-                "bsdb_search_docs_indexed_total",
+                "bdb_search_docs_indexed_total",
                 "Documents indexed, by result",
             ),
             &["result"],
         )
         .unwrap();
         let index_cache_hits_total = IntCounter::new(
-            "bsdb_search_index_cache_hits_total",
+            "bdb_search_index_cache_hits_total",
             "Index table-cache hits (open_or_create fast path)",
         )
         .unwrap();
         let index_cache_misses_total = IntCounter::new(
-            "bsdb_search_index_cache_misses_total",
+            "bdb_search_index_cache_misses_total",
             "Index table-cache misses (open/create path)",
         )
         .unwrap();
         let query_seconds = HistogramVec::new(
             HistogramOpts::new(
-                "bsdb_search_query_seconds",
+                "bdb_search_query_seconds",
                 "Search query latency in seconds by operation class",
             ),
             &["op"],
@@ -791,20 +791,20 @@ impl Metrics {
         .unwrap();
         let bulk_items_total = IntCounterVec::new(
             Opts::new(
-                "bsdb_search_bulk_items_total",
+                "bdb_search_bulk_items_total",
                 "Bulk items processed, by outcome status",
             ),
             &["status"],
         )
         .unwrap();
         let refresh_seconds = Histogram::with_opts(HistogramOpts::new(
-            "bsdb_search_refresh_seconds",
+            "bdb_search_refresh_seconds",
             "_refresh duration in seconds",
         ))
         .unwrap();
         let index_fetch_bytes_total = IntCounterVec::new(
             Opts::new(
-                "bsdb_search_index_fetch_bytes_total",
+                "bdb_search_index_fetch_bytes_total",
                 "Bytes fetched from the object store for index files, by file kind",
             ),
             &["kind"],
@@ -915,11 +915,11 @@ fn resolve_wal_durability() -> WalDurability {
     }
 }
 
-/// Resolve external Iceberg catalog configuration from environment variables or benostream.toml.
+/// Resolve external Iceberg catalog configuration from environment variables or benodb.toml.
 ///
 /// Precedence:
 /// 1. `BDB_SEARCH_CATALOG_TYPE` / `BDB_CATALOG_TYPE` (explicit environment variables)
-/// 2. `benostream.toml` / `BDB_CONFIG` (via `CatalogConfig::load_default()`)
+/// 2. `benodb.toml` / `BDB_CONFIG` (via `CatalogConfig::load_default()`)
 ///
 /// Returns `Some((Arc<dyn Catalog>, namespace))` if configured, or `None` for path-based Iceberg mode.
 pub async fn resolve_catalog() -> Option<(Arc<dyn benodb::core::catalog::Catalog>, String)> {
@@ -1034,7 +1034,7 @@ pub async fn resolve_catalog() -> Option<(Arc<dyn benodb::core::catalog::Catalog
         }
     }
 
-    // 2. Check benostream.toml / default configuration file
+    // 2. Check benodb.toml / default configuration file
     if let Ok(cat_config) = CatalogConfig::load_default() {
         let namespace = cat_config
             .config

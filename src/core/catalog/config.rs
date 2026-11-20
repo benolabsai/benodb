@@ -33,23 +33,22 @@ impl CatalogConfig {
         }
 
         // 2. Check current directory
-        if fs::metadata("benostream.toml").is_ok() {
-            return Self::load_from_file("benostream.toml");
+        if fs::metadata("benodb.toml").is_ok() {
+            return Self::load_from_file("benodb.toml");
         }
 
-        // 3. Check home directory
-        if let Some(mut home) = dirs::home_dir() {
-            home.push(".benostream");
-            home.push("config.toml");
-            if home.exists() {
-                let home_str = home.to_str().ok_or_else(|| {
-                    anyhow::anyhow!("~/.benostream/config.toml path is not valid UTF-8")
+        // 3. Check the home directory
+        if let Some(home) = dirs::home_dir() {
+            let candidate = home.join(".benodb").join("config.toml");
+            if candidate.exists() {
+                let candidate_str = candidate.to_str().ok_or_else(|| {
+                    anyhow::anyhow!("{} path is not valid UTF-8", candidate.display())
                 })?;
-                return Self::load_from_file(home_str);
+                return Self::load_from_file(candidate_str);
             }
         }
 
         // 4. Fallback/Error
-        anyhow::bail!("No configuration file found. Checked ENV 'BDB_CONFIG', ./benostream.toml, and ~/.benostream/config.toml")
+        anyhow::bail!("No configuration file found. Checked ENV 'BDB_CONFIG', ./benodb.toml, and ~/.benodb/config.toml")
     }
 }

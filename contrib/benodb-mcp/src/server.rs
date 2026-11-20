@@ -700,7 +700,7 @@ fn guard_schema_writes(query: &str, permissions: &SchemaPermissions) -> anyhow::
         if name.0.len() >= 3 {
             if let Some(cat_ident) = name.0[name.0.len() - 3].as_ident() {
                 let cat = cat_ident.value.to_ascii_lowercase();
-                if cat != "benostream" && cat != "datafusion" && cat != "default" {
+                if cat != "benodb" && cat != "datafusion" && cat != "default" {
                     anyhow::bail!(
                         "MCP write denied: writes to external catalog '{}' are prohibited (table '{}'). Only local schemas are writable",
                         cat,
@@ -1464,7 +1464,7 @@ impl McpServer {
     }
 
     /// Refuse to mix vector spaces. Tables created by this server carry
-    /// `benostream.embedding.*` properties. A model change is an error unless
+    /// `benodb.embedding.*` properties. A model change is an error unless
     /// the table is still empty or the user re-ingests into a new table.
     async fn validate_embedding_space(
         &self,

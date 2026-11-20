@@ -482,21 +482,18 @@ async fn session_settings_are_scoped_and_allowlisted() -> anyhow::Result<()> {
     let session = session_with_warehouse(dir.path().to_str().unwrap());
 
     session
-        .sql("SET benostream.warehouse = 's3://bucket/warehouse';")
+        .sql("SET benodb.warehouse = 's3://bucket/warehouse';")
         .await?;
     assert_eq!(
-        session.get_setting("benostream.warehouse").await.as_deref(),
+        session.get_setting("benodb.warehouse").await.as_deref(),
         Some("s3://bucket/warehouse")
     );
 
-    let (batches, _) = session.sql("SHOW benostream.warehouse;").await?;
+    let (batches, _) = session.sql("SHOW benodb.warehouse;").await?;
     assert_eq!(batches.iter().map(|b| b.num_rows()).sum::<usize>(), 1);
 
     assert!(
-        session
-            .sql("SET benostream.aws_secret = 'x';")
-            .await
-            .is_err(),
+        session.sql("SET benodb.aws_secret = 'x';").await.is_err(),
         "disallowed setting must be rejected"
     );
     Ok(())
@@ -507,7 +504,7 @@ async fn set_does_not_touch_process_env() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let session = session_with_warehouse(dir.path().to_str().unwrap());
     session
-        .sql("SET benostream.warehouse = 's3://bucket/warehouse';")
+        .sql("SET benodb.warehouse = 's3://bucket/warehouse';")
         .await?;
     assert!(
         std::env::var("BDB_WAREHOUSE").is_err(),
@@ -535,11 +532,11 @@ async fn is_handled_classification() {
     assert!(is_handled("TRUNCATE TABLE t;"));
     assert!(is_handled("DELETE FROM t WHERE id = 1;"));
     assert!(is_handled("ALTER TABLE t EXECUTE verify_integrity;"));
-    assert!(is_handled("SET benostream.warehouse = 'x';"));
-    assert!(is_handled("SHOW benostream.warehouse;"));
+    assert!(is_handled("SET benodb.warehouse = 'x';"));
+    assert!(is_handled("SHOW benodb.warehouse;"));
 
     // SHOW has a result set; DDL does not.
-    assert_eq!(classify("SHOW benostream.warehouse;"), Handled::Query);
+    assert_eq!(classify("SHOW benodb.warehouse;"), Handled::Query);
     assert_eq!(classify("CREATE TABLE t (id INT);"), Handled::Ddl);
 
     // Not ours.

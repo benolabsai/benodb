@@ -121,7 +121,7 @@ impl JdbcCatalogClient {
             warehouse: warehouse
                 .unwrap_or_else(|| {
                     std::env::temp_dir()
-                        .join("benostream_warehouse")
+                        .join("benodb_warehouse")
                         .to_string_lossy()
                         .into_owned()
                 })

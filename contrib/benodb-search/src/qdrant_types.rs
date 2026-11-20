@@ -4,7 +4,7 @@
 //!
 //! These mirror the Qdrant v1.x REST wire format closely enough for the
 //! official clients and LangChain/Zoo Code integrations to talk to
-//! `bsdb-search` without modification. Only the fields the server actually
+//! `bdb-search` without modification. Only the fields the server actually
 //! honours are modelled; unknown fields are ignored by serde.
 
 use serde::{Deserialize, Serialize};

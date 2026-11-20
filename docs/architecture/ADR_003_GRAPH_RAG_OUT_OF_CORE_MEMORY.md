@@ -41,7 +41,7 @@ The local-move and refinement phases are identical to the UDF versions; only the
 
 **Status: implemented.** [`default_datafusion_memory_bytes`](https://github.com/benolabsai/benodb/blob/main/src/core/resources.rs#L222) derives the limit from `DATAFUSION_MEMORY_FRACTION` (0.5) of the effective memory, overridable with `BDB_DATAFUSION_MEMORY_GB`, and it is applied to both `Session` and `Table.execute_sql`.
 
-**Problem.** [`BenoStreamSession::new(None)`](https://github.com/benolabsai/benodb/blob/main/src/core/sql/session.rs#L27) sets no limit, and that is what [`bsdb.rs:122`](https://github.com/benolabsai/benodb/blob/main/src/bin/bsdb.rs#L122) and [`graph.rs:58`](https://github.com/benolabsai/benodb/blob/main/src/python/graph.rs#L58) use — so SQL sorts/joins/aggregations never spill.
+**Problem.** [`BenoStreamSession::new(None)`](https://github.com/benolabsai/benodb/blob/main/src/core/sql/session.rs#L27) sets no limit, and that is what [`bdb.rs:122`](https://github.com/benolabsai/benodb/blob/main/src/bin/bdb.rs#L122) and [`graph.rs:58`](https://github.com/benolabsai/benodb/blob/main/src/python/graph.rs#L58) use — so SQL sorts/joins/aggregations never spill.
 
 **Design.** When `memory_limit_bytes` is `None`, default it to `effective_memory_bytes() * 0.5` (leaving headroom for the ingest buffer and index builds). Add `BDB_DATAFUSION_MEMORY_GB` to override. This turns on DataFusion's disk spilling for the SQL path.
 

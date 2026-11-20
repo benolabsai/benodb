@@ -11,8 +11,8 @@ import requests
 CRATE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BINARY_CANDIDATES = [
-    CRATE_ROOT / "target" / "debug" / "bsdb-search",
-    REPO_ROOT / "target" / "debug" / "bsdb-search",
+    CRATE_ROOT / "target" / "debug" / "benodb-search",
+    REPO_ROOT / "target" / "debug" / "benodb-search",
 ]
 BINARY = next((p for p in BINARY_CANDIDATES if p.exists()), BINARY_CANDIDATES[0])
 
@@ -46,10 +46,10 @@ class Api:
 @pytest.fixture(scope="module")
 def api(tmp_path_factory):
     if not BINARY.exists():
-        pytest.skip(f"{BINARY} not built; run `cargo build --bin bsdb-search` first")
+        pytest.skip(f"{BINARY} not built; run `cargo build --bin benodb-search` first")
 
     port = _free_port()
-    storage = tmp_path_factory.mktemp("bsdb_search_graph")
+    storage = tmp_path_factory.mktemp("bdb_search_graph")
     env = {
         **os.environ,
         "BDB_SEARCH_BIND": "127.0.0.1",
@@ -80,7 +80,7 @@ def api(tmp_path_factory):
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        pytest.fail("bsdb-search did not become ready within 60s")
+        pytest.fail("bdb-search did not become ready within 60s")
 
     yield Api(base, requests.Session())
 

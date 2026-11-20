@@ -19,7 +19,7 @@ import scala.util.Try
  *
  *  * two commits produce two Parquet files, and a scan must return every row
  *    exactly once;
- *  * `spark.benostream.split.maxSize` decides whether the read fans out to one
+ *  * `spark.benodb.split.maxSize` decides whether the read fans out to one
  *    partition per file or stays a single SQL scan;
  *  * `CALL ... show_indexes` must yield the five connector columns with rows
  *    (Spark 4 only — the class is probed at runtime so this file still compiles
@@ -52,7 +52,7 @@ class BenoDBSparkWarehouseTest {
 
   @Before
   def setUp(): Unit = {
-    warehouse = Files.createTempDirectory("bsdb-spark-warehouse-")
+    warehouse = Files.createTempDirectory("bdb-spark-warehouse-")
     // `SparkSession.getOrCreate` returns whatever session another test class left
     // behind, ignoring the catalog config below. Start from a clean session so the
     // warehouse catalog is actually installed.
@@ -62,8 +62,8 @@ class BenoDBSparkWarehouseTest {
       .master("local[2]")
       .appName("BenoDBSparkWarehouseTest")
       .config("spark.ui.enabled", "false")
-      .config("spark.sql.catalog.benostream", catalogClass)
-      .config("spark.sql.catalog.benostream.warehouse", warehouse.toUri.toString)
+      .config("spark.sql.catalog.benodb", catalogClass)
+      .config("spark.sql.catalog.benodb.warehouse", warehouse.toUri.toString)
       .config("spark.sql.warehouse.dir", warehouse.resolve("spark").toUri.toString)
       .getOrCreate()
     // No UDF registration needed: the catalog implements `FunctionCatalog`.
@@ -77,14 +77,14 @@ class BenoDBSparkWarehouseTest {
   }
 
   private def createTwoFileTable(name: String): Unit = {
-    spark.sql(s"CREATE TABLE benostream.default.$name (id bigint, label string)")
-    spark.sql(s"INSERT INTO benostream.default.$name VALUES (1, 'a'), (2, 'b')")
-    spark.sql(s"INSERT INTO benostream.default.$name VALUES (3, 'c'), (4, 'd')")
+    spark.sql(s"CREATE TABLE benodb.default.$name (id bigint, label string)")
+    spark.sql(s"INSERT INTO benodb.default.$name VALUES (1, 'a'), (2, 'b')")
+    spark.sql(s"INSERT INTO benodb.default.$name VALUES (3, 'c'), (4, 'd')")
   }
 
   private def idsOf(table: String): Seq[Long] =
     spark
-      .table(s"benostream.default.$table")
+      .table(s"benodb.default.$table")
       .select("id")
       .orderBy("id")
       .collect()
@@ -95,7 +95,7 @@ class BenoDBSparkWarehouseTest {
   def scanReturnsEveryRowExactlyOnce(): Unit = {
     createTwoFileTable("split_t")
 
-    val df = spark.table("benostream.default.split_t")
+    val df = spark.table("benodb.default.split_t")
     Assert.assertEquals(
       s"rows must not duplicate or drop across files, got ${idsOf("split_t")}",
       Seq(1L, 2L, 3L, 4L),
@@ -123,7 +123,7 @@ class BenoDBSparkWarehouseTest {
       Assert.assertEquals(
         "maxSize=0 must keep the single SQL scan",
         1,
-        spark.table("benostream.default.single_split_t").rdd.getNumPartitions
+        spark.table("benodb.default.single_split_t").rdd.getNumPartitions
       )
     } finally {
       spark.conf.unset(BenoDBScanBuilder.SplitMaxSizeConf)
@@ -138,7 +138,7 @@ class BenoDBSparkWarehouseTest {
       // A pushed filter disables fan-out regardless of the split setting; the
       // scan has to return the filtered subset, not the whole table.
       val ids = spark
-        .table("benostream.default.filtered_t")
+        .table("benodb.default.filtered_t")
         .filter("id > 2")
         .select("id")
         .orderBy("id")
@@ -169,15 +169,15 @@ class BenoDBSparkWarehouseTest {
       "CALL against the table catalog exists only on Spark 4",
       procedureCatalogHasTables
     )
-    spark.sql("CREATE TABLE benostream.default.call_t (id bigint, label string)")
-    spark.sql("INSERT INTO benostream.default.call_t VALUES (1, 'graph rag')")
+    spark.sql("CREATE TABLE benodb.default.call_t (id bigint, label string)")
+    spark.sql("INSERT INTO benodb.default.call_t VALUES (1, 'graph rag')")
 
     // ALGORITHM is omitted on purpose: this is the default-value path.
-    spark.sql("CALL benostream.system.add_index('default.call_t', 'label')")
+    spark.sql("CALL benodb.system.add_index('default.call_t', 'label')")
 
     // The five-column shape is the connector's contract with Trino's
     // `system.list_indexes`; a shape change must fail here.
-    val listing = spark.sql("CALL benostream.system.show_indexes('default.call_t')")
+    val listing = spark.sql("CALL benodb.system.show_indexes('default.call_t')")
     Assert.assertEquals(
       Seq("column_name", "index_category", "algorithm", "index_id", "format_version"),
       listing.columns.toSeq
@@ -187,7 +187,7 @@ class BenoDBSparkWarehouseTest {
     var attempts = 0
     while (indexedColumns.isEmpty && attempts < 40) {
       indexedColumns = spark
-        .sql("CALL benostream.system.show_indexes('default.call_t')")
+        .sql("CALL benodb.system.show_indexes('default.call_t')")
         .select("column_name")
         .collect()
         .map(_.getString(0))
@@ -214,20 +214,20 @@ class BenoDBSparkWarehouseTest {
       "row-level operations need a primary key and the Spark 4 catalog",
       procedureCatalogHasTables
     )
-    spark.sql("CREATE TABLE benostream.default.merge_t (id bigint, label string)")
-    spark.sql("INSERT INTO benostream.default.merge_t VALUES (1, 'a'), (2, 'b')")
-    spark.sql("CALL benostream.system.set_primary_key('default.merge_t', 'id')")
+    spark.sql("CREATE TABLE benodb.default.merge_t (id bigint, label string)")
+    spark.sql("INSERT INTO benodb.default.merge_t VALUES (1, 'a'), (2, 'b')")
+    spark.sql("CALL benodb.system.set_primary_key('default.merge_t', 'id')")
     spark.sql(
       "CREATE OR REPLACE TEMP VIEW merge_src AS "
         + "SELECT * FROM VALUES (2, 'B'), (3, 'c') AS v(id, label)")
 
     spark.sql(
-      "MERGE INTO benostream.default.merge_t t USING merge_src s ON t.id = s.id "
+      "MERGE INTO benodb.default.merge_t t USING merge_src s ON t.id = s.id "
         + "WHEN MATCHED THEN UPDATE SET label = s.label "
         + "WHEN NOT MATCHED THEN INSERT (id, label) VALUES (s.id, s.label)")
 
     val rows = spark
-      .table("benostream.default.merge_t")
+      .table("benodb.default.merge_t")
       .orderBy("id")
       .collect()
       .map(row => (row.getLong(0), row.getString(1)))
@@ -245,7 +245,7 @@ class BenoDBSparkWarehouseTest {
    */
   @Test
   def stagedAppendCommitsOnceAndIsRetrySafe(): Unit = {
-    spark.sql("CREATE TABLE benostream.default.staged_t (id bigint, label string)")
+    spark.sql("CREATE TABLE benodb.default.staged_t (id bigint, label string)")
     val uri = warehouse.toUri.toString + "/default/staged_t"
     val schema = new StructType().add("id", LongType).add("label", StringType)
     def rows(ids: Seq[Long]): Seq[InternalRow] =
@@ -291,7 +291,7 @@ class BenoDBSparkWarehouseTest {
    */
   @Test
   def stagedFilesAreInvisibleUntilCommittedAndCommitOnce(): Unit = {
-    spark.sql("CREATE TABLE benostream.default.staged_files_t (id bigint, label string)")
+    spark.sql("CREATE TABLE benodb.default.staged_files_t (id bigint, label string)")
     val uri = warehouse.toUri.toString + "/default/staged_files_t"
     Assert.assertEquals(
       "plain v2 tables must use the file-based task protocol",

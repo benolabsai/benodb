@@ -29,8 +29,8 @@ BenoDB integrates with Snowflake via **Snowflake Iceberg Tables** residing in cu
 ├─────────────────────────────────────────────────┤          ├─────────────────────────────────────────┤
 │ • metadata/v1.metadata.json, snap-*.avro        │          │ • detached_catalog.json (lineage/sync)  │
 │ • data/00001.parquet                            │◀─────────┤ • manifest.json (PK & index definitions)│
-│ • data/00002.parquet                            │          │ • data/00001.bsdb_idx (HNSW / BM25)     │
-│ (Managed & compacted by Snowflake)              │          │ • data/00002.bsdb_idx (HNSW / BM25)     │
+│ • data/00002.parquet                            │          │ • data/00001.bdb_idx (HNSW / BM25)     │
+│ (Managed & compacted by Snowflake)              │          │ • data/00002.bdb_idx (HNSW / BM25)     │
 └─────────────────────────────────────────────────┘          └─────────────────────────────────────────┘
 ```
 
@@ -74,10 +74,10 @@ BASE_LOCATION = 'customer_interactions/';
 Point BenoDB to the Snowflake external volume base location:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Mount external Snowflake table in read-only mode
-table = bsdb.Table.mount_external_iceberg(
+table = bdb.Table.mount_external_iceberg(
     table_uri="s3://my-company-lakehouse/snowflake_warehouse/customer_interactions/",
     overlay_storage_uri="s3://my-index-overlays/customer_interactions/"
 )
@@ -130,10 +130,10 @@ If your organization requires table resolution through the **Iceberg REST Catalo
 Snowflake supports the Iceberg REST Catalog standard via **Snowflake Open Catalog** (Apache Polaris).
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Connect via Iceberg REST Catalog endpoint
-catalog = bsdb.create_catalog("rest", {
+catalog = bdb.create_catalog("rest", {
     "url": "https://<account_locator>.snowflakecomputing.com/polaris/api/catalog",
     "prefix": "MY_DATABASE",
 })

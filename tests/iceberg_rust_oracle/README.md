@@ -23,7 +23,7 @@ communicate only through on-disk artifacts.
 1. Produce fixtures with the engine (this test is `#[ignore]`d):
 
    ```bash
-   BDB_FIXTURE_DIR=/tmp/bsdb_oracle_fixture \
+   BDB_FIXTURE_DIR=/tmp/bdb_oracle_fixture \
      cargo test --test oracle_fixture -- --ignored --nocapture
    ```
 
@@ -34,13 +34,13 @@ communicate only through on-disk artifacts.
 2. Point the oracle at a table:
 
    ```bash
-   BDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v2 \
+   BDB_ORACLE_URI=file:///tmp/bdb_oracle_fixture/v2 \
    BDB_ORACLE_SUITE=v2 BDB_ORACLE_EXPECT_IDS=1,2 \
      cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
    ```
 
    ```bash
-   BDB_ORACLE_URI=file:///tmp/bsdb_oracle_fixture/v3 \
+   BDB_ORACLE_URI=file:///tmp/bdb_oracle_fixture/v3 \
    BDB_ORACLE_SUITE=v3 BDB_ORACLE_EXPECT_IDS=1,2 \
      cargo test --manifest-path tests/iceberg_rust_oracle/Cargo.toml -- --nocapture
    ```

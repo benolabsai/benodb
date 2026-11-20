@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * End-to-end coverage for {@code benostream.split.file-granularity=true}.
+ * End-to-end coverage for {@code benodb.split.file-granularity=true}.
  *
  * <p>With the property on, a plain scan emits one split per Parquet file and each
  * split is read through a file-scoped engine session instead of the table-wide
@@ -33,7 +33,7 @@ public class TestFileGranularitySplits {
     @BeforeAll
     void setUp() throws Exception {
         assumeTrue(BenoDBJNIBridge.isLoaded(), "libbenodb is not on java.library.path");
-        Path warehouse = Files.createTempDirectory("benostream-trino-splits-");
+        Path warehouse = Files.createTempDirectory("benodb-trino-splits-");
         runner = DistributedQueryRunner.builder(
                         TestingSession.testSessionBuilder()
                                 .setCatalog("benodb")
@@ -45,8 +45,8 @@ public class TestFileGranularitySplits {
                 "benodb",
                 "benodb",
                 Map.of(
-                        "benostream.warehouse", warehouse.toUri().toString(),
-                        "benostream.split.file-granularity", "true"));
+                        "benodb.warehouse", warehouse.toUri().toString(),
+                        "benodb.split.file-granularity", "true"));
 
         runner.execute("CREATE TABLE benodb.default.split_t (id bigint, label varchar)");
         // Two commits => two data files => two splits.

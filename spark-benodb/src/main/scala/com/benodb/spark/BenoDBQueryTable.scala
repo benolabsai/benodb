@@ -12,7 +12,7 @@ import java.util.{Set => JSet}
 import scala.collection.JavaConverters._
 
 /**
- * Pass-through reader: `spark.read.format("benostream")
+ * Pass-through reader: `spark.read.format("benodb")
  *   .option("path", "<table-uri>").option("query", "<engine SQL>").load()`.
  *
  * The SQL is executed by the engine's DataFusion session, so **every** engine
@@ -24,7 +24,7 @@ class BenoDBQueryTable(uri: String, sql: String, resultSchema: StructType)
     extends Table
     with SupportsRead {
 
-  override def name(): String = "benostream-query"
+  override def name(): String = "benodb-query"
 
   override def schema(): StructType = resultSchema
 

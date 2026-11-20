@@ -138,7 +138,7 @@ impl Table {
 
     /// Merge `properties` into the table's properties (metadata-only commit).
     ///
-    /// Merge (not replace) so internal keys (`benostream.*`, e.g. the WAL
+    /// Merge (not replace) so internal keys (`benodb.*`, e.g. the WAL
     /// commit marker) are never clobbered by a user setting `table_type`.
     pub async fn set_properties_async(
         &self,

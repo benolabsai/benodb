@@ -592,7 +592,7 @@ def generate_summary(
         "  (BenoDB, FAISS, hnswlib, LanceDB) run in-process, while client-server",
         "  engines (Milvus, Qdrant, Weaviate, OpenSearch, pgvector) include a per-query",
         "  RPC round-trip that is not index-search cost.",
-        "- The GPU kernel numbers in §1b are a microbenchmark of `bsdb.cdist`; they",
+        "- The GPU kernel numbers in §1b are a microbenchmark of `bdb.cdist`; they",
         "  do not imply GPU speedups for HNSW/IVF search, which is CPU-bound at",
         "  these sizes.",
         "",
@@ -654,7 +654,7 @@ def generate_summary(
     sections.append("### GPU Acceleration on Large Batch Workloads")
     sections.append("")
     sections.append(
-        "BenoDB provides native GPU acceleration (`bsdb.cdist`, CUDA/Triton) "
+        "BenoDB provides native GPU acceleration (`bdb.cdist`, CUDA/Triton) "
         "for high-throughput batching, brute-force k-NN reranking, and centroid clustering (k-means) "
         "across large vector datasets. While index beam traversals (HNSW) in this report are measured "
         "on a standardized CPU container envelope (8 cores, 16 GB RAM) for strict hardware parity with "
@@ -1037,7 +1037,7 @@ def generate_summary(
     sections.append("")
     sections.append(
         "All vector index traversals are evaluated under a standardized 8-core CPU envelope "
-        "for strict hardware parity. BenoDB provides native GPU acceleration (`bsdb.cdist`) "
+        "for strict hardware parity. BenoDB provides native GPU acceleration (`bdb.cdist`) "
         "for high-throughput batching, matrix multiplication, and clustering across large vector datasets."
     )
     sections.append("")

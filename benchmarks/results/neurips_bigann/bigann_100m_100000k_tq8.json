@@ -91,7 +91,7 @@
       "cache_gb": 8,
       "preload_gb": 8.0,
       "storage": {
-        "path": "/home/ralbright/projects/benostreamdb/benchmarks/scratch_100m",
+        "path": "/home/ralbright/projects/benodb/benchmarks/scratch_100m",
         "device": "nvme0n1",
         "model": "PNY CS2130 2TB SSD",
         "firmware": "21300001",

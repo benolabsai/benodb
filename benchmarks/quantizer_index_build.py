@@ -4,7 +4,7 @@
 
 Run inside the envelope by `run_quantizer_index_dirs.sh build <mode>`, as
 
-    docker run --entrypoint python3 ... bsdb-neurips:latest \\
+    docker run --entrypoint python3 ... bdb-neurips:latest \\
         /opt/bench/current/quantizer_index_build.py
 
 Environment:
@@ -29,7 +29,7 @@ import time
 
 
 def main() -> int:
-    import benodb as bsdb
+    import benodb as bdb
 
     upstream = os.environ.get("QIX_UPSTREAM", "").strip()
     directory = os.environ["QIX_DIR"]
@@ -52,9 +52,9 @@ def main() -> int:
 
     os.makedirs(directory, exist_ok=True)
     if upstream:
-        table = bsdb.Table.mount_external_iceberg(upstream, directory)
+        table = bdb.Table.mount_external_iceberg(upstream, directory)
     else:
-        table = bsdb.Table(directory)
+        table = bdb.Table(directory)
 
     # Always register the target quantizer so `rebuild_cluster_index` selects it
     # even when `skip_segment` is set. On a fresh overlay, `add_index` triggers

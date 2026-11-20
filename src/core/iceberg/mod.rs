@@ -30,7 +30,7 @@ pub use types::{
 pub use manifest::{convert_iceberg_to_object, read_manifest, read_manifest_list};
 
 // ── Schema ─────────────────────────────────────────────────────────────────
-pub use schema::{iceberg_json_to_arrow_schema, iceberg_partition_spec_to_benostream};
+pub use schema::{iceberg_json_to_arrow_schema, iceberg_partition_spec_to_benodb};
 
 // ── Delete readers ────────────────────────────────────────────────────────
 pub use delete::{EqualityDeleteReader, PositionDeleteReader};

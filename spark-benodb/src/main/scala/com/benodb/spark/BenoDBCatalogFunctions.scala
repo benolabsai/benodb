@@ -14,8 +14,8 @@ import org.apache.spark.sql.types.{ArrayType, BooleanType, DataTypes, DataType, 
  * PySpark with no session registration:
  *
  * {{{
- *   SELECT benostream.system.cosine_distance(embedding, array(1.0, 0.0, 0.0))
- *   FROM benostream.default.docs
+ *   SELECT benodb.system.cosine_distance(embedding, array(1.0, 0.0, 0.0))
+ *   FROM benodb.default.docs
  * }}}
  *
  * Implementations override `produceResult(InternalRow)` directly — the contract

@@ -148,7 +148,7 @@ object BenoDBDeltaWriter {
   val MaxCompoundKeysPerChunk: Int = 500
 
   val BatchSizeKey: String = "write.batchSize"
-  val BatchSizeConf: String = "spark.benostream.write.batchSize"
+  val BatchSizeConf: String = "spark.benodb.write.batchSize"
 
   /** Resolve the flush size: write option → table property → Spark conf → default. */
   def resolveFlushSize(info: LogicalWriteInfo, properties: java.util.Map[String, String]): Int = {

@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-import benodb as bsdb
+import benodb as bdb
 
 @pytest.fixture
 def aggregate_data():
@@ -54,7 +54,7 @@ def test_standard_aggregates(aggregate_data, tmpdir):
         ("embedding", pa.list_(pa.float32(), 4))
     ])
     
-    table = bsdb.Table.create(uri, schema)
+    table = bdb.Table.create(uri, schema)
     table.write(df)
     table.commit()
     
@@ -118,7 +118,7 @@ def test_group_by_aggregates(aggregate_data, tmpdir):
         ("embedding", pa.list_(pa.float32(), 4))
     ])
     
-    table = bsdb.Table.create(uri, schema)
+    table = bdb.Table.create(uri, schema)
     table.write(df)
     table.commit()
     
@@ -163,7 +163,7 @@ def test_vector_avg(aggregate_data, tmpdir):
         ("embedding", pa.list_(pa.float32(), 4))
     ])
     
-    table = bsdb.Table.create(uri, schema)
+    table = bdb.Table.create(uri, schema)
     table.write(df)
     table.commit()
     

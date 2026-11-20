@@ -45,7 +45,7 @@ def test_set_property_persists(tmp_path):
     assert props["src_col"] == "a"
     assert t.table_type() == "edge"
     # Internal keys (e.g. the WAL commit marker) must survive a property set.
-    assert any(k.startswith("benostream.") for k in props)
+    assert any(k.startswith("benodb.") for k in props)
 
 
 def test_alter_table_set_tblproperties(tmp_path):

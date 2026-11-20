@@ -18,18 +18,18 @@ import scala.collection.JavaConverters._
  * serves Spark 4.0/4.1/4.2.
  *
  * Also implements the DSv2 `FunctionCatalog` so the vector/hybrid functions
- * resolve natively (`benostream.system.cosine_distance(...)` etc.) from SQL,
+ * resolve natively (`benodb.system.cosine_distance(...)` etc.) from SQL,
  * DataFrames, and PySpark with zero session registration.
  *
  * Configure like:
  * {{{
- *   spark.sql.catalog.benostream = com.benodb.spark.BenoDBCatalog
- *   spark.sql.catalog.benostream.warehouse = /path/to/warehouse   (or s3://bucket/prefix)
+ *   spark.sql.catalog.benodb = com.benodb.spark.BenoDBCatalog
+ *   spark.sql.catalog.benodb.warehouse = /path/to/warehouse   (or s3://bucket/prefix)
  * }}}
  */
 class BenoDBCatalog extends TableCatalog with SupportsNamespaces with FunctionCatalog {
 
-  private var catalogName: String = "benostream"
+  private var catalogName: String = "benodb"
   private var warehouse: String = ""
   private var gpuDevice: String = "auto"
 
@@ -38,7 +38,7 @@ class BenoDBCatalog extends TableCatalog with SupportsNamespaces with FunctionCa
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     catalogName = name
     warehouse = Option(options.get("warehouse"))
-      .orElse(Option(options.get("benostream.warehouse")))
+      .orElse(Option(options.get("benodb.warehouse")))
       .getOrElse("")
       .stripSuffix("/")
     gpuDevice = options.getOrDefault("gpu_device", "auto")

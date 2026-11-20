@@ -11,11 +11,11 @@ happily pass while the client is wrong (or fail while it is right).
 import pyarrow as pa
 import pytest
 
-import benodb as bsdb
+import benodb as bdb
 
 
-def _schema() -> bsdb.Schema:
-    return bsdb.Schema.from_arrow(
+def _schema() -> bdb.Schema:
+    return bdb.Schema.from_arrow(
         pa.schema(
             [
                 pa.field("id", pa.int32(), nullable=False),
@@ -27,10 +27,10 @@ def _schema() -> bsdb.Schema:
 
 def test_memory_catalog_python_roundtrip(tmp_path):
     warehouse = f"file://{tmp_path}/wh"
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "memory", {"uri": f"memory://py_test_{tmp_path.name}", "warehouse": warehouse}
     )
-    assert isinstance(cat, bsdb.PyMemoryCatalog)
+    assert isinstance(cat, bdb.PyMemoryCatalog)
 
     cat.create_namespace("analytics")
     assert cat.namespace_exists("analytics") is True
@@ -59,7 +59,7 @@ def test_memory_catalog_python_roundtrip(tmp_path):
 
 def test_jdbc_sqlite_catalog_python_roundtrip(tmp_path):
     warehouse = f"file://{tmp_path}/wh"
-    cat = bsdb.create_catalog(
+    cat = bdb.create_catalog(
         "jdbc",
         {
             "uri": "sqlite::memory:",

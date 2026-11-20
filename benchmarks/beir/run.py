@@ -169,11 +169,11 @@ def _engine_backend(engine: str) -> str:
     they report ``cpu``. This is what distinguishes a real GPU run from a CPU
     run that merely happened inside the GPU container.
     """
-    if engine in ("benodb", "bsdb"):
+    if engine in ("benodb", "bdb"):
         try:
-            import benodb as bsdb
+            import benodb as bdb
 
-            return bsdb.gpu_device()
+            return bdb.gpu_device()
         except Exception:
             return "unknown"
     return "cpu"
@@ -334,16 +334,16 @@ def run_benodb(
     k: int = 10,
 ) -> Dict[str, Any]:
     """Benchmarks BenoDB BM25 inverted index build and retrieval."""
-    import benodb as bsdb
+    import benodb as bdb
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_beir_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_beir_")
     try:
         t_build_0 = time.perf_counter()
         schema = pa.schema([
             ("id", pa.string()),
             ("text", pa.string()),
         ])
-        table = bsdb.Table.create(tmpdir, schema)
+        table = bdb.Table.create(tmpdir, schema)
         table.add_index("text", {"type": "bm25", "k1": 1.2, "b": 0.75})
 
         arr_id = pa.array([c[0] for c in corpus], type=pa.string())
@@ -527,7 +527,7 @@ def run_opensearch(
             "error": "pip install opensearch-py (or elasticsearch)",
         }
 
-    index_name = "bsdb-beir-lexical"
+    index_name = "bdb-beir-lexical"
     try:
         t_build_0 = time.perf_counter()
         client.indices.delete(index=index_name, ignore_unavailable=True)
@@ -667,9 +667,9 @@ def main():
     # BDB_GPU_DEVICE (e.g. `cuda:1`).
     if args.device == "gpu":
         try:
-            import benodb as bsdb
+            import benodb as bdb
 
-            resolved = bsdb.set_gpu_device(os.environ.get("BDB_GPU_DEVICE", "auto"))
+            resolved = bdb.set_gpu_device(os.environ.get("BDB_GPU_DEVICE", "auto"))
             print(f"BenoDB GPU backend: {resolved}", flush=True)
         except Exception as exc:  # no GPU / no wheel: fall back to CPU
             print(f"GPU device selection failed ({exc}); using CPU", flush=True)
@@ -702,13 +702,13 @@ def main():
         results.append(res)
 
     # Top-k agreement of every competitor vs BenoDB.
-    bsdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
+    bdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
     agreements: Dict[str, float] = {}
-    if bsdb_res:
+    if bdb_res:
         for r in results:
-            if r is bsdb_res or not r.get("available"):
+            if r is bdb_res or not r.get("available"):
                 continue
-            pct = _jaccard_agreement(bsdb_res, r, queries)
+            pct = _jaccard_agreement(bdb_res, r, queries)
             agreements[r["engine"]] = pct
             print(
                 f"\nBenoDB vs {r['engine']} Top-{args.k} Jaccard Agreement: {pct:.1f}%",

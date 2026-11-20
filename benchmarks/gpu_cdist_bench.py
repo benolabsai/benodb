@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Batched GPU distance (``bsdb.cdist``) benchmark.
+"""Batched GPU distance (``bdb.cdist``) benchmark.
 
 The ANN harness exercises HNSW/IVF index build and search, which are CPU-bound
 at the dataset sizes it uses. The 2D-tiled CUDA kernels are reached through
-``bsdb.cdist`` (and k-means), so this benchmark measures them directly:
+``bdb.cdist`` (and k-means), so this benchmark measures them directly:
 
 * CPU vs CUDA for L2 and cosine at several (queries x vectors x dim) shapes.
 * One GPU vs two GPUs for a compute-heavy shape, driving each device from its
@@ -25,7 +25,7 @@ import time
 
 import numpy as np
 
-import benodb as bsdb
+import benodb as bdb
 
 
 def bench(fn, warmup: int = 2, reps: int = 5) -> float:
@@ -56,11 +56,11 @@ def main() -> None:
     args = ap.parse_args()
 
     np.random.seed(7)
-    cpu = bsdb.Device("cpu")
-    cuda = bsdb.Device("cuda:0") if bsdb.Device.is_available("cuda") else None
+    cpu = bdb.Device("cpu")
+    cuda = bdb.Device("cuda:0") if bdb.Device.is_available("cuda") else None
     has_dual = bool(
         cuda
-        and bsdb.Device.is_available("cuda")
+        and bdb.Device.is_available("cuda")
         and _device_count() >= 2
     )
 
@@ -77,14 +77,14 @@ def main() -> None:
         vectors = np.random.randn(v, d).astype(np.float32)
         row = {"queries": q, "vectors": v, "dim": d, "metric": metric}
         cpu_ms = bench(
-            lambda: bsdb.cdist(queries, vectors, metric=metric, device=cpu),
+            lambda: bdb.cdist(queries, vectors, metric=metric, device=cpu),
             reps=args.reps,
         )
         row["cpu_ms"] = round(cpu_ms, 2)
         row["cpu_mdist_s"] = round(throughput(q, v, cpu_ms), 1)
         if cuda is not None:
             gpu_ms = bench(
-                lambda: bsdb.cdist(queries, vectors, metric=metric, device=cuda),
+                lambda: bdb.cdist(queries, vectors, metric=metric, device=cuda),
                 reps=args.reps,
             )
             row["cuda_ms"] = round(gpu_ms, 2)
@@ -97,19 +97,19 @@ def main() -> None:
         q, v, d = 8192, 20_000, 2048
         queries = np.random.randn(q, d).astype(np.float32)
         vectors = np.random.randn(v, d).astype(np.float32)
-        gpu1 = bsdb.Device("cuda:1")
+        gpu1 = bdb.Device("cuda:1")
         single = bench(
-            lambda: bsdb.cdist(queries, vectors, metric="l2", device=cuda),
+            lambda: bdb.cdist(queries, vectors, metric="l2", device=cuda),
             reps=args.reps,
         )
         half = q // 2
 
         def split() -> None:
             t0 = threading.Thread(
-                target=lambda: bsdb.cdist(queries[:half], vectors, metric="l2", device=cuda)
+                target=lambda: bdb.cdist(queries[:half], vectors, metric="l2", device=cuda)
             )
             t1 = threading.Thread(
-                target=lambda: bsdb.cdist(queries[half:], vectors, metric="l2", device=gpu1)
+                target=lambda: bdb.cdist(queries[half:], vectors, metric="l2", device=gpu1)
             )
             t0.start()
             t1.start()

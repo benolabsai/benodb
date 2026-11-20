@@ -1,11 +1,11 @@
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import pytest
 
 def test_boolean_indexing(tmp_path):
     """Test that boolean columns can be indexed and filtered correctly."""
     table_path = str(tmp_path / "bool_test")
-    table = bsdb.Table(f"file://{table_path}")
+    table = bdb.Table(f"file://{table_path}")
     
     # Create DataFrame with boolean column
     df = pd.DataFrame({

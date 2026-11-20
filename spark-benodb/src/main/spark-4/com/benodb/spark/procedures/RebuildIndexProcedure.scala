@@ -24,7 +24,7 @@ class RebuildIndexProcedure extends UnboundProcedure with BoundProcedure {
     val col = if (inputArgs.numFields > 1 && !inputArgs.isNullAt(1)) inputArgs.getString(1) else "all"
     
     val jniBridge = com.benodb.spark.jni.BenoDBJNIBridge.getInstance()
-    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benostream.gpu.device", "auto")
+    val gpuDevice = org.apache.spark.sql.SparkSession.active.conf.get("spark.benodb.gpu.device", "auto")
     jniBridge.setGpuContext(gpuDevice)
     val tableIdentifier = BenoDBTableResolver.resolveFromSession(table)
     jniBridge.buildIndex(tableIdentifier, col)

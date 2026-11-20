@@ -86,20 +86,20 @@ pub fn build_optimized_plan(
 
     // Construct optimized scan (use unprojected `base_schema` so projection indices stay valid)
     let scan_exec = VectorScanExec::new(
-        pattern.benostream_exec.table.clone(),
-        pattern.benostream_exec.partitions.clone(),
-        pattern.benostream_exec.projection.clone(),
-        pattern.benostream_exec.filter_str.clone(),
+        pattern.benodb_exec.table.clone(),
+        pattern.benodb_exec.partitions.clone(),
+        pattern.benodb_exec.projection.clone(),
+        pattern.benodb_exec.filter_str.clone(),
         vector_params,
         Some(k_with_offset),
-        pattern.benostream_exec.base_schema.clone(),
+        pattern.benodb_exec.base_schema.clone(),
     )?;
 
     let merge_exec = VectorMergeExec::new(
         Arc::new(scan_exec),
         pattern.limit,
         pattern.offset,
-        pattern.benostream_exec.schema.clone(),
+        pattern.benodb_exec.schema.clone(),
     )?;
 
     tracing::info!(

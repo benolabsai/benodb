@@ -7,7 +7,7 @@ import os
 # Add the built library to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'target', 'release'))
 
-import benodb as bsdb
+import benodb as bdb
 import inspect
 
 def check_docstring(func_name, func):
@@ -50,8 +50,8 @@ def main():
     print("-" * 80)
     all_passed = True
     for func_name in distance_functions:
-        if hasattr(bsdb, func_name):
-            func = getattr(bsdb, func_name)
+        if hasattr(bdb, func_name):
+            func = getattr(bdb, func_name)
             passed, msg = check_docstring(func_name, func)
             status = "✓" if passed else "✗"
             print(f"{status} {func_name:30s} {msg}")
@@ -65,8 +65,8 @@ def main():
     # Test ComputeContext class
     print("\nComputeContext Class:")
     print("-" * 80)
-    if hasattr(bsdb, 'ComputeContext'):
-        ctx_class = bsdb.ComputeContext
+    if hasattr(bdb, 'ComputeContext'):
+        ctx_class = bdb.ComputeContext
         
         # Check class docstring
         if ctx_class.__doc__:
@@ -95,8 +95,8 @@ def main():
     # Test SparseVector class
     print("\nSparseVector Class:")
     print("-" * 80)
-    if hasattr(bsdb, 'SparseVector'):
-        sv_class = bsdb.SparseVector
+    if hasattr(bdb, 'SparseVector'):
+        sv_class = bdb.SparseVector
         
         # Check class docstring
         if sv_class.__doc__:

@@ -6,14 +6,14 @@ import org.apache.spark.sql.SparkSession
  * Resolves the `table` procedure argument into a full engine table URI.
  *
  * Stored procedures used to do `table.split("\\.").last`, which dropped the
- * namespace entirely: `benostream.default.orders`, `default.orders` and
+ * namespace entirely: `benodb.default.orders`, `default.orders` and
  * `orders` all collapsed to `orders` and were handed to JNI with no namespace
  * context. This helper keeps the namespace and prefixes the catalog warehouse:
  *
  * {{{
  *   "orders"                   -> "<warehouse>/default/orders"
  *   "sales.orders"             -> "<warehouse>/sales/orders"
- *   "benostream.sales.orders"  -> "<warehouse>/sales/orders"
+ *   "benodb.sales.orders"  -> "<warehouse>/sales/orders"
  *   "file:///tmp/orders"       -> "file:///tmp/orders"   (explicit URI, unchanged)
  * }}}
  */
@@ -23,10 +23,10 @@ object BenoDBTableResolver {
   private val UriScheme = "://"
 
   /** Preferred catalog config key; other `spark.sql.catalog.*.warehouse` keys work too. */
-  val DefaultWarehouseKey = "spark.sql.catalog.benostream.warehouse"
+  val DefaultWarehouseKey = "spark.sql.catalog.benodb.warehouse"
 
   /** Session-level fallback used by the Spark connector docs. */
-  val WarehouseConfKey = "spark.benostream.warehouse"
+  val WarehouseConfKey = "spark.benodb.warehouse"
 
   /** Resolve `tableArg` against an explicit warehouse location. */
   def resolve(warehouse: String, tableArg: String): String = {
@@ -59,9 +59,9 @@ object BenoDBTableResolver {
   def resolveFromSession(tableArg: String): String = resolve(warehouseFromSession(), tableArg)
 
   /**
-   * Discover the warehouse from the session: the `benostream` catalog first,
+   * Discover the warehouse from the session: the `benodb` catalog first,
    * then any other `spark.sql.catalog.*.warehouse`, then the session-level
-   * `spark.benostream.warehouse` fallback.
+   * `spark.benodb.warehouse` fallback.
    */
   def warehouseFromSession(): String = {
     val session = SparkSession.getActiveSession

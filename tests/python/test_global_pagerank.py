@@ -6,7 +6,7 @@ from benodb import Table
 
 @pytest.fixture
 def table_fixture(tmpdir):
-    cat_path = str(tmpdir.join("benostreamdb_test_pagerank"))
+    cat_path = str(tmpdir.join("benodb_test_pagerank"))
     schema = pa.schema([
         ("src", pa.uint64()),
         ("dst", pa.uint64())

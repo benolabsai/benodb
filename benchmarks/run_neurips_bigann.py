@@ -264,7 +264,7 @@ def db_breakdown(path: str) -> dict:
     }
 
 
-def ingest_stage(bsdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.dtype = np.uint8) -> dict:
+def ingest_stage(bdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.dtype = np.uint8) -> dict:
     """Create the table and stream the raw vectors in, without any index."""
     db_path = args.db_dir
     if args.rebuild_db and os.path.exists(db_path):
@@ -297,10 +297,10 @@ def ingest_stage(bsdb, args, base_path: str, dim: int = DEFAULT_DIM, dtype: np.d
 
     t0 = time.time()
     if getattr(args, "auto_warmup", False):
-        inner = bsdb._RustTable(db_path, auto_warmup=True)
-        table = bsdb.Table(db_path, inner_table=inner)
+        inner = bdb._RustTable(db_path, auto_warmup=True)
+        table = bdb.Table(db_path, inner_table=inner)
     else:
-        table = bsdb.Table(db_path)
+        table = bdb.Table(db_path)
 
     since_flush = 0
     t_ingest = time.time()
@@ -440,9 +440,9 @@ def clear_evaluation_caches(table=None, paths=None, label: str = ""):
         except Exception:
             pass
     try:
-        import benodb as _bsdb
-        if hasattr(_bsdb, "clear_cache"):
-            _bsdb.clear_cache(all=True)
+        import benodb as _bdb
+        if hasattr(_bdb, "clear_cache"):
+            _bdb.clear_cache(all=True)
     except Exception:
         pass
 
@@ -525,7 +525,7 @@ def write_index_mode(db_path: str, mode: str, idx_type: str, args) -> None:
         json.dump(record, f, indent=2, sort_keys=True)
 
 
-def reindex_and_preload(bsdb, args, mode: str):
+def reindex_and_preload(bdb, args, mode: str):
     """Rebuild or reuse the index for `mode` in the table and warm it.
 
     This is paid once per mode — the query grid then runs against the same warm
@@ -564,14 +564,14 @@ def reindex_and_preload(bsdb, args, mode: str):
             f"    -> Mounting detached overlay '{overlay_dir}' over upstream '{base_db}'",
             flush=True,
         )
-        table = bsdb.Table.mount_external_iceberg(base_db, overlay_dir)
+        table = bdb.Table.mount_external_iceberg(base_db, overlay_dir)
     else:
         db_path = base_db
         if getattr(args, "auto_warmup", False):
-            inner = bsdb._RustTable(db_path, auto_warmup=True)
-            table = bsdb.Table(db_path, inner_table=inner)
+            inner = bdb._RustTable(db_path, auto_warmup=True)
+            table = bdb.Table(db_path, inner_table=inner)
         else:
-            table = bsdb.Table(db_path)
+            table = bdb.Table(db_path)
 
     # Which algorithm this mode builds. Each quantizer is a distinct, first-class
     # `IndexAlgorithm` (`hnsw`, `hnsw_sq8`, `hnsw_tq8`, `hnsw_tq4`, `hnsw_pq`),
@@ -800,18 +800,18 @@ def search_pass(table, args, queries, gt_indices, ef_search: int, n_probe: int, 
 
     io_before = io_snapshot()
     try:
-        import benodb as _bsdb
+        import benodb as _bdb
 
-        _bsdb.reset_reader_stats()
+        _bdb.reset_reader_stats()
     except Exception:
-        _bsdb = None
+        _bdb = None
     wall_start = time.time()
     with ThreadPoolExecutor(max_workers=workers) as executor:
         results = list(executor.map(search_worker, range(q)))
     wall = time.time() - wall_start
     io = io_delta(io_before, io_snapshot())
     mem = memory_snapshot()
-    reader = _bsdb.reader_stats() if _bsdb is not None else {}
+    reader = _bdb.reader_stats() if _bdb is not None else {}
 
     latencies = [r[0] for r in results]
     hits = [r[1] for r in results if r[1] is not None]
@@ -1756,7 +1756,7 @@ def main():
         )
         sys.exit(2)
 
-    import benodb as bsdb
+    import benodb as bdb
 
     records = []
 
@@ -1765,7 +1765,7 @@ def main():
     )
     if need_ingest:
         print("--- Stage: INGEST (write the table once, no index) ---", flush=True)
-        ingest_stats = ingest_stage(bsdb, args, base_path, dim, dtype)
+        ingest_stats = ingest_stage(bdb, args, base_path, dim, dtype)
         print(json.dumps(ingest_stats), flush=True)
         print(
             f"    -> Ingested {ingest_stats['n_train']:,} vectors in "
@@ -1821,7 +1821,7 @@ def main():
                     sys.exit(4)
 
             t0 = time.time()
-            table, meta = reindex_and_preload(bsdb, args, mode)
+            table, meta = reindex_and_preload(bdb, args, mode)
 
             # Untimed warmup pass to prefault active Voronoi index shards into RAM
             nw = min(getattr(args, "warmup_queries", 500), len(test_queries))
@@ -1887,7 +1887,7 @@ def main():
         meta = {
             "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "engine": {
-                "version": getattr(bsdb, "__version__", "unknown"),
+                "version": getattr(bdb, "__version__", "unknown"),
                 "git_rev": state["git_rev"],
                 "git_rev_short": state["git_rev_short"],
                 "git_dirty": state["git_dirty"],

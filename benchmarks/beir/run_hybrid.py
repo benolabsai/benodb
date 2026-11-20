@@ -157,11 +157,11 @@ def _engine_backend(engine: str) -> str:
     they report ``cpu``. This is what distinguishes a real GPU run from a CPU
     run that merely happened inside the GPU container.
     """
-    if engine in ("benodb", "bsdb"):
+    if engine in ("benodb", "bdb"):
         try:
-            import benodb as bsdb
+            import benodb as bdb
 
-            return bsdb.gpu_device()
+            return bdb.gpu_device()
         except Exception:
             return "unknown"
     return "cpu"
@@ -362,9 +362,9 @@ def run_benodb_hybrid(
     rrf_k: int = 60,
 ) -> Dict[str, Any]:
     """Runs Dense-only, Sparse-only (BM25), and Hybrid (RRF) on BenoDB."""
-    import benodb as bsdb
+    import benodb as bdb
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_hybrid_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_hybrid_")
     dim = len(corpus[0][2])
 
     try:
@@ -375,7 +375,7 @@ def run_benodb_hybrid(
             ("text", pa.string()),
             ("embedding", pa.list_(pa.float32(), dim)),
         ])
-        table = bsdb.Table.create(tmpdir, schema)
+        table = bdb.Table.create(tmpdir, schema)
         table.add_index("text", {"type": "bm25", "k1": 1.2, "b": 0.75})
         # Full precision (the engine default); quantized variants are opt-in.
         table.add_index("embedding", {"type": "hnsw", "m": 32, "ef_construction": 200, "ef_search": 100})
@@ -610,9 +610,9 @@ def main():
     # BDB_GPU_DEVICE (e.g. `cuda:1`).
     if args.device == "gpu":
         try:
-            import benodb as bsdb
+            import benodb as bdb
 
-            resolved = bsdb.set_gpu_device(os.environ.get("BDB_GPU_DEVICE", "auto"))
+            resolved = bdb.set_gpu_device(os.environ.get("BDB_GPU_DEVICE", "auto"))
             print(f"BenoDB GPU backend: {resolved}", flush=True)
         except Exception as exc:  # no GPU / no wheel: fall back to CPU
             print(f"GPU device selection failed ({exc}); using CPU", flush=True)
@@ -640,12 +640,12 @@ def main():
 
     # Compute Top-K Agreement between BenoDB and LanceDB
     agreement_pct = None
-    bsdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
+    bdb_res = next((r for r in results if r["engine"] == "benodb" and r.get("available")), None)
     lance_res = next((r for r in results if r["engine"] == "lancedb" and r.get("available")), None)
-    if bsdb_res and lance_res:
+    if bdb_res and lance_res:
         overlaps = []
         for qid in queries:
-            b_hits = set(bsdb_res["retrieved"].get(qid, []))
+            b_hits = set(bdb_res["retrieved"].get(qid, []))
             l_hits = set(lance_res["retrieved"].get(qid, []))
             if b_hits or l_hits:
                 overlap = len(b_hits.intersection(l_hits)) / max(len(b_hits.union(l_hits)), 1)
@@ -708,10 +708,10 @@ def main():
         ])
 
     # If BenoDB has internal breakdown, output it as well
-    if bsdb_res and "sparse" in bsdb_res and "dense" in bsdb_res:
-        sp = bsdb_res["sparse"]
-        dn = bsdb_res["dense"]
-        hy = bsdb_res["hybrid"]
+    if bdb_res and "sparse" in bdb_res and "dense" in bdb_res:
+        sp = bdb_res["sparse"]
+        dn = bdb_res["dense"]
+        hy = bdb_res["hybrid"]
         lines.extend([
             "",
             "### BenoDB Single-Modality vs Hybrid Lift Breakdown",

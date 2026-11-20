@@ -14,7 +14,7 @@
 # GPU usage (e.g. dual RTX 5070 Ti):
 #   GPU=1 ./run_musique_docker.sh --embed-model bge-large --encode-gpus cuda:0,cuda:1 --build-only
 #   GPU=1 ./run_musique_docker.sh --embed-model bge-large --embed-device cpu
-# GPU=1 selects the 'bsdb-musique:gpu' image (CUDA torch wheels), passes --gpus
+# GPU=1 selects the 'benodb-musique:gpu' image (CUDA torch wheels), passes --gpus
 # through, and adds --embed-device cuda when you have not chosen a device. The
 # encode device is recorded in embed_meta.json and in the report, so a GPU-built
 # corpus is never confused with a GPU-benchmarked run.
@@ -32,8 +32,8 @@ set -euo pipefail
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$BENCH_DIR/.." && pwd)"
 
-IMAGE_NAME="bsdb-musique:local"
-GPU_IMAGE_NAME="bsdb-musique:gpu"
+IMAGE_NAME="benodb-musique:local"
+GPU_IMAGE_NAME="benodb-musique:gpu"
 DATA_DIR="${DATA_DIR:-/home/ralbright/data/datasets/musique}"
 SCRATCH_DIR="${SCRATCH_DIR:-$BENCH_DIR/scratch_musique}"
 WHEELS_DIR="${WHEELS_DIR:-$ROOT_DIR/dist}"
@@ -156,7 +156,7 @@ fi
 
 echo "[musique-docker] Launching MuSiQue GraphRAG under ${HARDWARE} cgroups (${CPUS} vCPU / ${MEMORY} RAM), GPUs: ${GPU} (${GPU_IDS})..."
 exec docker run --rm "${DOCKER_TTY_ARGS[@]}" \
-  --name bsdb-musique-graphrag \
+  --name benodb-musique-graphrag \
   "${DOCKER_GPU_ARGS[@]+"${DOCKER_GPU_ARGS[@]}"}" \
   --cpus="$CPUS" \
   --memory="$MEMORY" \

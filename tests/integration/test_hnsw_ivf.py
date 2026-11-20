@@ -2,7 +2,7 @@ import tempfile
 """
 Test HNSW-IVF implementation with a simple dataset
 """
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import numpy as np
 import time
@@ -42,7 +42,7 @@ def test_hnsw_ivf_integration():
     if os.path.exists(f"{tempfile.gettempdir()}/test_hnsw_ivf_default_pytest"):
         shutil.rmtree(f"{tempfile.gettempdir()}/test_hnsw_ivf_default_pytest")
 
-    table_default = bsdb.Table(table_path)
+    table_default = bdb.Table(table_path)
     table_default.add_index_columns(["embedding"]) 
     start = time.time()
     table_default.write_pandas(df)

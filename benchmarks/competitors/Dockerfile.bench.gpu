@@ -2,7 +2,7 @@
 #
 # Built automatically by docker_bench.sh --gpu / --both (service `bench-gpu`).
 # Requires the NVIDIA Container Toolkit on the host.
-FROM bsdb-bench-runner:latest
+FROM bdb-bench-runner:latest
 
 # faiss-gpu replaces faiss-cpu (both provide the `faiss` module).
 RUN pip uninstall -y faiss-cpu || true

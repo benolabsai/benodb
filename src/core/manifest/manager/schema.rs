@@ -169,8 +169,7 @@ impl ManifestManager {
                     // not fail the logical update; the next data commit repairs
                     // it from the manifest.
                     if let Err(e) = self.sync_metadata_properties(&new_manifest).await {
-                        metrics::counter!("bsdb_metadata_property_sync_failures_total")
-                            .increment(1);
+                        metrics::counter!("bdb_metadata_property_sync_failures_total").increment(1);
                         tracing::warn!(
                             error = %e,
                             version = new_ver,

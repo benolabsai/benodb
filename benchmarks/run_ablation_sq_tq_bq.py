@@ -86,7 +86,7 @@ def dir_size_mb(path: str) -> float:
 
 def worker_run(dataset: str, mode: str, limit: int, queries: int, k: int, m: int, ef_c: int, ef_s: int, threads: int = 32):
     """Worker function executed inside an isolated subprocess."""
-    import benodb as bsdb
+    import benodb as bdb
 
     metric = DATASET_METRIC.get(dataset, "l2")
     train, test, neighbors = load_dataset(dataset, limit)
@@ -101,7 +101,7 @@ def worker_run(dataset: str, mode: str, limit: int, queries: int, k: int, m: int
         shutil.rmtree(db_path)
 
     t0 = time.time()
-    table = bsdb.Table(db_path)
+    table = bdb.Table(db_path)
     index_type = "hnsw_sq8" if mode == "sq8" else "hnsw_tq8"
     table.add_index(
         "embedding",

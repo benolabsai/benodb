@@ -23,7 +23,7 @@ maturin develop --features cuda
 ## ⚠️ Deployment Security
 
 **BenoDB's network servers are not hardened for untrusted networks.**
-The network servers (`benodb-flight`, `bsdb-search`, and `contrib/benodb-mcp`)
+The network servers (`benodb-flight`, `bdb-search`, and `contrib/benodb-mcp`)
 ship with **no native TLS**. While they support **stateless authentication** (via
 `BDB_API_KEY` or JWT tokens), they should be deployed on a **trusted internal network**
 or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. Do **not** expose
@@ -36,7 +36,7 @@ Untrusted clients ──► Gateway / reverse proxy (TLS + authn) ──► inte
                                                                    │
                                           ┌────────────────────────┼────────────────────────┐
                                           ▼                        ▼                        ▼
-                                   benodb-flight      bsdb-search              gateway / iceberg_rest
+                                   benodb-flight      bdb-search              gateway / iceberg_rest
                                           │                        │                        │
                                           └────────────────────────┴────────────────────────┘
                                                                    ▼
@@ -107,10 +107,10 @@ See [pgvector SQL Guide](PGVECTOR_SQL_GUIDE.md) for complete documentation.
 ## Basic Usage
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create table
-table = bsdb.Table("s3://bucket/my-table")
+table = bdb.Table("s3://bucket/my-table")
 
 # Write data (Pandas/PyArrow)
 import pandas as pd
@@ -148,9 +148,9 @@ BenoDB features a modern fluent query API that supports method chaining for both
 ### Python Fluent API
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/my-table")
+table = bdb.Table("s3://bucket/my-table")
 
 # Method chaining with filters
 results = (table.query()
@@ -218,11 +218,11 @@ async fn main() -> anyhow::Result<()> {
 BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import numpy as np
 
 # GPU-accelerated batch distance computation
-ctx = bsdb.ComputeContext.auto_detect()  # Auto-detect CUDA/ROCm/Metal/XPU
+ctx = bdb.ComputeContext.auto_detect()  # Auto-detect CUDA/ROCm/Metal/XPU
 print(f"Using GPU backend: {ctx.backend}")
 
 # Create query and database vectors
@@ -230,7 +230,7 @@ query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(100000, 768).astype(np.float32)
 
 # Compute distances with batch GPU acceleration (CPU SIMD recommended for single queries)
-distances = bsdb.l2_batch(query, database, device=ctx)
+distances = bdb.l2_batch(query, database, device=ctx)
 
 # Find top-k nearest neighbors
 k = 10
@@ -239,25 +239,25 @@ top_k_indices = np.argsort(distances)[:k]
 # Single-pair distance computation (1-D float32 arrays)
 vec1 = np.array([1.0, 2.0, 3.0], dtype=np.float32)
 vec2 = np.array([4.0, 5.0, 6.0], dtype=np.float32)
-distance = bsdb.cosine(vec1, vec2)
+distance = bdb.cosine(vec1, vec2)
 
 # Sparse vector support for high-dimensional sparse data
-sparse1 = bsdb.SparseVector(
+sparse1 = bdb.SparseVector(
     indices=np.array([0, 5, 100], dtype=np.int32),
     values=np.array([1.0, 2.5, 0.8], dtype=np.float32),
     dim=1000
 )
-sparse2 = bsdb.SparseVector(
+sparse2 = bdb.SparseVector(
     indices=np.array([5, 50, 100], dtype=np.int32),
     values=np.array([2.0, 1.5, 0.9], dtype=np.float32),
     dim=1000
 )
-distance = bsdb.l2_sparse(sparse1, sparse2)
+distance = bdb.l2_sparse(sparse1, sparse2)
 
 # Binary vector operations (bit-packed for efficiency)
 binary1 = np.packbits(np.random.randint(0, 2, 128))
 binary2 = np.packbits(np.random.randint(0, 2, 128))
-distance = bsdb.hamming_packed(binary1, binary2)
+distance = bdb.hamming_packed(binary1, binary2)
 ```
 
 **Supported GPU Backends:**
@@ -274,12 +274,12 @@ See [Python Vector API Documentation](PYTHON_VECTOR_API.md) for complete API ref
 
 ```python
 # SQL queries (full DataFusion support with pgvector syntax)
-import benodb as bsdb
-session = bsdb.Session()
+import benodb as bdb
+session = bdb.Session()
 session.register("users", table)
 
 # Optional: pin the process to a GPU so SQL queries use it too
-bsdb.set_gpu_device("auto")
+bdb.set_gpu_device("auto")
 
 # Simple SQL
 results = table.sql("SELECT * FROM t WHERE id > 100")
@@ -413,9 +413,9 @@ WHERE id > 100;  -- Uses scalar index
 ### Python (Direct)
 ```python
 # No Spark needed for local/notebook work
-import benodb as bsdb
-df = bsdb.Table("s3://bucket/table").query().execute()
-# Or using traditional API: df = bsdb.Table("s3://bucket/table").to_pandas()
+import benodb as bdb
+df = bdb.Table("s3://bucket/table").query().execute()
+# Or using traditional API: df = bdb.Table("s3://bucket/table").to_pandas()
 ```
 
 ## 🔨 Building Connectors
@@ -545,7 +545,7 @@ _(merged from the former `INSTALLATION.md`)_
 
 This guide covers two ways to use BenoDB:
 
-1. **The `bsdb-search` REST server** — an OpenSearch / Elasticsearch 7.10-compatible
+1. **The `bdb-search` REST server** — an OpenSearch / Elasticsearch 7.10-compatible
    API (plus a Qdrant v1.x-compatible API; see
    [QDRANT_COMPATIBILITY.md](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md)) served on top of the
    BenoDB engine.
@@ -553,9 +553,9 @@ This guide covers two ways to use BenoDB:
 
 ---
 
-## 1. The `bsdb-search` REST server
+## 1. The `bdb-search` REST server
 
-`bsdb-search` is an optional add-on crate (`benodb-search`) that exposes an
+`bdb-search` is an optional add-on crate (`benodb-search`) that exposes an
 Elasticsearch/OpenSearch 7.10 wire-compatible REST API. It is ideal for website
 search, document catalogs, and knowledge bases where a 50–200 ms query latency
 envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
@@ -564,22 +564,22 @@ envelope is acceptable and object-storage-native, scale-to-zero hosting is desir
 
 ```bash
 # From the repository root (the workspace builds both the core and the add-on):
-cargo build --release -p benodb-search --bin bsdb-search
+cargo build --release -p benodb-search --bin bdb-search
 ```
 
-The binary is produced at `target/release/bsdb-search`.
+The binary is produced at `target/release/bdb-search`.
 
 ### Run
 
 ```bash
 # Defaults: bind 127.0.0.1:9200, store indexes under file://~/.benodb/search
-./target/release/bsdb-search
+./target/release/bdb-search
 
 # Or with explicit configuration:
 BDB_SEARCH_BIND=0.0.0.0 \
 BDB_SEARCH_PORT=9200 \
 BDB_SEARCH_STORAGE_URI=file:///data/search \
-./target/release/bsdb-search
+./target/release/bdb-search
 ```
 
 ### Configuration (environment variables)
@@ -596,7 +596,7 @@ BDB_SEARCH_STORAGE_URI=file:///data/search \
 | `BDB_CACHE_GB` | — | (inherited) read-cache size in GB. |
 | `BDB_WAL_SYNC_INTERVAL_MS` | — | (inherited) WAL sync interval. |
 
-> **Security note:** `bsdb-search` v1 has **no authentication** and binds to
+> **Security note:** `bdb-search` v1 has **no authentication** and binds to
 > `127.0.0.1` by default. If you expose it beyond localhost, place it behind a
 > reverse proxy with authentication (e.g. an auth-enabled gateway) and TLS.
 
@@ -660,10 +660,10 @@ cd python && pip install -e .
 ### Quickstart
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Open (or create) a table on local disk or object storage.
-table = bsdb.Table("file:///tmp/my_table")
+table = bdb.Table("file:///tmp/my_table")
 
 # Write rows (schema-on-write; columns are inferred and evolved).
 table.write([
@@ -689,9 +689,9 @@ BenoDB includes **TurboQuant™** out-of-the-box in the free community core engi
 - **TQ4 (4-bit)**: 8x RAM and disk compression for massive datasets.
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("file:///tmp/my_rag_table")
+table = bdb.Table("file:///tmp/my_rag_table")
 
 # High-Performance Default: HNSW with TurboQuant 8-bit (4x compression)
 table.add_index("embedding", "hnsw_tq8")
@@ -721,7 +721,7 @@ cargo test --workspace
 # Python test suite:
 pytest tests/
 
-# bsdb-search REST conformance suite:
+# bdb-search REST conformance suite:
 pytest benodb-search/tests/test_search_api.py
 ```
 

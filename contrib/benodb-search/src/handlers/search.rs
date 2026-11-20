@@ -1591,7 +1591,7 @@ async fn resolve_nested_array_query(
 
     Ok(Some(if matching_ids.is_empty() {
         serde_json::json!({
-            "term": { "_id": "__bsdb_no_match__" }
+            "term": { "_id": "__bdb_no_match__" }
         })
     } else {
         serde_json::json!({
@@ -1754,7 +1754,7 @@ async fn resolve_relation_queries_inner(
 
                 return Ok(if matching_parents.is_empty() {
                     serde_json::json!({
-                        "term": { "_id": "__bsdb_no_match__" }
+                        "term": { "_id": "__bdb_no_match__" }
                     })
                 } else {
                     serde_json::json!({
@@ -1797,7 +1797,7 @@ async fn resolve_relation_queries_inner(
 
                 if parent_ids.is_empty() {
                     return Ok(serde_json::json!({
-                        "term": { "_id": "__bsdb_no_match__" }
+                        "term": { "_id": "__bdb_no_match__" }
                     }));
                 }
 
@@ -1825,7 +1825,7 @@ async fn resolve_relation_queries_inner(
                                 .collect();
                             return Ok(if child_ids_json.is_empty() {
                                 serde_json::json!({
-                                    "term": { "_id": "__bsdb_no_match__" }
+                                    "term": { "_id": "__bdb_no_match__" }
                                 })
                             } else {
                                 serde_json::json!({

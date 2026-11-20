@@ -121,7 +121,7 @@ python3 benchmarks/run_musique_entity_rag.py --mode f32 --reranker bge --rebuild
 
 ```bash
 # Build the benchmark image
-docker build -f benchmarks/Dockerfile.musique -t bsdb-musique .
+docker build -f benchmarks/Dockerfile.musique -t bdb-musique .
 
 # Execute under strict cgroup limits (32G memory)
 docker compose -f benchmarks/docker-compose.musique.yml run --rm musique

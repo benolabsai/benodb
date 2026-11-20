@@ -56,7 +56,7 @@ class DefaultSource extends TableProvider with DataSourceRegister {
             if (json == null || json.isEmpty || json == "[]") new StructType()
             else BenoDBArrowUtils.schemaJsonToStructType(json)
           }
-        val gpu = Option(properties.get("benostream.gpu_device"))
+        val gpu = Option(properties.get("benodb.gpu_device"))
           .orElse(Option(properties.get("gpu_device")))
           .getOrElse("auto")
         new BenoDBTable(uri, resolved, properties, gpu)

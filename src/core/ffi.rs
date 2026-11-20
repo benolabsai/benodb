@@ -575,7 +575,7 @@ pub extern "system" fn Java_com_benodb_spark_BenoDBPartitionReader_readBatch(
 // -----------------------------------------------------------------------------
 // Index Lifecycle & Primary-Key JNI Bridge (Spark stored procedures).
 //
-// These back `CALL benostream.system.{add_index,drop_index,build_index,
+// These back `CALL benodb.system.{add_index,drop_index,build_index,
 // rebuild_index,set_primary_key,drop_primary_key,show_indexes,compact}` and
 // route straight into the engine (no Iceberg Java). `queryIndexIn` /
 // `commitPositionDeletes` were removed: the connector prunes with the SQL that
@@ -2947,7 +2947,7 @@ mod list_subdirs_tests {
     /// filesystem keeps the (now empty) directory behind.
     #[test]
     fn dropped_table_is_not_listed() {
-        let dir = std::env::temp_dir().join(format!("bsdb_list_subdirs_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdb_list_subdirs_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = create_object_store(dir.to_str().unwrap()).unwrap();
@@ -2988,7 +2988,7 @@ mod list_subdirs_tests {
     /// `CREATE TABLE` immediately after reports "already exists".
     #[test]
     fn drop_invalidates_manifest_cache() {
-        let dir = std::env::temp_dir().join(format!("bsdb_drop_cache_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdb_drop_cache_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let uri = dir.to_str().unwrap().to_string();
@@ -3032,7 +3032,7 @@ mod list_subdirs_tests {
     /// table in SHOW TABLES, while the namespace that contains it stays listed.
     #[test]
     fn hidden_keep_marker_is_not_listed() {
-        let dir = std::env::temp_dir().join(format!("bsdb_keep_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdb_keep_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = create_object_store(dir.to_str().unwrap()).unwrap();

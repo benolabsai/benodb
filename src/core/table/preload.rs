@@ -125,7 +125,7 @@ impl Table {
     ///
     /// Safe to call repeatedly; already-cached indexes are cache hits and cost
     /// only a lookup. Intended to be called once at server startup by the
-    /// `benostream-search` gateway.
+    /// `benodb-search` gateway.
     pub async fn preload_indexes_async(&self, opts: PreloadOptions) -> Result<PreloadStats> {
         let t0 = Instant::now();
         let mut stats = PreloadStats::default();

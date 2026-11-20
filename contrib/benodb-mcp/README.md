@@ -120,7 +120,7 @@ vector space matches the table:
 ```json
 {
   "mcpServers": {
-    "benostream-local": {
+    "benodb-local": {
       "command": "uvx",
       "args": ["benodb-mcp", "--warehouse", "/data/warehouse"],
       "env": {
@@ -128,7 +128,7 @@ vector space matches the table:
         "BDB_EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5"
       }
     },
-    "benostream-openai": {
+    "benodb-openai": {
       "command": "uvx",
       "args": ["benodb-mcp", "--warehouse", "/data/warehouse"],
       "env": {
@@ -183,9 +183,9 @@ BenoDB establishes a formal security boundary between **trusted core analytics e
 | Category | Components | Permissions Policy & Failure Mode |
 |:---|:---|:---|
 | **Trusted Engines** | Core BenoDB kernel, Arrow Flight SQL server, Spark, Trino, dbt | Standard database authority. Operates with full read/write privileges. Can manage catalogs, namespaces, and call policy management APIs (`session.set_catalog_policy(...)`). |
-| **Untrusted Connectors** | BenoDB MCP (`benodb-mcp`), BenoStream Search REST API (`benodb-search`), external AI agents | **Zero-Trust / Conservative Lockdown**: If `.benostream-policy.json` is missing from the warehouse, untrusted connectors are **strictly locked to read-only** across all persistent catalog schemas. Only the ephemeral `scratch` schema is writable. |
+| **Untrusted Connectors** | BenoDB MCP (`benodb-mcp`), BenoStream Search REST API (`benodb-search`), external AI agents | **Zero-Trust / Conservative Lockdown**: If `.benodb-policy.json` is missing from the warehouse, untrusted connectors are **strictly locked to read-only** across all persistent catalog schemas. Only the ephemeral `scratch` schema is writable. |
 
-### 2. Authoritative Catalog Policy (`.benostream-policy.json`)
+### 2. Authoritative Catalog Policy (`.benodb-policy.json`)
 
 To eliminate complex client-side configuration in `settings.json`, permissions are stored directly at the root of the warehouse or bucket as an authoritative catalog property file:
 
@@ -200,8 +200,8 @@ To eliminate complex client-side configuration in `settings.json`, permissions a
 }
 ```
 
-- When an untrusted connector mounts the warehouse, it reads `.benostream-policy.json`. Client attempts to override locked schemas are rejected.
-- **Fail-Safe Conservative Rule**: If `.benostream-policy.json` is absent, the untrusted connector defaults to complete read-only lockdown on all persistent schemas (only `scratch` allowed).
+- When an untrusted connector mounts the warehouse, it reads `.benodb-policy.json`. Client attempts to override locked schemas are rejected.
+- **Fail-Safe Conservative Rule**: If `.benodb-policy.json` is absent, the untrusted connector defaults to complete read-only lockdown on all persistent schemas (only `scratch` allowed).
 
 ### 3. Core Database Policy Management APIs
 
@@ -280,16 +280,16 @@ session.set_schema_access("finance_raw", true)?;
 }
 ```
 
-**HTTP endpoint provenance.** The server stamps `benostream.embedding.*` automatically when it
+**HTTP endpoint provenance.** The server stamps `benodb.embedding.*` automatically when it
 creates or ingests into a table. To declare the same contract from another connector:
 
 ```sql
 ALTER TABLE doc_chunks SET TBLPROPERTIES (
-    'benostream.embedding.model'        = 'text-embedding-3-small',
-    'benostream.embedding.dim'          = '1536',
-    'benostream.embedding.provider'     = 'http',
-    'benostream.embedding.endpoint'     = 'https://api.openai.com/v1/embeddings',
-    'benostream.embedding.query_prefix' = ''
+    'benodb.embedding.model'        = 'text-embedding-3-small',
+    'benodb.embedding.dim'          = '1536',
+    'benodb.embedding.provider'     = 'http',
+    'benodb.embedding.endpoint'     = 'https://api.openai.com/v1/embeddings',
+    'benodb.embedding.query_prefix' = ''
 );
 ```
 
@@ -422,8 +422,8 @@ Hugging Face Text Embeddings Inference (TEI) or any OpenAI-compatible server:
 When `provider` is `http`, the `model` string is sent verbatim. Instruction prefixes are applied
 only for known BGE/E5/Nomic ids; OpenAI-style ids such as `text-embedding-3-small` are sent as-is.
 
-**Changing models forces a re-embed.** This server stamps `benostream.embedding.model`,
-`benostream.embedding.dim`, and the provider/prefix onto the table as Iceberg table properties. Those
+**Changing models forces a re-embed.** This server stamps `benodb.embedding.model`,
+`benodb.embedding.dim`, and the provider/prefix onto the table as Iceberg table properties. Those
 properties are mirrored into `metadata/vN.metadata.json`, so Spark, Trino, and PyIceberg can read them
 as well; `ALTER TABLE ... SET TBLPROPERTIES` from any SQL client is visible here too.
 

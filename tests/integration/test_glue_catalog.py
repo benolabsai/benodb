@@ -11,7 +11,7 @@ Environment variables:
 - GLUE_DATABASE (default: test_db)
 """
 
-import benodb as bsdb
+import benodb as bdb
 import pytest
 import json
 import os
@@ -26,7 +26,7 @@ def test_glue_catalog_basic():
     
     try:
         # Create Glue catalog client
-        catalog = bsdb.PyGlueCatalog(catalog_id=CATALOG_ID)
+        catalog = bdb.PyGlueCatalog(catalog_id=CATALOG_ID)
         
         # Define Iceberg schema
         schema = {
@@ -72,7 +72,7 @@ def test_glue_catalog_with_account_id():
     
     try:
         # Create catalog with explicit account ID
-        catalog = bsdb.PyGlueCatalog(catalog_id=CATALOG_ID)
+        catalog = bdb.PyGlueCatalog(catalog_id=CATALOG_ID)
         assert catalog is not None
         print(f"✓ Glue Catalog created with account ID: {CATALOG_ID}")
         

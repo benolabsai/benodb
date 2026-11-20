@@ -28,7 +28,7 @@ impl Table {
         let metadata = client.load_table(namespace, table).await?;
 
         // We use a local path for the BenoStreamDB artifacts for this external table
-        let local_uri = format!("file:///tmp/benostream_nessie_{}_{}", namespace, table);
+        let local_uri = format!("file:///tmp/benodb_nessie_{}_{}", namespace, table);
 
         tracing::info!(
             "Resolved Nessie table {} to metadata: {}",
@@ -54,7 +54,7 @@ impl Table {
         let metadata = client.load_table(namespace, table).await?;
 
         // Use local path for artifacts
-        let local_uri = format!("file:///tmp/benostream_glue_{}_{}", namespace, table);
+        let local_uri = format!("file:///tmp/benodb_glue_{}_{}", namespace, table);
         tracing::info!(
             "Resolved Glue table {}.{} to metadata: {}",
             namespace,
@@ -76,7 +76,7 @@ impl Table {
         let client = crate::core::catalog::hive::HiveMetastoreClient::new(address.to_string())?;
         let metadata = client.load_table(namespace, table).await?;
 
-        let local_uri = format!("file:///tmp/benostream_hive_{}_{}", namespace, table);
+        let local_uri = format!("file:///tmp/benodb_hive_{}_{}", namespace, table);
         tracing::info!(
             "Resolved Hive table {}.{} to metadata: {}",
             namespace,
@@ -259,7 +259,7 @@ impl Table {
         // Derive local native URI (Cache location for layered index)
         let cache_dir = std::env::var("BDB_CACHE_DIR")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir().join("benostream_cache"));
+            .unwrap_or_else(|_| std::env::temp_dir().join("benodb_cache"));
 
         if !cache_dir.exists() {
             let _ = std::fs::create_dir_all(&cache_dir);
@@ -539,7 +539,7 @@ impl Table {
                 .partition_specs
                 .iter()
                 .find(|s| s["spec-id"].as_i64().map(|id| id as i32) == Some(meta.default_spec_id))
-                .and_then(|s| crate::core::iceberg::iceberg_partition_spec_to_benostream(s).ok())
+                .and_then(|s| crate::core::iceberg::iceberg_partition_spec_to_benodb(s).ok())
                 .unwrap_or_default();
 
             let mut data_entries = Vec::new();

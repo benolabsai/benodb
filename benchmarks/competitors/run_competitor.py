@@ -312,10 +312,10 @@ class PgvectorAdapter(VectorAdapter):
         conn = psycopg.connect(dsn, autocommit=True)
         cur = conn.cursor()
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        cur.execute("DROP TABLE IF EXISTS bsdb_bench")
+        cur.execute("DROP TABLE IF EXISTS bdb_bench")
         dim = train.shape[1]
         cur.execute(
-            f"CREATE TABLE bsdb_bench (id int primary key, embedding vector({dim}))"
+            f"CREATE TABLE bdb_bench (id int primary key, embedding vector({dim}))"
         )
         metric = params.get("metric", "l2")
         opclass = (
@@ -323,14 +323,14 @@ class PgvectorAdapter(VectorAdapter):
             if metric == "inner_product"
             else ("vector_cosine_ops" if metric == "cosine" else "vector_l2_ops")
         )
-        with cur.copy("COPY bsdb_bench (id, embedding) FROM STDIN") as copy:
+        with cur.copy("COPY bdb_bench (id, embedding) FROM STDIN") as copy:
             for i, row in enumerate(train):
                 copy.write_row((int(i), _vec_literal(row)))
         # HNSW build is memory-bound; the Postgres default (64MB) throttles it.
         cur.execute("SET maintenance_work_mem = '2GB'")
         # DDL cannot take bind parameters, so inline the (validated) integers.
         cur.execute(
-            f"CREATE INDEX ON bsdb_bench USING hnsw (embedding {opclass}) "
+            f"CREATE INDEX ON bdb_bench USING hnsw (embedding {opclass}) "
             f"WITH (m = {int(params['m'])}, ef_construction = {int(params['ef_construction'])})"
         )
         return conn
@@ -349,7 +349,7 @@ class PgvectorAdapter(VectorAdapter):
         out = []
         for q in queries:
             cur.execute(
-                f"SELECT id FROM bsdb_bench ORDER BY embedding {op} %s::vector LIMIT %s",
+                f"SELECT id FROM bdb_bench ORDER BY embedding {op} %s::vector LIMIT %s",
                 (_vec_literal(q), int(k)),
             )
             out.append([r[0] for r in cur.fetchall()])
@@ -366,7 +366,7 @@ class PgvectorAdapter(VectorAdapter):
         out = []
         for q in queries:
             cur.execute(
-                f"SELECT id, embedding FROM bsdb_bench ORDER BY embedding {op} %s::vector LIMIT %s",
+                f"SELECT id, embedding FROM bdb_bench ORDER BY embedding {op} %s::vector LIMIT %s",
                 (_vec_literal(q), int(k)),
             )
             out.append(cur.fetchall())
@@ -374,7 +374,7 @@ class PgvectorAdapter(VectorAdapter):
 
     def index_bytes(self, handle):
         cur = handle.cursor()
-        cur.execute("SELECT pg_total_relation_size('bsdb_bench')")
+        cur.execute("SELECT pg_total_relation_size('bdb_bench')")
         return int(cur.fetchone()[0])
 
 
@@ -543,9 +543,9 @@ class OpenSearchAdapter(VectorAdapter):
         }.get(metric, "l2")
         # `ignore_unavailable` is valid for the Elasticsearch/OpenSearch REST API but
         # missing from the client stubs.
-        es.indices.delete(index="bsdb-bench", ignore_unavailable=True)  # type: ignore[call-arg]
+        es.indices.delete(index="bdb-bench", ignore_unavailable=True)  # type: ignore[call-arg]
         es.indices.create(
-            index="bsdb-bench",
+            index="bdb-bench",
             body={
                 "settings": {
                     "index": {
@@ -580,11 +580,11 @@ class OpenSearchAdapter(VectorAdapter):
             if space_type == "cosinesimil" and not any(vec):
                 vec = list(vec)
                 vec[0] = 1e-6
-            return {"_index": "bsdb-bench", "_id": int(i), "_source": {"vector": vec}}
+            return {"_index": "bdb-bench", "_id": int(i), "_source": {"vector": vec}}
 
         actions = (_row_source(i, row) for i, row in enumerate(train))
         helpers.bulk(es, actions)
-        es.indices.refresh(index="bsdb-bench")
+        es.indices.refresh(index="bdb-bench")
         return es
 
     def search(self, handle, queries, k, ef_search, metric):
@@ -604,7 +604,7 @@ class OpenSearchAdapter(VectorAdapter):
                 },
                 "_source": False,
             }
-            res = es.search(index="bsdb-bench", body=body)
+            res = es.search(index="bdb-bench", body=body)
             out.append([int(h["_id"]) for h in res["hits"]["hits"]])
         return np.array(out)
 
@@ -625,15 +625,15 @@ class OpenSearchAdapter(VectorAdapter):
                 },
                 "_source": True,
             }
-            res = es.search(index="bsdb-bench", body=body)
+            res = es.search(index="bdb-bench", body=body)
             out.append(res["hits"]["hits"])
         return out
 
     def index_bytes(self, handle):
         # OpenSearch exposes the on-disk index size via the stats API.
         try:
-            stats = handle.indices.stats(index="bsdb-bench")
-            return int(stats["indices"]["bsdb-bench"]["total"]["store"]["size_in_bytes"])
+            stats = handle.indices.stats(index="bdb-bench")
+            return int(stats["indices"]["bdb-bench"]["total"]["store"]["size_in_bytes"])
         except Exception:
             return 0
 
@@ -671,7 +671,7 @@ class QdrantAdapter(VectorAdapter):
                 )
             )
         client.recreate_collection(
-            collection_name="bsdb_bench",
+            collection_name="bdb_bench",
             vectors_config=VectorParams(size=int(train.shape[1]), distance=distance),
             hnsw_config=HnswConfigDiff(
                 m=int(params["m"]),
@@ -683,7 +683,7 @@ class QdrantAdapter(VectorAdapter):
         for start in range(0, len(train), batch):
             end = min(start + batch, len(train))
             client.upsert(
-                collection_name="bsdb_bench",
+                collection_name="bdb_bench",
                 points=[
                     PointStruct(id=int(i), vector=train[i].tolist())
                     for i in range(start, end)
@@ -701,14 +701,14 @@ class QdrantAdapter(VectorAdapter):
             vec = q.tolist()
             try:  # qdrant-client >= 1.10
                 res = handle.query_points(
-                    collection_name="bsdb_bench",
+                    collection_name="bdb_bench",
                     query=vec,
                     limit=int(k),
                     search_params=search_params,
                 ).points
             except AttributeError:  # older qdrant-client
                 res = handle.search(
-                    collection_name="bsdb_bench",
+                    collection_name="bdb_bench",
                     query_vector=vec,
                     limit=int(k),
                     search_params=search_params,
@@ -725,7 +725,7 @@ class QdrantAdapter(VectorAdapter):
             vec = q.tolist()
             try:
                 res = handle.query_points(
-                    collection_name="bsdb_bench",
+                    collection_name="bdb_bench",
                     query=vec,
                     limit=int(k),
                     search_params=search_params,
@@ -734,7 +734,7 @@ class QdrantAdapter(VectorAdapter):
                 ).points
             except Exception:
                 res = handle.search(
-                    collection_name="bsdb_bench",
+                    collection_name="bdb_bench",
                     query_vector=vec,
                     limit=int(k),
                     search_params=search_params,
@@ -746,7 +746,7 @@ class QdrantAdapter(VectorAdapter):
 
     def index_bytes(self, handle):
         try:
-            info = handle.get_collection("bsdb_bench")
+            info = handle.get_collection("bdb_bench")
             dim = int(info.config.params.vectors.size)
             bytes_per_dim = 1 if self.index_precision == "sq" else 4
             return dim * int(info.points_count or 0) * bytes_per_dim
@@ -778,7 +778,7 @@ class MilvusAdapter(VectorAdapter):
             "cosine": "COSINE",
             "inner_product": "IP",
         }.get(str(params.get("metric") or ""), "L2")
-        name = "bsdb_bench"
+        name = "bdb_bench"
         if client.has_collection(name):
             client.drop_collection(name)
 
@@ -801,7 +801,7 @@ class MilvusAdapter(VectorAdapter):
             index_params.add_index(
                 field_name="vector",
                 index_type="HNSW_SQ",
-                index_name="bsdb_hnsw_sq",
+                index_name="bdb_hnsw_sq",
                 metric_type=metric,
                 params={
                     "M": int(params["m"]),
@@ -812,7 +812,7 @@ class MilvusAdapter(VectorAdapter):
             index_params.add_index(
                 field_name="vector",
                 index_type="HNSW",
-                index_name="bsdb_hnsw",
+                index_name="bdb_hnsw",
                 metric_type=metric,
                 params={"M": int(params["m"]), "efConstruction": int(params["ef_construction"])},
             )
@@ -1063,7 +1063,7 @@ def _vector_backend(adapter: "VectorAdapter", device: str) -> str:
     name = getattr(adapter, "name", "")
     if name == "faiss":
         return "gpu" if getattr(adapter, "_used_gpu", False) else "cpu"
-    if name in ("benodb", "bsdb"):
+    if name in ("benodb", "bdb"):
         return "gpu"
     return "cpu"
 
@@ -1360,19 +1360,19 @@ def _graph_neo4j(args, edges) -> dict:
 
 
 def _graph_benodb(args, edges) -> dict:
-    import benodb as bsdb
+    import benodb as bdb
     import pyarrow as pa
     import tempfile
     import shutil
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_graph_bench_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_graph_bench_")
     try:
         t_build_0 = time.time()
         schema = pa.schema([
             ("source", pa.uint64()),
             ("target", pa.uint64()),
         ])
-        table = bsdb.Table.create(tmpdir, schema)
+        table = bdb.Table.create(tmpdir, schema)
         table.add_index(
             "source", {"type": "graph", "src_column": "source", "dst_column": "target"}
         )
@@ -1641,7 +1641,7 @@ _GRAPH_LAYER = {
     "neo4j": "neo4j GDS (native JVM)",
     "memgraph": "memgraph MAGE (native engine)",
     "benodb": "embedded (in-process Rust)",
-    "bsdb": "embedded (in-process Rust)",
+    "bdb": "embedded (in-process Rust)",
     "networkx": "embedded (in-process Python)",
     "kuzu": "embedded (in-process C++)",
     "cugraph": "embedded (in-process GPU)",
@@ -1670,7 +1670,7 @@ def _graph_dispatch(args) -> dict:
         }
     edges = np.loadtxt(args.graph_edges, dtype=np.int64, ndmin=2)
     engine = args.engine
-    if engine in ("benodb", "bsdb"):
+    if engine in ("benodb", "bdb"):
         return _graph_benodb(args, edges)
     if engine == "cugraph":
         return _graph_cugraph(args, edges)
@@ -1768,9 +1768,9 @@ def _lexical_opensearch(args, corpus, queries, qrels) -> dict:
 
     # 1. Build index
     # `ignore_unavailable` is valid for the REST API but missing from the client stubs.
-    es.indices.delete(index="bsdb-lexical", ignore_unavailable=True)  # type: ignore[call-arg]
+    es.indices.delete(index="bdb-lexical", ignore_unavailable=True)  # type: ignore[call-arg]
     es.indices.create(
-        index="bsdb-lexical",
+        index="bdb-lexical",
         body={
             "mappings": {
                 "properties": {
@@ -1783,14 +1783,14 @@ def _lexical_opensearch(args, corpus, queries, qrels) -> dict:
     t0 = time.time()
     actions = (
         {
-            "_index": "bsdb-lexical",
+            "_index": "bdb-lexical",
             "_id": doc_id,
             "_source": {"text": text},
         }
         for doc_id, text in corpus
     )
     helpers.bulk(es, actions)
-    es.indices.refresh(index="bsdb-lexical")
+    es.indices.refresh(index="bdb-lexical")
     build_s = time.time() - t0
 
     # 2. Search
@@ -1804,7 +1804,7 @@ def _lexical_opensearch(args, corpus, queries, qrels) -> dict:
         
         t1 = time.perf_counter()
         res = es.search(
-            index="bsdb-lexical",
+            index="bdb-lexical",
             body={
                 "query": {"match": {"text": safe_q}},
                 "size": args.k,
@@ -2185,15 +2185,15 @@ def _sql_trino(args) -> dict:
 
 
 def _sql_benodb(args) -> dict:
-    import benodb as bsdb
+    import benodb as bdb
     import pyarrow.parquet as pq
     import tempfile
     import shutil
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_sql_bench_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_sql_bench_")
     try:
         t_ingest_0 = time.time()
-        table = bsdb.Table(tmpdir)
+        table = bdb.Table(tmpdir)
         if args.parquet:
             pa_table = pq.read_table(args.parquet)
             table.write(pa_table)
@@ -2228,7 +2228,7 @@ def run_sql(args) -> dict:
         rec = _sql_clickhouse(args)
     elif engine == "trino":
         rec = _sql_trino(args)
-    elif engine in ("benodb", "bsdb"):
+    elif engine in ("benodb", "bdb"):
         rec = _sql_benodb(args)
     else:
         return {
@@ -2400,10 +2400,10 @@ def main() -> None:
     apply_envelope(args.cores, args.ram_gb, args.engine, args.device)
 
     try:
-        if args.workload == "sql" or args.engine in ("duckdb", "datafusion", "clickhouse", "trino") or (args.engine in ("benodb", "bsdb") and (args.sql or (args.parquet and not args.dataset))):
+        if args.workload == "sql" or args.engine in ("duckdb", "datafusion", "clickhouse", "trino") or (args.engine in ("benodb", "bdb") and (args.sql or (args.parquet and not args.dataset))):
             emit(run_sql(args), args.out)
             return
-        if args.workload == "graph" or args.engine in ("networkx", "neo4j", "memgraph", "kuzu", "cugraph") or (args.engine in ("benodb", "bsdb") and args.graph_edges):
+        if args.workload == "graph" or args.engine in ("networkx", "neo4j", "memgraph", "kuzu", "cugraph") or (args.engine in ("benodb", "bdb") and args.graph_edges):
             emit(run_graph(args), args.out)
             return
         if args.workload == "lexical" or args.engine == "tantivy" or (args.engine == "opensearch" and args.beir_corpus):

@@ -81,7 +81,7 @@ Databricks Unity Catalog is reached through `/api/2.1/unity-catalog/iceberg-rest
 
 ### 3.8 Python bindings — [`src/python/catalog/`](https://github.com/benolabsai/benodb/blob/main/src/python/catalog/mod.rs)
 
-`PyMemoryCatalog` and `PyS3TablesCatalog` are registered on the module. `create_catalog("memory", {"uri": "memory://dev_catalog", "warehouse": "file:///tmp/bsdb_wh"})` works with no configuration file, which is what makes catalog-touching notebook examples runnable without cloud credentials.
+`PyMemoryCatalog` and `PyS3TablesCatalog` are registered on the module. `create_catalog("memory", {"uri": "memory://dev_catalog", "warehouse": "file:///tmp/bdb_wh"})` works with no configuration file, which is what makes catalog-touching notebook examples runnable without cloud credentials.
 
 ---
 

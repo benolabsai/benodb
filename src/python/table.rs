@@ -207,7 +207,7 @@ impl PyTable {
     ///     overlay_storage_uri: Writable prefix for overlay indexes.
     ///
     /// Example:
-    ///     table = bsdb.Table.mount_external_iceberg(
+    ///     table = bdb.Table.mount_external_iceberg(
     ///         "s3://enterprise-data/warehouse/",
     ///         "s3://ai-team-overlays/indexes/",
     ///     )
@@ -2084,7 +2084,7 @@ impl PyTable {
                 ctx.register_table("t", provider)
                     .map_err(|e| e.to_string())?;
 
-                let temp_dir = &std::env::temp_dir().join("benostream_cc");
+                let temp_dir = &std::env::temp_dir().join("benodb_cc");
                 let final_table =
                     crate::core::algorithms::connected_components::compute_connected_components(
                         &ctx,
@@ -2127,7 +2127,7 @@ impl PyTable {
                 ctx.register_table("t", provider)
                     .map_err(|e| e.to_string())?;
 
-                let temp_dir = &std::env::temp_dir().join("benostream_ts");
+                let temp_dir = &std::env::temp_dir().join("benodb_ts");
                 let final_table =
                     crate::core::algorithms::topological_sort::compute_topological_sort(
                         &ctx,
@@ -2506,7 +2506,7 @@ impl PyTable {
                 ctx.register_table("t", provider).map_err(|e| e.to_string())?;
 
                 let dir = std::env::temp_dir()
-                    .join(format!("bsdb_temp_csr_{}", uuid::Uuid::new_v4()));
+                    .join(format!("bdb_temp_csr_{}", uuid::Uuid::new_v4()));
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
                 // Forward CSR: src -> dst.
@@ -2587,7 +2587,7 @@ impl PyTable {
                 ctx.register_table("t", provider)
                     .map_err(|e| e.to_string())?;
 
-                let temp_dir = &std::env::temp_dir().join("benostream_lp");
+                let temp_dir = &std::env::temp_dir().join("benodb_lp");
                 let final_table =
                     crate::core::algorithms::label_propagation::compute_label_propagation(
                         &ctx,

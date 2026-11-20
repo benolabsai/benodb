@@ -37,9 +37,9 @@ services:
       /bin/sh -c "
       mc alias set rustfs http://rustfs:9000 admin admin123;
       mc mb rustfs/warehouse --ignore-existing;
-      mc mb rustfs/benostream --ignore-existing;
+      mc mb rustfs/benodb --ignore-existing;
       mc policy set public rustfs/warehouse;
-      mc policy set public rustfs/benostream;
+      mc policy set public rustfs/benodb;
       exit 0;
       "
 
@@ -82,7 +82,7 @@ services:
       # Mount the Trino configurations (contains catalogs: iceberg_hive, benodb, memory, etc.)
       - ./trino-benodb/etc:/etc/trino
       # Mount our compiled BenoStreamDB Trino connector plugin
-      - ./trino-benodb/target/trino-benostream-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benostream
+      - ./trino-benodb/target/trino-benodb-0.1.0-SNAPSHOT:/usr/lib/trino/plugin/benodb
     environment:
       - TRINO_ENV=dev
       - TRINO_S3_ACCESS_KEY=admin

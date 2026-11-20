@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import pyarrow as pa
 import numpy as np
 import pandas as pd
@@ -13,14 +13,14 @@ schema = pa.schema([
     ('embedding', pa.list_(pa.float32(), 3))
 ])
 
-table = bsdb.Table.create(uri, schema)
+table = bdb.Table.create(uri, schema)
 table.write(pd.DataFrame({
     'category': ['A', 'A', 'B'], 
     'embedding': [[1.0, 1.0, 1.0], [2.0, 2.0, 2.0], [3.0, 3.0, 3.0]]
 }))
 table.commit()
 
-session = bsdb.Session()
+session = bdb.Session()
 session.register('news', table)
 
 query = """

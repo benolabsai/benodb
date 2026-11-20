@@ -17,7 +17,7 @@ WORKDIR /app
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
 COPY server/flight_sql/Cargo.toml server/flight_sql/Cargo.toml
-COPY contrib/benostreamdb-search/Cargo.toml contrib/benostreamdb-search/Cargo.toml
+COPY contrib/benodb-search/Cargo.toml contrib/benodb-search/Cargo.toml
 
 # Create stub sources for dependency layer caching and manifest validation
 RUN mkdir -p src \
@@ -25,21 +25,21 @@ RUN mkdir -p src \
     && echo "fn main() {}" > build.rs \
     && mkdir -p server/flight_sql/src \
     && echo "fn main() {}" > server/flight_sql/src/main.rs \
-    && mkdir -p contrib/benostreamdb-search/src \
-    && echo "fn main() {}" > contrib/benostreamdb-search/src/main.rs \
-    && echo "pub fn stub() {}" > contrib/benostreamdb-search/src/lib.rs \
+    && mkdir -p contrib/benodb-search/src \
+    && echo "fn main() {}" > contrib/benodb-search/src/main.rs \
+    && echo "pub fn stub() {}" > contrib/benodb-search/src/lib.rs \
     && mkdir -p tests/bin benches \
     && echo "fn main() {}" > tests/test_connector_ffi.rs \
     && echo "fn main() {}" > tests/bin/generate_iceberg_manifests.rs \
     && echo "fn main() {}" > tests/bin/verify_iceberg_read_check.rs \
     && echo "fn main() {}" > benches/performance.rs \
     && echo "fn main() {}" > benches/bench_table.rs \
-    && cargo build --locked --release -p benostreamdb-flight \
-    && rm -rf target/release/.fingerprint/benostreamdb* \
-              target/release/deps/*benostreamdb* \
-              target/release/deps/libbenostreamdb* \
-              target/release/build/benostreamdb* \
-              target/release/benostreamdb-flight*
+    && cargo build --locked --release -p benodb-flight \
+    && rm -rf target/release/.fingerprint/benodb* \
+              target/release/deps/*benodb* \
+              target/release/deps/libbenodb* \
+              target/release/build/benodb* \
+              target/release/benodb-flight*
 
 # Copy actual source
 COPY build.rs ./
@@ -47,7 +47,7 @@ COPY src ./src
 COPY server/flight_sql/src ./server/flight_sql/src
 
 # Build the flight SQL binary
-RUN cargo build --locked --release -p benostreamdb-flight
+RUN cargo build --locked --release -p benodb-flight
 
 
 # ---------------------------------------------------------------------------
@@ -62,12 +62,12 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r benostream && useradd -r -m -g benostream benostream
-RUN mkdir -p /home/benostream/.benostreamdb && chown -R benostream:benostream /home/benostream
+RUN groupadd -r benodb && useradd -r -m -g benodb benodb
+RUN mkdir -p /home/benodb/.benodb && chown -R benodb:benodb /home/benodb
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/benostreamdb-flight /usr/local/bin/
+COPY --from=builder /app/target/release/benodb-flight /usr/local/bin/
 
 # Arrow Flight SQL gRPC
 EXPOSE 50051
@@ -76,9 +76,9 @@ EXPOSE 50051
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -sf http://localhost:9090/health || exit 1
 
-USER benostream
+USER benodb
 
 ENV RUST_LOG=info
 
-ENTRYPOINT ["benostreamdb-flight"]
+ENTRYPOINT ["benodb-flight"]
 CMD []

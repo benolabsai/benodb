@@ -227,7 +227,7 @@ fn open_wal_segment(path: &Path) -> Result<OpenedWalSegment> {
 /// Replay raw WAL segment bytes in-memory without touching the filesystem.
 ///
 /// Exposed for libFuzzer coverage of header validation, torn-EOF recovery, and
-/// `benostream:tx_id` metadata parsing; never part of the stable public API.
+/// `benodb:tx_id` metadata parsing; never part of the stable public API.
 #[doc(hidden)]
 pub fn fuzz_replay_wal_bytes(data: &[u8]) -> Result<Vec<RecordBatch>> {
     match open_wal_reader(
@@ -329,8 +329,8 @@ pub fn tag_batch_with_wal_tx(
     seq: u64,
 ) -> Result<RecordBatch> {
     let mut metadata = batch.schema().metadata().clone();
-    metadata.insert("benostream:tx_id".to_string(), tx_id.to_string());
-    metadata.insert("benostream:seq".to_string(), seq.to_string());
+    metadata.insert("benodb:tx_id".to_string(), tx_id.to_string());
+    metadata.insert("benodb:seq".to_string(), seq.to_string());
     let schema = Arc::new(batch.schema().as_ref().clone().with_metadata(metadata));
     RecordBatch::try_new(schema, batch.columns().to_vec()).map_err(Into::into)
 }
@@ -339,8 +339,8 @@ pub fn tag_batch_with_wal_tx(
 pub fn extract_wal_tx(batch: &RecordBatch) -> Option<WalRecordHeader> {
     let schema = batch.schema();
     let meta = schema.metadata();
-    let tx_id_str = meta.get("benostream:tx_id")?;
-    let seq_str = meta.get("benostream:seq")?;
+    let tx_id_str = meta.get("benodb:tx_id")?;
+    let seq_str = meta.get("benodb:seq")?;
     let tx_id = uuid::Uuid::parse_str(tx_id_str).ok()?;
     let sequence_number = seq_str.parse::<u64>().ok()?;
     Some(WalRecordHeader {
@@ -522,7 +522,7 @@ fn compact_wal_directory(
     }
 
     // Group batches sharing an exact schema (including WAL tx metadata) so compaction
-    // consolidates batches without ever stripping or mixing per-tx `benostream:tx_id` tags.
+    // consolidates batches without ever stripping or mixing per-tx `benodb:tx_id` tags.
     let mut new_entries: Vec<(PathBuf, RecordBatch)> = Vec::new();
     let mut grouped: Vec<(SchemaRef, Vec<RecordBatch>)> = Vec::new();
     for batch in all_batches {

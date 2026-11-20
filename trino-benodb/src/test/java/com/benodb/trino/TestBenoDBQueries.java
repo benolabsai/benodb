@@ -33,7 +33,7 @@ public class TestBenoDBQueries {
     @BeforeAll
     void setUp() throws Exception {
         assumeTrue(BenoDBJNIBridge.isLoaded(), "libbenodb is not on java.library.path");
-        warehouse = Files.createTempDirectory("benostream-trino-test-");
+        warehouse = Files.createTempDirectory("benodb-trino-test-");
         runner = DistributedQueryRunner.builder(
                         TestingSession.testSessionBuilder()
                                 .setCatalog("benodb")
@@ -44,7 +44,7 @@ public class TestBenoDBQueries {
         runner.createCatalog(
                 "benodb",
                 "benodb",
-                Map.of("benostream.warehouse", warehouse.toUri().toString()));
+                Map.of("benodb.warehouse", warehouse.toUri().toString()));
     }
 
     @AfterAll
@@ -88,7 +88,7 @@ public class TestBenoDBQueries {
         // API instead of SQL. This also fails loudly if a handle stops binding.
         var connector = new BenoDBConnectorFactory().create(
                 "benodb",
-                Map.of("benostream.warehouse", warehouse.toUri().toString()),
+                Map.of("benodb.warehouse", warehouse.toUri().toString()),
                 null);
         java.util.Set<String> registered = new java.util.HashSet<>();
         connector.getProcedures().forEach(procedure -> registered.add(procedure.getName()));
@@ -238,7 +238,7 @@ public class TestBenoDBQueries {
     void allTableFunctionsAreRegistered() {
         var connector = new BenoDBConnectorFactory().create(
                 "benodb",
-                Map.of("benostream.warehouse", warehouse.toUri().toString()),
+                Map.of("benodb.warehouse", warehouse.toUri().toString()),
                 null);
         java.util.Set<String> registered = new java.util.HashSet<>();
         connector.getTableFunctions().forEach(function -> registered.add(function.getName()));

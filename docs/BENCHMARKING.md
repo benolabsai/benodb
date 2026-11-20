@@ -198,7 +198,7 @@ commonly exports that, and the sweep would then run under an interpreter with no
 
 ### Per-engine notes
 
-- The `bsdb-bench-runner` image is **CPU-only**, so `vector_matrix --both` writes
+- The `bdb-bench-runner` image is **CPU-only**, so `vector_matrix --both` writes
   `_cpu` artifacts for both passes; there are no `_gpu` files unless the GPU overlay
   (`docker-compose.bench.gpu.yml`) is in use.
 - **Milvus** builds its index explicitly: `create_collection(index_params=…)` leaves
@@ -332,7 +332,7 @@ cache budgets, not just the thread count:
 
 ```bash
 maturin build --release --out dist
-docker build -f benchmarks/Dockerfile.neurips -t bsdb-neurips .
+docker build -f benchmarks/Dockerfile.neurips -t bdb-neurips .
 DATASET_DIR=/path/to/bigann \
   docker compose -f benchmarks/docker-compose.neurips.yml run --rm neurips
 ```
@@ -574,7 +574,7 @@ mtime table as the only provenance.
 | `libcugraph.so: cannot open shared object file` | `RLIMIT_AS` applied to a GPU engine | Fixed in `apply_envelope`; rebuild the base runner image (`docker compose ... build bench bench-gpu`) |
 | Wheel fails to load on the runner (`GLIBC_2.4x not found`) | host-built wheel linked against newer glibc | use `--build-wheel` (manylinux_2_28) |
 | `cudaErrorMemoryAllocation: out of memory` on a 50-series card | cu12 wheels have no sm_120 kernels | the GPU image installs `cugraph-cu13`; `RMM_POOL_SIZE=12GB` leaves headroom for the Wayland compositor |
-| GPU image ships an old harness | `bench-gpu` is `FROM bsdb-bench-runner:latest` | `docker_bench.sh` builds `bench` before `bench-gpu` |
+| GPU image ships an old harness | `bench-gpu` is `FROM bdb-bench-runner:latest` | `docker_bench.sh` builds `bench` before `bench-gpu` |
 | `docker compose run` cannot see the GPU | Compose < 2.30 ignores `gpus: all` | upgrade Compose, or use `docker run --gpus all` |
 
 ---
@@ -635,7 +635,7 @@ Each profile also carries `storage_note`, the storage class it expects. The star
 
 ### Reader counters and the skip arm
 
-`bsdb.reset_reader_stats()` and `bsdb.reader_stats()` expose the counters from the candidate read path. `reader_stats()` returns:
+`bdb.reset_reader_stats()` and `bdb.reader_stats()` expose the counters from the candidate read path. `reader_stats()` returns:
 
 | Field | Meaning |
 |---|---|

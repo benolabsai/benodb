@@ -174,12 +174,12 @@ def run_datafusion(parquet_path: str, queries: List[tuple[str, str]], warm_runs:
 
 
 def run_benodb(parquet_path: str, queries: List[tuple[str, str]], warm_runs: int = 2) -> Dict[str, Any]:
-    import benodb as bsdb
+    import benodb as bdb
 
-    tmpdir = tempfile.mkdtemp(prefix="bsdb_sql_")
+    tmpdir = tempfile.mkdtemp(prefix="benodb_sql_")
     try:
         t_ingest_0 = time.perf_counter()
-        table = bsdb.Table(tmpdir)
+        table = bdb.Table(tmpdir)
         pa_table = pq.read_table(parquet_path)
         table.write(pa_table)
         table.commit()

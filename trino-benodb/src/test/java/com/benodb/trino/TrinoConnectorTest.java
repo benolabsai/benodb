@@ -332,7 +332,7 @@ public class TrinoConnectorTest {
     public void testConnectorFactoryWarehouseConfig() {
         BenoDBConnectorFactory factory = new BenoDBConnectorFactory();
         var connector = factory.create("test",
-                Map.of("benostream.warehouse", "s3://my-bucket/wh"), null);
+                Map.of("benodb.warehouse", "s3://my-bucket/wh"), null);
         assertNotNull("Connector should not be null", connector);
 
         var metadata = connector.getMetadata(null, null);

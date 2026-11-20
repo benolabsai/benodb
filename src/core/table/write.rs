@@ -1318,7 +1318,7 @@ impl Table {
 
             let head_committed: HashSet<uuid::Uuid> = head_manifest
                 .properties
-                .get("benostream.committed_wal_tx")
+                .get("benodb.committed_wal_tx")
                 .map(|s| {
                     s.split(',')
                         .filter_map(|t| uuid::Uuid::parse_str(t.trim()).ok())
@@ -1986,7 +1986,7 @@ impl Table {
             }
             guard.clone()
         };
-        if let Some(csv) = new_manifest.properties.get("benostream.committed_wal_tx") {
+        if let Some(csv) = new_manifest.properties.get("benodb.committed_wal_tx") {
             for token in csv.split(',') {
                 if let Ok(uuid) = uuid::Uuid::parse_str(token.trim()) {
                     committed_set.insert(uuid);

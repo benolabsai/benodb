@@ -305,9 +305,9 @@ Query-level options are set via the `QueryConfig` struct (Rust). The Python bind
 ### Python Example
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/my-table")
+table = bdb.Table("s3://bucket/my-table")
 
 # The table is registered as 't' for the duration of the query
 results = table.sql(
@@ -366,9 +366,9 @@ LIMIT 10;
 
 **Python API** (per-query vector filter):
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/documents")
+table = bdb.Table("s3://bucket/documents")
 
 results = table.to_pandas(
     vector_filter={
@@ -408,9 +408,9 @@ LIMIT 10;
 
 **Python API** (per-query vector filter):
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/documents")
+table = bdb.Table("s3://bucket/documents")
 
 results = table.to_pandas(
     vector_filter={
@@ -502,10 +502,10 @@ SELECT /*+ INDEX_HINT(ef_search=128, probes=20) */ ...
 ### Measuring Recall
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import numpy as np
 
-table = bsdb.Table("s3://bucket/documents")
+table = bdb.Table("s3://bucket/documents")
 query_vector = [0.1, 0.2, 0.3]
 
 # High-recall reference run (wide beam)
@@ -540,9 +540,9 @@ print(f"Recall@100: {recall:.2%}")
 ```python
 import time
 import numpy as np
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/documents")
+table = bdb.Table("s3://bucket/documents")
 vector_filter = {
     "column": "embedding",
     "query": [0.1, 0.2, 0.3],
@@ -584,9 +584,9 @@ LIMIT 10;
 Index build parameters are set during index creation using the fluent `add_index` method:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/my-table")
+table = bdb.Table("s3://bucket/my-table")
 
 # TurboQuant 8-bit quantization (Optimal for Power-of-2 dimensions: 128, 512, 1024)
 # 4x compression, isotropic variance equalization via Walsh-Hadamard transform

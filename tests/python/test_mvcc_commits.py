@@ -11,7 +11,7 @@ Covers the lock-free commit path:
 import pyarrow as pa
 import pytest
 
-import benodb as bsdb
+import benodb as bdb
 
 
 def _schema():
@@ -27,7 +27,7 @@ def _batch(ids):
 
 def test_snapshot_version_is_monotonic(tmp_path):
     uri = f"file://{tmp_path}/t"
-    t = bsdb.Table.create(uri, _schema())
+    t = bdb.Table.create(uri, _schema())
     t.write(_batch([0]))
     t.commit()
     v1 = t.snapshot_version()
@@ -45,35 +45,35 @@ def test_snapshot_version_is_monotonic(tmp_path):
 
 def test_concurrent_writers_do_not_lose_updates(tmp_path):
     uri = f"file://{tmp_path}/t"
-    t = bsdb.Table.create(uri, _schema())
+    t = bdb.Table.create(uri, _schema())
     t.write(_batch([0]))
     t.commit()
 
     # Two independent handles == two writers racing on the same table.
-    a = bsdb.Table(uri)
-    b = bsdb.Table(uri)
+    a = bdb.Table(uri)
+    b = bdb.Table(uri)
     a.write(_batch([1]))
     b.write(_batch([2]))
     a.commit()
     b.commit()
 
-    ids = set(bsdb.Table(uri).to_pandas()["id"].tolist())
+    ids = set(bdb.Table(uri).to_pandas()["id"].tolist())
     assert {0, 1, 2} <= ids, f"lost an update under concurrency: {sorted(ids)}"
 
 
 def test_schema_evolution_does_not_clobber_concurrent_append(tmp_path):
     """`update_schema` is now pure OCC (no global commit.lock)."""
     uri = f"file://{tmp_path}/t"
-    t = bsdb.Table.create(uri, _schema())
+    t = bdb.Table.create(uri, _schema())
     t.write(_batch([0]))
     t.commit()
 
-    writer = bsdb.Table(uri)
+    writer = bdb.Table(uri)
     writer.write(_batch([1]))
     writer.commit()
 
     # Schema evolution on the original handle.
     t.add_column("extra", pa.int64())
 
-    ids = set(bsdb.Table(uri).to_pandas()["id"].tolist())
+    ids = set(bdb.Table(uri).to_pandas()["id"].tolist())
     assert {0, 1} <= ids, f"schema evolution clobbered a concurrent append: {sorted(ids)}"

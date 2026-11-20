@@ -11,7 +11,7 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 np = pytest.importorskip("numpy")
-bsdb = pytest.importorskip("benodb")
+bdb = pytest.importorskip("benodb")
 
 DIM = 64
 ROWS = 1_000
@@ -29,7 +29,7 @@ def _table(offset: int):
 def test_mixed_workload_soak(monkeypatch, table_uri, rows_of, rss_gb, rss_ceiling_gb, soak_seconds):
     monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "2")
 
-    table = bsdb.Table.create(
+    table = bdb.Table.create(
         table_uri,
         pa.schema([("id", pa.int64()), ("embedding", pa.list_(pa.float32(), DIM))]),
     )

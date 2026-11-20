@@ -18,9 +18,9 @@ Control the physical layout of data for optimal query performance.
 ### API
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/table")
+table = bdb.Table("s3://bucket/table")
 
 # Set sort order (applied during writes)
 table.replace_sort_order(
@@ -114,7 +114,7 @@ When `format_version >= 3`, two metadata columns are automatically added:
 
 ```python
 # V3 tables automatically include row lineage
-table = bsdb.Table("s3://bucket/v3-table")
+table = bdb.Table("s3://bucket/v3-table")
 table.write_pandas(df)
 
 # Query with metadata columns
@@ -197,11 +197,11 @@ Define default values for schema evolution.
 ### Complete V2/V3 Workflow
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 
 # Create table with V2/V3 features
-table = bsdb.Table("s3://bucket/analytics")
+table = bdb.Table("s3://bucket/analytics")
 
 # Opt in to Iceberg V3 metadata (row lineage tracking)
 table.format_version = 3
@@ -214,7 +214,7 @@ table.replace_sort_order(
 
 # Set partition spec
 table.update_spec([
-    bsdb.PartitionField(source_ids=[1], name="date", transform="day")
+    bdb.PartitionField(source_ids=[1], name="date", transform="day")
 ])
 
 # Write data

@@ -75,7 +75,7 @@ class BenoDBScanBuilder(table: BenoDBTable)
       val rendered = ordering.map(BenoDBSql.sortOrderToSql)
       if (rendered.exists(_.isEmpty)) {
         logger.debug(
-          "benostream: not pushing TopN — could not render {} of {} sort expressions",
+          "benodb: not pushing TopN — could not render {} of {} sort expressions",
           rendered.count(_.isEmpty),
           rendered.length
         )
@@ -167,7 +167,7 @@ class BenoDBScanBuilder(table: BenoDBTable)
 
 object BenoDBScanBuilder {
   /** Advisory split size; splitting is file-granular (<= 0 disables fan-out). */
-  val SplitMaxSizeConf = "spark.benostream.split.maxSize"
+  val SplitMaxSizeConf = "spark.benodb.split.maxSize"
   val DefaultSplitMaxSizeBytes: Long = 128L * 1024 * 1024
 
   private[spark] val mapper = new com.fasterxml.jackson.databind.ObjectMapper()

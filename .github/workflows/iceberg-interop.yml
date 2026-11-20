@@ -45,7 +45,7 @@ env:
   CARGO_PROFILE_DEV_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # The interop assertions are mandatory here: a missing runtime must fail, not skip.
-  BSDB_REQUIRE_JVM_INTEROP: "1"
+  BDB_REQUIRE_JVM_INTEROP: "1"
 
 jobs:
   #########################
@@ -125,7 +125,7 @@ jobs:
 
       - name: Spark reads a BenoDB table (V2 + V3 lineage)
         env:
-          BSDB_SPARK_ICEBERG_PACKAGES: ${{ matrix.packages }}
+          BDB_SPARK_ICEBERG_PACKAGES: ${{ matrix.packages }}
         run: |
           pytest -v tests/test_cross_engine_compat.py -k "spark"
 
@@ -180,53 +180,73 @@ jobs:
       - name: Install the Trino client
         run: pip install trino pandas pyarrow pytest
 
-      - name: Write the fixtures (host side)
-        # `bsdb.Table` writes a plain filesystem warehouse; Trino will read it
-        # through a `filesystem` Iceberg catalog pointed at the same directory.
+      - name: Prepare the warehouse directory
+        # The test creates and commits its own table in `setup_method`, so there is
+        # no separate fixture to write here. The directory only has to exist before
+        # it is bind-mounted into the Trino container, and the other suites need a
+        # directory to write into as well.
         run: |
-          mkdir -p /tmp/benostream_compat_tests
+          mkdir -p /tmp/benodb_compat_tests
           pytest -v tests/test_cross_engine_compat.py -k "not spark and not trino" || true
-          python - <<'PY'
-          import pandas as pd, benodb as bsdb
-          t = bsdb.Table("/tmp/benostream_compat_tests/trino_test_table")
-          t.write_pandas(pd.DataFrame({
-              "user_id": range(500),
-              "action": ["click", "view", "purchase"] * 166 + ["click", "view"],
-              "amount": [i * 1.5 for i in range(500)],
-          }))
-          t.commit()
-          print("fixture written")
-          PY
 
-      - name: Start Nessie Catalog
+      # Why a metastore and not Nessie: `CALL iceberg.system.register_table` is
+      # rejected for Nessie catalogs with "registerTable is not supported for
+      # Iceberg Nessie catalogs", and Trino 482 removed the `hadoop` catalog type
+      # that used to read a directory without a metastore. hive_metastore is the
+      # remaining catalog that supports registering an existing location.
+      #
+      # apache/hive ships no JDBC driver, so the Postgres driver is pinned by
+      # version and mounted into /opt/hive/lib. Without it schematool exits with
+      # ClassNotFoundException: org.postgresql.Driver and nothing ever listens.
+      - name: Start the Hive metastore
         run: |
+          curl -fsSL -o /tmp/postgresql-42.7.4.jar \
+            https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
           docker network create interop-net || true
-          docker run -d --network interop-net --name nessie ghcr.io/projectnessie/nessie:0.105.5
-          for i in $(seq 1 30); do
-            if docker logs nessie 2>&1 | grep -q 'Powered by Quarkus'; then
-              echo "Nessie is up after ${i}s"
-              break
-            fi
+          docker run -d --network interop-net --name metastore-db \
+            -e POSTGRES_USER=hive -e POSTGRES_PASSWORD=hive -e POSTGRES_DB=metastore \
+            postgres:16
+          for i in $(seq 1 60); do
+            docker exec metastore-db pg_isready -U hive >/dev/null 2>&1 && break
             sleep 1
           done
+          docker run -d --network interop-net --name metastore \
+            -e SERVICE_NAME=metastore -e DB_DRIVER=postgres \
+            -e SERVICE_OPTS="-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://metastore-db:5432/metastore -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=hive -Dmetastore.warehouse.dir=/tmp/benodb_compat_tests" \
+            -v /tmp/postgresql-42.7.4.jar:/opt/hive/lib/postgres.jar:ro \
+            -v /tmp/benodb_compat_tests:/tmp/benodb_compat_tests \
+            apache/hive:4.0.0
+          for i in $(seq 1 90); do
+            if docker exec metastore-db bash -c 'exec 3<>/dev/tcp/metastore/9083' 2>/dev/null; then
+              echo "Metastore is up after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          docker exec metastore-db bash -c 'exec 3<>/dev/tcp/metastore/9083' 2>/dev/null \
+            || (docker logs metastore && exit 1)
 
       # Mount ONLY the catalog directory. Bind-mounting all of /etc/trino replaces
       # the image's jvm.config, node.properties and config.properties with an empty
       # directory, and the launcher exits before Trino ever listens.
+      #
+      # fs.hadoop.enabled is what gives the connector a filesystem factory for a
+      # file: location; without it register_table fails with "No factory for
+      # location: /tmp/.../metadata" and the table is silently never registered.
       - name: Start Trino ${{ matrix.trino }} with Iceberg catalog
         run: |
           mkdir -p /tmp/trino-etc/catalog
-          cat > /tmp/trino-etc/catalog/iceberg.properties <<EOF
+          cat > /tmp/trino-etc/catalog/iceberg.properties <<'EOF'
           connector.name=iceberg
-          iceberg.catalog.type=nessie
-          iceberg.nessie-catalog.uri=http://nessie:19120/api/v2
-          iceberg.nessie-catalog.default-warehouse-dir=/tmp/benostream_compat_tests
+          iceberg.catalog.type=hive_metastore
+          hive.metastore.uri=thrift://metastore:9083
+          fs.hadoop.enabled=true
           iceberg.register-table-procedure.enabled=true
           EOF
           docker run -d --network interop-net --name trino \
             -p 8080:8080 \
             -v /tmp/trino-etc/catalog:/etc/trino/catalog:ro \
-            -v /tmp/benostream_compat_tests:/tmp/benostream_compat_tests \
+            -v /tmp/benodb_compat_tests:/tmp/benodb_compat_tests \
             trinodb/trino:${{ matrix.trino }}
           for i in $(seq 1 90); do
             if curl -fsS http://localhost:8080/v1/info 2>/dev/null | grep -q '"starting":false'; then
@@ -235,7 +255,7 @@ jobs:
             fi
             sleep 1
           done
-          curl -fsS http://localhost:8080/v1/info | grep -q '"starting":false' || (docker logs trino && docker logs nessie && exit 1)
+          curl -fsS http://localhost:8080/v1/info | grep -q '"starting":false' || (docker logs trino && docker logs metastore && exit 1)
 
       - name: Trino reads the BenoDB table
         env:
@@ -247,4 +267,4 @@ jobs:
         if: failure()
         run: |
           docker logs trino || true
-          docker logs nessie || true
+          docker logs metastore || true

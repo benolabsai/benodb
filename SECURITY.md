@@ -3,7 +3,7 @@
 ## ⚠️ Deployment Security Posture
 
 **BenoDB is not hardened for untrusted networks.** The network servers
-(`benodb-flight`, `bsdb-search`, the gateway, and the Iceberg REST binary)
+(`benodb-flight`, `bdb-search`, the gateway, and the Iceberg REST binary)
 ship with **no TLS**. They support **stateless authentication** (API key and/or
 JWT — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#authentication-search-gateway--flight-sql)),
 but it is **opt-in**: with no credential configured the servers are open. They

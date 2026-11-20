@@ -46,9 +46,9 @@ RUN mkdir -p src \
     && cargo build --locked --release -p benodb-search -p benodb-flight \
     && rm -rf target/release/.fingerprint/benodb* \
               target/release/deps/*benodb* \
-              target/release/deps/libbenostreamdb* \
+              target/release/deps/libbenodb* \
               target/release/build/benodb* \
-              target/release/bsdb-search* \
+              target/release/bdb-search* \
               target/release/benodb-flight*
 
 # Copy actual source
@@ -73,20 +73,20 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r benostream && useradd -r -g benostream -m benostream
+RUN groupadd -r benodb && useradd -r -g benodb -m benodb
 
 WORKDIR /app
 
 # Copy both service binaries
-COPY --from=builder /app/target/release/bsdb-search /usr/local/bin/
+COPY --from=builder /app/target/release/bdb-search /usr/local/bin/
 COPY --from=builder /app/target/release/benodb-flight /usr/local/bin/
 
 # Copy entrypoint
 COPY docker/quickstart-entrypoint.sh /usr/local/bin/quickstart-entrypoint.sh
 
 # Create default data directory
-RUN mkdir -p /home/benostream/.benodb/search \
-    && chown -R benostream:benostream /home/benostream/.benodb
+RUN mkdir -p /home/benodb/.benodb/search \
+    && chown -R benodb:benodb /home/benodb/.benodb
 
 # ES 7.10 API + Qdrant API + Flight SQL gRPC + Prometheus metrics
 EXPOSE 9200 6333 50051 9090
@@ -95,7 +95,7 @@ EXPOSE 9200 6333 50051 9090
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:9200/_cluster/health && curl -sf http://localhost:9090/health || exit 1
 
-USER benostream
+USER benodb
 
 # Default environment
 ENV BSDB_SEARCH_BIND=127.0.0.1

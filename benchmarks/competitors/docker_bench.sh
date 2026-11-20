@@ -224,7 +224,7 @@ PY
   # cuGraph needs the GPU runner; the other graph engines run fine there too.
   if [[ " $GRAPH_ENGINES " == *" cugraph "* ]]; then
     COMPOSE+=(-f "$HERE/docker-compose.bench.gpu.yml")
-    # Build the base runner first: `bench-gpu` is `FROM bsdb-bench-runner:latest`,
+    # Build the base runner first: `bench-gpu` is `FROM bdb-bench-runner:latest`,
     # so a stale base image would ship an old harness into the GPU image.
     docker compose "${COMPOSE[@]}" --profile run build bench bench-gpu
     export DEVICE=gpu

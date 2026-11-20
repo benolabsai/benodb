@@ -20,11 +20,11 @@ import com.benodb.spark.procedures.{
 
 /**
  * BenoDBProcedureCatalog provides our custom Stored Procedures.
- * Users configure: spark.sql.catalog.benostream=com.benodb.spark.BenoDBProcedureCatalog
+ * Users configure: spark.sql.catalog.benodb=com.benodb.spark.BenoDBProcedureCatalog
  */
 class BenoDBProcedureCatalog extends ProcedureCatalog with CatalogPlugin {
 
-  private var catalogName: String = "benostream"
+  private var catalogName: String = "benodb"
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name

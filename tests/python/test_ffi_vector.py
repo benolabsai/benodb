@@ -2,7 +2,7 @@
 
 """Manual FFI probe for the JNI bridge cdylib.
 
-The JNI entry points live in `libbenostreamdb.so`, which is produced by a local
+The JNI entry points live in `libbenodb.so`, which is produced by a local
 `cargo build` and is **not** part of the Python wheel. CI installs the wheel, so
 this only runs where that artifact exists; the load is guarded accordingly
 instead of failing the unit shard with a missing shared object.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-LIB_PATH = Path("target/debug/libbenostreamdb.so")
+LIB_PATH = Path("target/debug/libbenodb.so")
 
 
 @pytest.mark.skipif(

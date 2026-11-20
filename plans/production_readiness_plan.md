@@ -269,7 +269,7 @@ model the harness needs.
 
 The strongest WS4 check is an **independent** reader. Loading a
 BenoStreamDB-written table with **PyIceberg 0.12.0** (see
-[`tests/integration/test_bsdb_to_pyiceberg.py`](https://github.com/benolabsai/benodb/blob/main/tests/integration/test_bsdb_to_pyiceberg.py#L1))
+[`tests/integration/test_bdb_to_pyiceberg.py`](https://github.com/benolabsai/benodb/blob/main/tests/integration/test_bdb_to_pyiceberg.py#L1))
 surfaced four spec-conformance bugs that the internal round-trip tests missed
 (BenoStreamDB's own reader was tolerant of each):
 
@@ -295,7 +295,7 @@ surfaced four spec-conformance bugs that the internal round-trip tests missed
 [`tests/test_iceberg_conformance.rs`](https://github.com/benolabsai/benodb/blob/main/tests/test_iceberg_conformance.rs#L1)
 (structural: metadata JSON fields, manifest-list/schema conformance, manifest
 round-trip, nanosecond timestamps, delete reflection, V3 row lineage) and
-[`tests/integration/test_bsdb_to_pyiceberg.py`](https://github.com/benolabsai/benodb/blob/main/tests/integration/test_bsdb_to_pyiceberg.py#L1)
+[`tests/integration/test_bdb_to_pyiceberg.py`](https://github.com/benolabsai/benodb/blob/main/tests/integration/test_bdb_to_pyiceberg.py#L1)
 (PyIceberg reads a BenoStreamDB table end-to-end).
 
 **Published matrix:** [`docs/ICEBERG_COMPATIBILITY.md`](https://www.benostreamdb.org/guides/iceberg_compatibility.html)
@@ -495,7 +495,7 @@ execute rather than skipping early.
 implementations, not only internal round-trips.
 
 **Status & next steps:** Structural Rust checks (`tests/test_iceberg_conformance.rs`)
-and PyIceberg V2 reader/writer checks (`tests/integration/test_bsdb_to_pyiceberg.py`)
+and PyIceberg V2 reader/writer checks (`tests/integration/test_bdb_to_pyiceberg.py`)
 are **shipped**. Full V3 `deletion-vector-v1` write/read wiring, `apache/iceberg-rust`
 reader oracle integration, bi-directional Spark/Trino mutation tests, and
 catalog CAS/S3Tables/Memory parity are recorded in **[ADR-009](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_009_CATALOG_PARITY_AND_CAS_HARDENING.md)**.
@@ -549,7 +549,7 @@ review's GC-vs-reader race.
   V3 DV + multi-catalog automation is recorded in [ADR-010](https://github.com/benolabsai/benodb/blob/main/docs/architecture/ADR_010_ICEBERG_V3_DELETION_VECTORS_AND_CROSS_ENGINE_CONFORMANCE.md).
 - **Security (untrusted network)** — static API key (`BDB_API_KEY`),
   HS256/RS256 JWT + RBAC claim extraction ([`src/core/auth.rs`](https://github.com/benolabsai/benodb/blob/main/src/core/auth.rs#L1)),
-  fail-closed non-loopback network binding on `bsdb-search` and `benodb-flight`,
+  fail-closed non-loopback network binding on `bdb-search` and `benodb-flight`,
   and `BDB_SSRF_GUARD=1` are **shipped**. Remaining post-Preview scope:
   native TLS termination, external IdP sync, per-table/per-column RBAC,
   query/payload quotas, and auth audit logging.

@@ -20,7 +20,7 @@ services:
     extends:
       file: docker-compose.bench.yml
       service: bench
-    image: bsdb-bench-runner-gpu:latest
+    image: bdb-bench-runner-gpu:latest
     build:
       context: ../..
       dockerfile: benchmarks/competitors/Dockerfile.bench.gpu

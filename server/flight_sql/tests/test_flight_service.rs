@@ -46,7 +46,7 @@ async fn test_flight_statement_query() {
     let session = BenoStreamSession::new(None);
     let service = BenoStreamFlightSqlService::new(session);
 
-    let sql = "SELECT 42 AS answer, 'benostream' AS engine";
+    let sql = "SELECT 42 AS answer, 'benodb' AS engine";
     let cmd = CommandStatementQuery {
         query: sql.to_string(),
         transaction_id: None,

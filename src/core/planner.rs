@@ -1659,7 +1659,7 @@ impl QueryPlanner {
             }
         }
 
-        metrics::histogram!("bsdb.query.segment_pruning_duration")
+        metrics::histogram!("bdb.query.segment_pruning_duration")
             .record(pruning_start.elapsed().as_secs_f64());
         candidates
     }
@@ -1683,7 +1683,7 @@ impl QueryPlanner {
                 .is_none_or(|routed| routed.contains(seg_id) || routed.contains(file_path));
 
             if was_routed && !candidates.contains(seg_id) && !candidates.contains(file_path) {
-                metrics::counter!("bsdb.pruned.vector_router").increment(1);
+                metrics::counter!("bdb.pruned.vector_router").increment(1);
                 return false;
             }
         }
@@ -1725,7 +1725,7 @@ impl QueryPlanner {
                     }
                     if let Some(r_sq) = radius_sq {
                         if total_diff_sq > r_sq {
-                            metrics::counter!("bsdb.pruned.vector_bbox").increment(1);
+                            metrics::counter!("bdb.pruned.vector_bbox").increment(1);
                             tracing::debug!(
                                 "  -> Pruned by vector bbox: {} > radius {}",
                                 total_diff_sq.sqrt(),
@@ -1836,7 +1836,7 @@ impl QueryPlanner {
         };
         if filter.negated {
             // Pruning negated conditions is coarse for now.
-            bump("bsdb.kept.negated_condition");
+            bump("bdb.kept.negated_condition");
             return None;
         }
         // 1. Partition-level Pruning (Coarse-grained)
@@ -1857,7 +1857,7 @@ impl QueryPlanner {
                     ord == Some(std::cmp::Ordering::Less) || ord == Some(std::cmp::Ordering::Equal)
                 };
                 if res {
-                    bump("bsdb.pruned.partition_min");
+                    bump("bdb.pruned.partition_min");
                     tracing::debug!(
                         "  -> Pruned by partition min: {} < {:?}",
                         entry_val,
@@ -1876,7 +1876,7 @@ impl QueryPlanner {
                         || ord == Some(std::cmp::Ordering::Equal)
                 };
                 if res {
-                    bump("bsdb.pruned.partition_max");
+                    bump("bdb.pruned.partition_max");
                     tracing::debug!(
                         "  -> Pruned by partition max: {} > {:?}",
                         entry_val,
@@ -1892,7 +1892,7 @@ impl QueryPlanner {
                         || self.compare_values(entry_val, v) == Some(std::cmp::Ordering::Equal)
                 });
                 if !in_list {
-                    bump("bsdb.pruned.partition_in_list");
+                    bump("bdb.pruned.partition_in_list");
                     tracing::debug!(
                         "  -> Pruned by partition values IN list: {:?} not in {:?}",
                         entry_val,
@@ -1906,7 +1906,7 @@ impl QueryPlanner {
         // 2. Statistics Pruning (Fine-grained)
         if let Some(stats) = entry.column_stats.get(&filter.column) {
             if stats.null_count == entry.record_count {
-                bump("bsdb.pruned.stats_all_null");
+                bump("bdb.pruned.stats_all_null");
                 return Some(PruneReason::StatsAllNull);
             }
 
@@ -1922,7 +1922,7 @@ impl QueryPlanner {
                     };
 
                     if too_small {
-                        bump("bsdb.pruned.stats_max");
+                        bump("bdb.pruned.stats_max");
                         return Some(PruneReason::StatsBelowMin);
                     }
                 }
@@ -1939,7 +1939,7 @@ impl QueryPlanner {
                             || ord == Some(std::cmp::Ordering::Equal)
                     };
                     if too_large {
-                        bump("bsdb.pruned.stats_min");
+                        bump("bdb.pruned.stats_min");
                         return Some(PruneReason::StatsAboveMax);
                     }
                 }
@@ -1951,7 +1951,7 @@ impl QueryPlanner {
                 let max_val = stats.max.as_ref();
 
                 if min_val.is_none() && max_val.is_none() {
-                    bump("bsdb.kept.missing_stats");
+                    bump("bdb.kept.missing_stats");
                     return None;
                 }
 
@@ -1976,15 +1976,15 @@ impl QueryPlanner {
                 }
 
                 if !possible_match {
-                    bump("bsdb.pruned.stats_in_list");
+                    bump("bdb.pruned.stats_in_list");
                     return Some(PruneReason::StatsNotInList);
                 }
             }
 
-            bump("bsdb.kept.in_range");
+            bump("bdb.kept.in_range");
             None
         } else {
-            bump("bsdb.kept.missing_stats");
+            bump("bdb.kept.missing_stats");
             None
         }
     }

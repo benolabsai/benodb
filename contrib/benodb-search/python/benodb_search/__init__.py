@@ -15,23 +15,23 @@ except _PackageNotFoundError:  # source tree / not installed
 
 
 def find_binary() -> str:
-    """Locate the bsdb-search binary."""
+    """Locate the bdb-search binary."""
     # Check adjacent directory in installed wheel
     pkg_dir = os.path.dirname(__file__)
-    candidate = os.path.join(pkg_dir, "..", "..", "bin", "bsdb-search")
+    candidate = os.path.join(pkg_dir, "..", "..", "bin", "bdb-search")
     if os.path.exists(candidate):
         return os.path.abspath(candidate)
 
     # Check PATH
-    which_bin = shutil.which("bsdb-search")
+    which_bin = shutil.which("bdb-search")
     if which_bin:
         return which_bin
 
-    return "bsdb-search"
+    return "bdb-search"
 
 
 def main():
-    """CLI entrypoint for bsdb-search."""
+    """CLI entrypoint for bdb-search."""
     binary = find_binary()
     try:
         sys.exit(subprocess.call([binary] + sys.argv[1:]))

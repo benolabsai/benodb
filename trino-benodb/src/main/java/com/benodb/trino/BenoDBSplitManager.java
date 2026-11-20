@@ -26,7 +26,7 @@ import java.util.Set;
  * {@code SELECT * FROM t [WHERE ...]}, which is what lets the native engine run
  * KNN, RRF, or traversal itself rather than post-filtering in Trino.</p>
  *
- * <p>Multi-split fan-out ({@code benostream.split.file-granularity}) applies to
+ * <p>Multi-split fan-out ({@code benodb.split.file-granularity}) applies to
  * plain, unfiltered table scans only: the split then names one Parquet file and
  * the page source reads it through a file-scoped session. A filtered or
  * function-driven scan keeps a single split, because its SQL has to run against

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Parser)]
-#[command(name = "bsdb")]
+#[command(name = "bdb")]
 #[command(about = "BenoStreamDB CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -116,7 +116,7 @@ enum TableCommands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = benodb::telemetry::tracing::init_tracing("bsdb")?;
+    let _guard = benodb::telemetry::tracing::init_tracing("bdb")?;
 
     let cli = Cli::parse();
     let session = BenoStreamSession::new(None);
@@ -287,12 +287,12 @@ async fn run_repl(session: BenoStreamSession) -> Result<(), Box<dyn std::error::
         println!("No previous history.");
     }
 
-    println!("Welcome to BenoStreamDB CLI (bsdb)");
+    println!("Welcome to BenoStreamDB CLI (bdb)");
     println!("Type 'exit' or 'quit' to leave.");
     println!("Type 'register table_name uri' to register a table.");
 
     loop {
-        let readline = rl.readline("bsdb> ");
+        let readline = rl.readline("bdb> ");
         match readline {
             Ok(line) => {
                 let line = line.trim();

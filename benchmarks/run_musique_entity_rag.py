@@ -227,7 +227,7 @@ def _hnsw_index_type(mode: str) -> str:
     return {"tq8": "hnsw_tq8", "tq4": "hnsw_tq4", "sq8": "hnsw_sq8"}.get(mode, "hnsw")
 
 
-def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, entity_id,
+def build_entity_rag_tables(bdb, scratch_dir, unique_passages, entity_keys, entity_id,
                             entity_to_passages, adj, corpus_matrix, entity_embeds,
                             embed_dim, mode, rebuild):
     """Materialize Passages, Entities, Relations and Mentions as native tables."""
@@ -240,8 +240,8 @@ def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, ent
     exists = all(os.path.exists(d) for d in all_dirs)
     if exists and not rebuild:
         print(f"[entity_rag] Reusing entity-RAG tables at {scratch_dir}...", flush=True)
-        return (bsdb.Table(passages_dir), bsdb.Table(entities_dir),
-                bsdb.Table(relations_dir), bsdb.Table(mentions_dir))
+        return (bdb.Table(passages_dir), bdb.Table(entities_dir),
+                bdb.Table(relations_dir), bdb.Table(mentions_dir))
 
     for d in all_dirs:
         if os.path.exists(d):
@@ -251,7 +251,7 @@ def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, ent
     print(f"[entity_rag] Building entity-RAG tables ({index_type})...", flush=True)
 
     # 1. Passages table
-    passages_table = bsdb.Table.create(
+    passages_table = bdb.Table.create(
         passages_dir,
         schema=pa.schema([
             pa.field("id", pa.uint64()),
@@ -279,7 +279,7 @@ def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, ent
     print(f"    -> Passages table: {len(p_ids):,} rows", flush=True)
 
     # 2. Entities table (node table with an embedding index)
-    entities_table = bsdb.Table.create(
+    entities_table = bdb.Table.create(
         entities_dir,
         schema=pa.schema([
             pa.field("id", pa.uint64()),
@@ -302,7 +302,7 @@ def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, ent
     print(f"    -> Entities table: {len(e_ids):,} rows", flush=True)
 
     # 3. Relations edge table (entity -> entity)
-    relations_table = bsdb.Table.create_edge_table(
+    relations_table = bdb.Table.create_edge_table(
         relations_dir, node_id_type="uint64", with_relation=True, with_weight=True)
     r_src, r_dst, r_rel, r_w = [], [], [], []
     for si in sorted(adj):
@@ -325,7 +325,7 @@ def build_entity_rag_tables(bsdb, scratch_dir, unique_passages, entity_keys, ent
     print(f"    -> Relations table: {len(r_src):,} edges", flush=True)
 
     # 4. Mentions edge table (entity -> passage)
-    mentions_table = bsdb.Table.create_edge_table(
+    mentions_table = bdb.Table.create_edge_table(
         mentions_dir, node_id_type="uint64", with_relation=True, with_weight=True)
     n_src, n_dst, n_rel, n_w = [], [], [], []
     for key in entity_keys:
@@ -609,7 +609,7 @@ def main():
                                     dtype="auto", max_seq_length=0)
     print(f"[entity_rag] Retrieval embedder: {backend.describe()}", flush=True)
 
-    import benodb as bsdb
+    import benodb as bdb
 
     dataset_path = m.ensure_dataset(args.data_dir)
     records = m.load_musique_records(dataset_path, args.max_questions)
@@ -642,7 +642,7 @@ def main():
                                            args.triplets_json)
 
     passages_table, entities_table, relations_table, mentions_table = build_entity_rag_tables(
-        bsdb, args.scratch_dir, unique_passages, entity_keys, entity_id,
+        bdb, args.scratch_dir, unique_passages, entity_keys, entity_id,
         entity_to_passages, adj, corpus_matrix, entity_embeds, backend.dim,
         args.mode, args.rebuild)
 

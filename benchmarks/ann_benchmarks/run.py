@@ -204,19 +204,19 @@ def main() -> None:
         print(f"resource envelope: cores={cores} ram_gb={ram_gb}", flush=True)
 
     # Import after the env is configured.
-    import benodb as bsdb
+    import benodb as bdb
 
     # Pin the run to the requested backend. `--device` used to be written
     # straight into the result record without touching the engine, so the
     # "cpu" and "gpu" passes both measured the same auto-detected backend.
     if args.device in ("gpu", "auto"):
-        active_device = bsdb.Device("auto")
+        active_device = bdb.Device("auto")
         if args.device == "gpu" and active_device.backend == "cpu":
             raise SystemExit(
                 "--device gpu requested, but no GPU backend is available"
             )
     else:
-        active_device = bsdb.Device(args.device)
+        active_device = bdb.Device(args.device)
     active_device.activate()
     backend = active_device.backend
     print(f"active backend: {backend}", flush=True)
@@ -241,7 +241,7 @@ def main() -> None:
         shutil.rmtree(db_path)
 
     t0 = time.time()
-    table = bsdb.Table(db_path)
+    table = bdb.Table(db_path)
     table.add_index(
         "embedding",
         {

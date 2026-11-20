@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import h5py
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ train = f['train'][:]
 test = f['test'][:]
 neighbors = f['neighbors'][:]
 
-table = bsdb.Table("test_db")
+table = bdb.Table("test_db")
 table.add_index("embedding", {"type": "hnsw_tq8", "complexity": 16, "quality": 200, "metric": "inner_product"})
 
 df = pd.DataFrame({

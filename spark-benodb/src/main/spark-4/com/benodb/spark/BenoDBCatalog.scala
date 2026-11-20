@@ -24,7 +24,7 @@ import com.benodb.spark.procedures.{
  * Spark 4.0 introduced the native DSv2 `ProcedureCatalog` API, so this build
  * needs no Iceberg runtime at all.
  *
- * Configure: spark.sql.catalog.benostream=com.benodb.spark.BenoDBProcedureCatalog
+ * Configure: spark.sql.catalog.benodb=com.benodb.spark.BenoDBProcedureCatalog
  */
 class BenoDBProcedureCatalog extends BenoDBCatalog with ProcedureCatalog {
 

@@ -11,7 +11,7 @@
 //!   (OAuth2 `/v1/oauth/tokens` refresh + `requirements` CAS 409 retry)
 //! - [`CatalogType::Nessie`] when `NESSIE_URI` is provided
 //! - SQL DDL (`CREATE SCHEMA` / `CREATE TABLE` / `INSERT` / `DROP TABLE` / `DROP SCHEMA`)
-//!   and `bsdb-search`-style storage-first registration (`Table::create_async` before
+//!   and `bdb-search`-style storage-first registration (`Table::create_async` before
 //!   `catalog.create_table`).
 
 use std::collections::{BTreeSet, HashMap};

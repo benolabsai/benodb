@@ -1,5 +1,5 @@
 
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import numpy as np
 import os
@@ -11,7 +11,7 @@ def test_explain():
         shutil.rmtree(db_path)
     
     # Create table
-    table = bsdb.Table(db_path, explain=True)
+    table = bdb.Table(db_path, explain=True)
     
     # Write some data
     df = pd.DataFrame({

@@ -16,12 +16,12 @@ use crate::state::AppState;
 /// `GET /metrics` — Prometheus text format (version 0.0.4).
 ///
 /// Exposes the plan-5.2.2 telemetry: the query-latency histogram
-/// (`bsdb_search_http_request_duration_seconds` with `route="search"`),
+/// (`bdb_search_http_request_duration_seconds` with `route="search"`),
 /// request counters, ingestion counters, index table-cache hit/miss
 /// counters, and the active-requests gauge.
 pub async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Serve the gateway's own registry plus the core engine's metrics, so one
-    // scrape sees both `bsdb_search_*` and `benostreamdb_*`.
+    // scrape sees both `bdb_search_*` and `benodb_*`.
     let mut body = state.metrics.gather_text();
     body.push_str(&benodb::core::telemetry::render_metrics());
     // Built by hand rather than with `Response::builder()` so there is no
@@ -119,13 +119,13 @@ mod tests {
 
         let text = m.gather_text();
         for needle in [
-            "bsdb_search_active_requests 1",
-            "bsdb_search_http_requests_total{method=\"post\",route=\"search\"} 1",
-            "bsdb_search_http_request_duration_seconds_bucket",
-            "bsdb_search_http_request_duration_seconds_sum{method=\"post\",route=\"search\"} 0.05",
-            "bsdb_search_docs_indexed_total{result=\"created\"} 1",
-            "bsdb_search_index_cache_hits_total 1",
-            "bsdb_search_index_cache_misses_total 1",
+            "bdb_search_active_requests 1",
+            "bdb_search_http_requests_total{method=\"post\",route=\"search\"} 1",
+            "bdb_search_http_request_duration_seconds_bucket",
+            "bdb_search_http_request_duration_seconds_sum{method=\"post\",route=\"search\"} 0.05",
+            "bdb_search_docs_indexed_total{result=\"created\"} 1",
+            "bdb_search_index_cache_hits_total 1",
+            "bdb_search_index_cache_misses_total 1",
         ] {
             assert!(text.contains(needle), "missing {needle:?} in:\n{text}");
         }
@@ -138,7 +138,7 @@ mod tests {
         benodb::telemetry::metrics::INGEST_ROWS_TOTAL.inc();
         let text = benodb::core::telemetry::render_metrics();
         assert!(
-            text.contains("bsdb_ingest_rows_total"),
+            text.contains("bdb_ingest_rows_total"),
             "merged /metrics body missing core engine metrics:\n{text}"
         );
     }

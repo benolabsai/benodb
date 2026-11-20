@@ -47,13 +47,13 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 > ## 🔒 Security & Warehouse Catalog Policy
 >
 > **1. Stateless Authentication & RBAC**:
-> Both `benodb-flight` and `bsdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
+> Both `benodb-flight` and `bdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
 >
-> **2. Authoritative Warehouse Catalog Policy (`.benostream-policy.json`)**:
-> Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benostream-policy.json`) and managed directly from the core database product:
+> **2. Authoritative Warehouse Catalog Policy (`.benodb-policy.json`)**:
+> Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benodb-policy.json`) and managed directly from the core database product:
 > ```python
-> import benodb as bsdb
-> session = bsdb.connect("s3://bucket/warehouse")
+> import benodb as bdb
+> session = bdb.connect("s3://bucket/warehouse")
 >
 > # Query remote policy on the bucket
 > policy = session.catalog_policy()
@@ -71,7 +71,7 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 >
 > **4. Trusted vs. Untrusted Connector Boundary**:
 > - **Trusted Data Engines** (Core DB, Flight SQL, Spark, Trino, dbt): Retain full access authorized by warehouse credentials.
-> - **Untrusted Gateways** (MCP Agents, Search Gateway): If `.benostream-policy.json` is missing or unspecified, untrusted connectors are conservatively quarantined into **read-only mode across all tables**, restricting writes solely to transient `scratch.*` workspace tables.
+> - **Untrusted Gateways** (MCP Agents, Search Gateway): If `.benodb-policy.json` is missing or unspecified, untrusted connectors are conservatively quarantined into **read-only mode across all tables**, restricting writes solely to transient `scratch.*` workspace tables.
 > 
 > *Note on TLS:* The network servers do not terminate TLS natively within the Rust binaries. When deploying over untrusted networks or the public internet, you must deploy BenoDB behind a reverse proxy (like NGINX, Envoy, or an AWS ALB) that terminates TLS. See [SECURITY.md](SECURITY.md) for the full posture.
 
@@ -135,10 +135,10 @@ BenoDB implements the core Apache Iceberg table format V2 and V3 features requir
 ### New APIs
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create table with sort order (V2)
-table = bsdb.Table("s3://bucket/table")
+table = bdb.Table("s3://bucket/table")
 table.replace_sort_order(["timestamp", "user_id"], ascending=[False, True])
 
 # V3 tables emit row lineage: _row_id (monotonic long) and
@@ -185,7 +185,7 @@ In Authoritative Mode, BenoDB acts as the primary lakehouse database. It owns th
 #### Step 1: Create or Open an Authoritative Table
 ```python
 import pyarrow as pa
-import benodb as bsdb
+import benodb as bdb
 
 schema = pa.schema([
     ("id", pa.int64()),
@@ -195,10 +195,10 @@ schema = pa.schema([
 ])
 
 # Create a new table in object storage
-table = bsdb.Table.create("s3://my-warehouse/tables/articles", schema)
+table = bdb.Table.create("s3://my-warehouse/tables/articles", schema)
 
 # Or open an existing table
-table = bsdb.open_table("s3://my-warehouse/tables/articles")
+table = bdb.open_table("s3://my-warehouse/tables/articles")
 ```
 
 #### Step 2: Declare Primary Key & Secondary Indexes
@@ -257,10 +257,10 @@ If your data already lives in an Apache Iceberg table created by Spark, Flink, T
 Call `Table.mount_external_iceberg()`. Provide the upstream table URI (where the customer's Iceberg metadata and Parquet files live) and your separate overlay storage URI (where BenoDB writes its index sidecars):
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Mount external Iceberg table in read-only mode
-table = bsdb.Table.mount_external_iceberg(
+table = bdb.Table.mount_external_iceberg(
     table_uri="s3://customer-lakehouse/warehouse/events/",      # Upstream (Read-Only)
     overlay_storage_uri="s3://my-managed-indexes/events/"       # Overlay Bucket (Writable)
 )
@@ -317,7 +317,7 @@ results = table.vector_search("embedding", query_vector, k=10)
 
 # 2. Unified DataFusion SQL (with pgvector syntax and hybrid filters)
 # Register the table in an in-process Session to query by name:
-session = bsdb.Session()
+session = bdb.Session()
 session.register("events", table)
 
 df = session.sql("""
@@ -341,11 +341,11 @@ properties and enforces it in the engine — not only in the MCP server:
 # Declare the model. The engine derives the dimension from its known-model
 # catalogue, and a FixedSizeList vector column also carries it in the schema.
 table.set_properties({
-    "benostream.embedding.model": "BAAI/bge-small-en-v1.5",
+    "benodb.embedding.model": "BAAI/bge-small-en-v1.5",
 })
 
 # Mirrored into metadata/vN.metadata.json, so Spark, Trino, and PyIceberg see it too.
-print(table.properties()["benostream.embedding.model"])
+print(table.properties()["benodb.embedding.model"])
 ```
 
 When vectors come from an HTTP service, record the provider and endpoint too. Credentials are
@@ -354,11 +354,11 @@ deliberately not stored in table metadata; the MCP server reads the key from
 
 ```python
 table.set_properties({
-    "benostream.embedding.model": "text-embedding-3-small",
-    "benostream.embedding.dim": "1536",
-    "benostream.embedding.provider": "http",
-    "benostream.embedding.endpoint": "https://api.openai.com/v1/embeddings",
-    "benostream.embedding.query_prefix": "",
+    "benodb.embedding.model": "text-embedding-3-small",
+    "benodb.embedding.dim": "1536",
+    "benodb.embedding.provider": "http",
+    "benodb.embedding.endpoint": "https://api.openai.com/v1/embeddings",
+    "benodb.embedding.query_prefix": "",
 })
 ```
 
@@ -371,15 +371,15 @@ tables separately). Vectors from different models should not share an index even
 dimensions match. A single MCP process has one active embedding configuration; run separate MCP
 instances for simultaneous providers, or compute vectors in the application and pass them in.
 
-Credentials are supplied by the runtime, never by the table: `benostream.embedding.*` stores only the
+Credentials are supplied by the runtime, never by the table: `benodb.embedding.*` stores only the
 contract. Run one MCP process per provider with its own `BDB_EMBEDDING_API_KEY`, or put a
 credential-multiplexing gateway in front and give MCP a single endpoint/key. Prefer the environment
 variable over a literal `embedding.api_key` in JSON.
 
 - Writes through Python, SQL/Flight SQL, MCP, and bulk ingest reject vectors whose length differs from
-  the declared dimension. The dimension comes from `benostream.embedding.dim` when present, otherwise
+  the declared dimension. The dimension comes from `benodb.embedding.dim` when present, otherwise
   from the engine's known-model catalogue (BGE, E5, Nomic, OpenAI, ...) or a `FixedSizeList` column.
-- Set `benostream.embedding.dim` explicitly only for a custom/unknown model, or for MRL truncation
+- Set `benodb.embedding.dim` explicitly only for a custom/unknown model, or for MRL truncation
   (e.g. `BAAI/bge-large-en-v1.5` truncated to 512).
 - Changing or removing the declared model (or a declared dimension) on a non-empty table is rejected at
   the commit point, including the Iceberg REST `set-properties` action used by Spark/Trino. Re-ingest
@@ -548,10 +548,10 @@ BenoDB installs two developer-facing CLI binaries via `pip install benodb`:
 ### Basic Usage
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create table
-table = bsdb.Table("s3://bucket/my-table")
+table = bdb.Table("s3://bucket/my-table")
 
 # Write data (Pandas/PyArrow)
 import pandas as pd
@@ -665,8 +665,8 @@ table.compact_indexes("embedding", target_shard_bytes=536870912)
 table.preload_indexes(max_memory_bytes=8 * 1024**3, spill_to_disk=False)
 
 # 4. Invalidate global engine caches (HNSW, IVF, Voronoi, CSR, and block caches)
-import benodb as bsdb
-bsdb.clear_cache(all=True)
+import benodb as bdb
+bdb.clear_cache(all=True)
 ```
 
 ### Python Vector Distance API with GPU Acceleration
@@ -674,12 +674,12 @@ bsdb.clear_cache(all=True)
 BenoDB provides a comprehensive Python API for vector distance computations with GPU acceleration:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import numpy as np
 
 # GPU-accelerated batch distance computation
 # `ComputeContext` is an alias for `Device` (`GPUContext` also works).
-ctx = bsdb.ComputeContext.auto_detect()  # Auto-detect CUDA/ROCm/Metal/XPU
+ctx = bdb.ComputeContext.auto_detect()  # Auto-detect CUDA/ROCm/Metal/XPU
 print(f"Using GPU backend: {ctx.backend}")
 
 # Create query and database vectors
@@ -687,7 +687,7 @@ query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(100000, 768).astype(np.float32)
 
 # Compute distances on GPU (10x+ faster for large databases)
-distances = bsdb.l2_batch(query, database, device=ctx)
+distances = bdb.l2_batch(query, database, device=ctx)
 
 # Find top-k nearest neighbors
 k = 10
@@ -696,25 +696,25 @@ top_k_indices = np.argsort(distances)[:k]
 # Single-pair distance computation
 vec1 = np.array([1.0, 2.0, 3.0])
 vec2 = np.array([4.0, 5.0, 6.0])
-distance = bsdb.cosine(vec1, vec2)
+distance = bdb.cosine(vec1, vec2)
 
 # Sparse vector support for high-dimensional sparse data
-sparse1 = bsdb.SparseVector(
+sparse1 = bdb.SparseVector(
     indices=np.array([0, 5, 100], dtype=np.int32),
     values=np.array([1.0, 2.5, 0.8], dtype=np.float32),
     dim=1000
 )
-sparse2 = bsdb.SparseVector(
+sparse2 = bdb.SparseVector(
     indices=np.array([5, 50, 100], dtype=np.int32),
     values=np.array([2.0, 1.5, 0.9], dtype=np.float32),
     dim=1000
 )
-distance = bsdb.l2_sparse(sparse1, sparse2)
+distance = bdb.l2_sparse(sparse1, sparse2)
 
 # Binary vector operations (bit-packed for efficiency)
 binary1 = np.packbits(np.random.randint(0, 2, 128))
 binary2 = np.packbits(np.random.randint(0, 2, 128))
-distance = bsdb.hamming_packed(binary1, binary2)
+distance = bdb.hamming_packed(binary1, binary2)
 ```
 
 **Supported GPU Backends:**
@@ -733,12 +733,12 @@ See [Python Vector API Documentation](https://benolabsai.com/docs/guides/python_
 ### SQL queries (full DataFusion support with pgvector syntax)
 
 ```python
-import benodb as bsdb
-session = bsdb.Session()
+import benodb as bdb
+session = bdb.Session()
 session.register("users", table)
 
 # Optional: Enable GPU acceleration for SQL queries
-device = bsdb.Device.auto_detect()
+device = bdb.Device.auto_detect()
 device.activate()
 
 # Simple SQL (via table — registers as table 't')
@@ -834,12 +834,12 @@ s3://bucket/table/
 Because indexes are overlays, BenoDB can index data it does not own. `Table.register_external` points at an existing Iceberg table's metadata, maps its schema, imports the current snapshot, and builds index overlays over the referenced Parquet files — without rewriting, copying, or taking ownership of the data.
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Attach to an existing Iceberg table and index it in place.
 # The first argument is where the overlay indexes are stored; the second is
 # the existing table's Iceberg metadata.
-table = bsdb.Table.register_external(
+table = bdb.Table.register_external(
     "s3://my-index-bucket/overlays/events",
     "s3://my-lake/warehouse/db/events/metadata/v1.metadata.json",
 )
@@ -869,7 +869,7 @@ Indexes are warmed into RAM until `max_memory_bytes` is exhausted; the
 remainder **spills into the mmap disk cache** (`BDB_DISK_CACHE_DIR`,
 `MADV_RANDOM`) for out-of-core serving. The bounded caches evict by
 LRU/TinyLFU + TTI, so overflow evicts the least-recently-used entries. The
-`benostream-search` gateway calls this on open, controlled by
+`benodb-search` gateway calls this on open, controlled by
 `BDB_SEARCH_PRELOAD` (default on) and `BDB_SEARCH_PRELOAD_GB` (default 4 GiB).
 
 ## 🔌 Connectors
@@ -898,7 +898,7 @@ val df = spark.read
   .format("benodb")
   .option("path", "s3://bucket/table")
   // Optionally configure the GPU device (cuda, mps, intel, rocm, auto, or cpu)
-  .option("benostream.gpu_device", "cuda")
+  .option("benodb.gpu_device", "cuda")
   .load()
 
 // Write
@@ -910,7 +910,7 @@ df.write
 
 You can also globally configure the GPU for Spark stored procedures (e.g. index building):
 ```scala
-spark.conf.set("spark.benostream.gpu.device", "cuda")
+spark.conf.set("spark.benodb.gpu.device", "cuda")
 ```
 
 ### Trino
@@ -920,35 +920,35 @@ Configure the warehouse root and GPU backend in the catalog properties:
 
 ```properties
 connector.name=benodb
-benostream.warehouse=s3://my-bucket/warehouse
-benostream.gpu-device=cuda
+benodb.warehouse=s3://my-bucket/warehouse
+benodb.gpu-device=cuda
 ```
 
 Tables resolve to `{warehouse}/{schema}/{table}` (default warehouse `s3://default`).
 
 ```sql
 -- Read (scalar/vector filter pushdown via JNI)
-SELECT * FROM benostream.default.my_table
+SELECT * FROM benodb.default.my_table
 WHERE id > 100;
 
 -- Write
-INSERT INTO benostream.default.my_table VALUES (1, 'a');
+INSERT INTO benodb.default.my_table VALUES (1, 'a');
 
 -- CTAS
-CREATE TABLE benostream.default.new_table AS
-SELECT * FROM benostream.default.my_table;
+CREATE TABLE benodb.default.new_table AS
+SELECT * FROM benodb.default.my_table;
 
 -- MERGE (row-level, via the connector's merge sink)
-MERGE INTO benostream.default.my_table t
-USING benostream.default.staging s ON t.id = s.id
+MERGE INTO benodb.default.my_table t
+USING benodb.default.staging s ON t.id = s.id
 WHEN MATCHED THEN UPDATE SET name = s.name
 WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);
 ```
 
-You can configure the GPU backend for Trino globally or per-catalog using the properties file (e.g. `etc/catalog/benostream.properties`):
+You can configure the GPU backend for Trino globally or per-catalog using the properties file (e.g. `etc/catalog/benodb.properties`):
 ```properties
 connector.name=benodb
-benostream.gpu-device=cuda
+benodb.gpu-device=cuda
 ```
 
 ### Arrow Flight SQL Gateway
@@ -972,14 +972,14 @@ pip install -e .
 
 ### Python (Direct & Network Clients)
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Embedded in-process execution (scales to zero)
-df = bsdb.Table("s3://bucket/table").query().execute()
-# Or using traditional API: df = bsdb.Table("s3://bucket/table").to_pandas()
+df = bdb.Table("s3://bucket/table").query().execute()
+# Or using traditional API: df = bdb.Table("s3://bucket/table").to_pandas()
 
 # Network Arrow Flight SQL client (zero-copy gRPC streaming)
-flight = bsdb.FlightClient("grpc://127.0.0.1:50051", token="secret")
+flight = bdb.FlightClient("grpc://127.0.0.1:50051", token="secret")
 df = flight.execute_pandas("SELECT * FROM market_data WHERE symbol = 'NVDA'")
 ```
 
@@ -990,10 +990,10 @@ df = flight.execute_pandas("SELECT * FROM market_data WHERE symbol = 'NVDA'")
 BenoDB can mount and index **Snowflake Iceberg Tables** residing on customer-managed External Volumes (Amazon S3, GCS, or Azure Blob) in Detached Overlay Mode with zero data duplication and zero Snowflake compute credits:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Mount external Snowflake Iceberg table in read-only mode
-table = bsdb.Table.mount_external_iceberg(
+table = bdb.Table.mount_external_iceberg(
     table_uri="s3://customer-lakehouse/snowflake_warehouse/events/",
     overlay_storage_uri="s3://my-index-overlays/events/"
 )
@@ -1018,7 +1018,7 @@ We provide a script to build a full matrix of connectors (Java 17/21, Spark 3.5/
 
 ### Hardware Acceleration
 - **Standard**: Build with CPU + Intel Graphics/XPU support (default on Linux/Windows).
-- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenodb.dylib`) without requiring extra flags. Configure at runtime via `spark.benostream.gpu.device=mps` in Spark or `benostream.gpu-device=mps` in Trino.
+- **Apple Metal (MPS)**: Supported out-of-the-box on macOS / Apple Silicon (M1/M2/M3/M4/M5). Running `./build-connectors.sh` on Apple Silicon automatically compiles and bundles native Metal shading kernels (`libbenodb.dylib`) without requiring extra flags. Configure at runtime via `spark.benodb.gpu.device=mps` in Spark or `benodb.gpu-device=mps` in Trino.
 - **CUDA**: Build for NVIDIA GPUs:
   ```bash
   ./build-connectors.sh --cuda
@@ -1036,7 +1036,7 @@ Everything in this section is **optional**. The core engine and the Spark, Trino
 
 ### Search Gateway (OpenSearch / Elasticsearch 7.10 & Qdrant)
 
-`bsdb-search` (`contrib/benodb-search`, crate `benodb-search`) serves an **OpenSearch 1.x / Elasticsearch 7.10**-compatible REST API — plus a **Qdrant**-compatible vector API — on top of the engine. It targets website search, document catalogs, and knowledge bases where a 50–200 ms query envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
+`bdb-search` (`contrib/benodb-search`, crate `benodb-search`) serves an **OpenSearch 1.x / Elasticsearch 7.10**-compatible REST API — plus a **Qdrant**-compatible vector API — on top of the engine. It targets website search, document catalogs, and knowledge bases where a 50–200 ms query envelope is acceptable and object-storage-native, scale-to-zero hosting is desired.
 
 * **OpenSearch / Elasticsearch 7.10 (`:9200`)**: text indexing, bulk writes, and keyword search. See the [OpenSearch compatibility matrix](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/OPENSEARCH_COMPATIBILITY.md).
 * **Qdrant (`:6333`)**: collections, point upsert/retrieve, payload and vector edits, aliases, and the universal query API. See the [Qdrant compatibility matrix](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-search/docs/QDRANT_COMPATIBILITY.md).
@@ -1044,8 +1044,8 @@ Everything in this section is **optional**. The core engine and the Spark, Trino
 Both APIs are hosted concurrently from a single binary, share the same `AppState` and data files, and require zero data duplication.
 
 ```bash
-cargo build --release -p benodb-search --bin bsdb-search
-BDB_SEARCH_BIND=127.0.0.1 BDB_SEARCH_PORT=9200 ./target/release/bsdb-search
+cargo build --release -p benodb-search --bin bdb-search
+BDB_SEARCH_BIND=127.0.0.1 BDB_SEARCH_PORT=9200 ./target/release/bdb-search
 
 # Or during development (defaults: BDB_SEARCH_PORT=9200, BDB_QDRANT_PORT=6333)
 cargo run -p benodb-search
@@ -1060,7 +1060,7 @@ curl -X POST localhost:9200/articles/_search -H 'content-type: application/json'
 
 ```python
 # Python network client
-search = bsdb.SearchClient("http://127.0.0.1:9200")
+search = bdb.SearchClient("http://127.0.0.1:9200")
 results = search.hybrid_search(
     index="filings",
     text="revenue guidance semiconductor",
@@ -1084,7 +1084,7 @@ results = search.hybrid_search(
 uvx benodb-mcp --warehouse /path/to/warehouse
 ```
 
-MCP is treated as an **untrusted connector**: if `.benostream-policy.json` is absent, it is locked to read-only across persistent schemas (writes are limited to `scratch.*`). See [`contrib/benodb-mcp/README.md`](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-mcp/README.md) and [`docs/integrations/MCP.md`](https://benolabsai.com/docs/integrations/mcp.html).
+MCP is treated as an **untrusted connector**: if `.benodb-policy.json` is absent, it is locked to read-only across persistent schemas (writes are limited to `scratch.*`). See [`contrib/benodb-mcp/README.md`](https://github.com/benolabsai/benodb/blob/main/contrib/benodb-mcp/README.md) and [`docs/integrations/MCP.md`](https://benolabsai.com/docs/integrations/mcp.html).
 
 ## 🧪 Development
 
@@ -1155,7 +1155,7 @@ benodb/
 - [x] **Core Storage & Concurrency**: Hybrid segment format (Parquet + indexes), Iceberg V2/V3 manifests, atomic `PendingWrite` WAL buffer, `maintenance_lock` barriers, OCC commits.
 - [x] **Vector Search Overlays**: Zero-copy Arrow IPC HNSW & IVF-PQ, TurboQuant™ (TQ4/TQ8), SIMD intrinsics, GPU acceleration (`benodb-gpu-ann`: CUDA, Metal, Vulkan).
 - [x] **Text & Scalar Overlays**: Inverted BM25 Okapi indexes, Roaring Bitmap scalar indexes, Composite multi-column filters, Statistics pruning.
-- [x] **Embedding Provenance & Vector-Space Guard**: `benostream.embedding.*` Iceberg table properties, mirrored into `metadata/vN.metadata.json`; dimension checks in the engine write path and model/dimension immutability at the commit point across Python, SQL/Flight SQL, MCP, Spark, and Trino.
+- [x] **Embedding Provenance & Vector-Space Guard**: `benodb.embedding.*` Iceberg table properties, mirrored into `metadata/vN.metadata.json`; dimension checks in the engine write path and model/dimension immutability at the commit point across Python, SQL/Flight SQL, MCP, Spark, and Trino.
 - [x] **Core Graph Engine**: Zero-copy Memory-Mapped CSR Graph Index (`MmapCsrGraph`), Core Graph Traversal operator (`Table::graph_neighborhood`), Graph SQL UDFs.
 - [x] **Connectors & Gateways**: Apache Spark (`spark-benodb`), Trino (`trino-benodb`), dbt (`dbt-benodb`), Arrow Flight SQL server (`server/flight_sql`), Contrib Search Gateway (`contrib/benodb-search`), Contrib MCP server (`contrib/benodb-mcp`).
 

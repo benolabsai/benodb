@@ -53,7 +53,7 @@ impl Default for MemoryCatalogClient {
 impl MemoryCatalogClient {
     /// Create an isolated in-memory catalog with an isolated `memory://` warehouse.
     pub fn new() -> Self {
-        Self::with_warehouse(format!("memory://bsdb-mem-{}", uuid::Uuid::new_v4()))
+        Self::with_warehouse(format!("memory://bdb-mem-{}", uuid::Uuid::new_v4()))
     }
 
     /// Create an isolated in-memory catalog storing table data under `warehouse`.
@@ -77,7 +77,7 @@ impl MemoryCatalogClient {
             if name_or_uri.contains("://") {
                 name_or_uri.trim_end_matches('/').to_string()
             } else {
-                format!("memory://bsdb-mem-{}", name_or_uri.trim_matches('/'))
+                format!("memory://bdb-mem-{}", name_or_uri.trim_matches('/'))
             }
         });
         Self {

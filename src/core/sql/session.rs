@@ -14,11 +14,17 @@ type CatalogRegistry = std::sync::Arc<
     >,
 >;
 
-/// Session-scoped settings that SQL `SET benostream.<key>` may write.
+/// Session-scoped settings that SQL `SET benodb.<key>` may write.
 ///
 /// Deliberately an allowlist: SQL must never be able to rewrite process
 /// environment variables (credentials, endpoints) or affect other connections.
 pub const ALLOWED_SESSION_SETTINGS: &[&str] = &["warehouse", "default_index_algorithm"];
+
+/// Strip the engine prefix from a session setting name, accepting both the
+/// current and the pre-rename spelling so existing SQL keeps working.
+fn strip_setting_prefix(key: &str) -> &str {
+    key.strip_prefix("benodb.").unwrap_or(key)
+}
 
 #[derive(Clone)]
 pub struct BenoStreamSession {
@@ -30,7 +36,7 @@ pub struct BenoStreamSession {
     /// Base location used to derive a table URI when the catalog does not
     /// assign one (e.g. `s3://warehouse`).
     warehouse: Option<String>,
-    /// Session-scoped settings (`SET benostream.<key> = <value>`). Never written
+    /// Session-scoped settings (`SET benodb.<key> = <value>`). Never written
     /// to `std::env`; scoped to this session only.
     settings: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
 }
@@ -170,10 +176,10 @@ impl BenoStreamSession {
     /// Set a session-scoped setting. Returns an error for keys outside the
     /// allowlist so SQL cannot mutate process-wide state.
     pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        let key = key.strip_prefix("benostream.").unwrap_or(key);
+        let key = strip_setting_prefix(key);
         if !ALLOWED_SESSION_SETTINGS.contains(&key) {
             anyhow::bail!(
-                "unknown or disallowed session setting 'benostream.{}'; allowed: {}",
+                "unknown or disallowed session setting 'benodb.{}'; allowed: {}",
                 key,
                 ALLOWED_SESSION_SETTINGS.join(", ")
             );
@@ -187,7 +193,7 @@ impl BenoStreamSession {
 
     /// Read a session-scoped setting.
     pub async fn get_setting(&self, key: &str) -> Option<String> {
-        let key = key.strip_prefix("benostream.").unwrap_or(key);
+        let key = strip_setting_prefix(key);
         self.settings.read().await.get(key).cloned()
     }
 

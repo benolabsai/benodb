@@ -7,18 +7,18 @@ try:
 except ImportError:
     pytest = None
 
-import benodb as bsdb
+import benodb as bdb
 
 def _cuda_device_usable(device):
     """Return True only if `device` can actually execute a kernel.
 
-    `bsdb.Device(...)` is constructed lazily, so it does not raise when CUDA is
+    `bdb.Device(...)` is constructed lazily, so it does not raise when CUDA is
     unavailable; the failure surfaces later at compute time. Exercise a tiny
     cdist to distinguish a real device from a deferred backend error.
     """
     try:
         probe = np.zeros((16, 32), dtype=np.float32)
-        bsdb.cdist(probe, probe, metric="l2", device=device)
+        bdb.cdist(probe, probe, metric="l2", device=device)
         return True
     except Exception:
         return False
@@ -48,13 +48,13 @@ def test_multi_gpu_concurrent_cdist():
 
     def run_worker(dev, q, v):
         t0 = time.perf_counter()
-        res = bsdb.cdist(q, v, metric="l2", device=dev)
+        res = bdb.cdist(q, v, metric="l2", device=dev)
         dt = (time.perf_counter() - t0) * 1000.0
         name = dev if isinstance(dev, str) else getattr(dev, "device", str(dev))
         return name, res.shape, dt
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f0 = executor.submit(run_worker, bsdb.Device("cuda:0"), q1, v1)
+        f0 = executor.submit(run_worker, bdb.Device("cuda:0"), q1, v1)
         f1 = executor.submit(run_worker, "cuda:1", q2, v2)
         r0 = f0.result()
         r1 = f1.result()
@@ -67,11 +67,11 @@ def test_multi_gpu_concurrent_cdist():
 def test_multi_gpu_device_pool_dispatch():
     devices = "cuda:0,cuda:1" if has_dual_cuda() else "cpu,cpu"
     print(f"\n=== Testing GpuDevicePool Multi-GPU Concurrent Ingestion & Search ({devices}) ===")
-    pool = bsdb.set_gpu_device_pool(devices)
+    pool = bdb.set_gpu_device_pool(devices)
     expected = devices.split(",")
     print(f"Pool installed with devices: {pool}")
     assert pool == expected
-    assert bsdb.gpu_device_pool() == expected
+    assert bdb.gpu_device_pool() == expected
 
     # Ingest 20,000 vectors (128-d)
     dim = 128
@@ -83,7 +83,7 @@ def test_multi_gpu_device_pool_dispatch():
         ("id", pa.int64()),
         ("vector", pa.list_(pa.float32(), dim)),
     ])
-    table = bsdb.Table.create("memory://pool_test", schema)
+    table = bdb.Table.create("memory://pool_test", schema)
 
     batch_size = 5_000
     t0 = time.perf_counter()

@@ -1,14 +1,14 @@
 # BenoDB Admin CLI
 
-`bsdb-admin` is the official administrative tooling for BenoDB. It provides cluster operators with safe, easy-to-use commands to manage storage, optimize performance, and clean up historical data.
+`bdb-admin` is the official administrative tooling for BenoDB. It provides cluster operators with safe, easy-to-use commands to manage storage, optimize performance, and clean up historical data.
 
 ## Installation / Building
 If you are compiling from source, the admin CLI is built alongside the main engine:
 ```bash
-cargo build --release --bin bsdb-admin
+cargo build --release --bin bdb-admin
 ```
 
-The compiled binary will be located at `target/release/bsdb-admin`.
+The compiled binary will be located at `target/release/bdb-admin`.
 
 ## Commands
 
@@ -17,16 +17,16 @@ Over time, continuous ingestion can lead to fragmentation—creating hundreds or
 
 **Usage:**
 ```bash
-bsdb-admin compact --uri <TABLE_URI> [OPTIONS]
+bdb-admin compact --uri <TABLE_URI> [OPTIONS]
 ```
 
 **Options:**
-- `--uri`, `-u`: **(Required)** The storage URI of the table you want to compact. (e.g., `file:///tmp/bsdb`, `s3://my-bucket/table`)
+- `--uri`, `-u`: **(Required)** The storage URI of the table you want to compact. (e.g., `file:///tmp/bdb`, `s3://my-bucket/table`)
 - `--target-file-size`: **(Optional)** The ideal size for the compacted data files. The CLI accepts human-readable string values like `64MB`, `1GB`, `512K`. The default is `64MB`.
 
 **Example:**
 ```bash
-bsdb-admin compact --uri "s3://production-data/events_table" --target-file-size 128MB
+bdb-admin compact --uri "s3://production-data/events_table" --target-file-size 128MB
 ```
 
 ### 2. `vacuum`
@@ -39,7 +39,7 @@ The `vacuum` command permanently deletes these unreferenced historical files to 
 
 **Usage:**
 ```bash
-bsdb-admin vacuum --uri <TABLE_URI> [OPTIONS]
+bdb-admin vacuum --uri <TABLE_URI> [OPTIONS]
 ```
 
 **Options:**
@@ -48,7 +48,7 @@ bsdb-admin vacuum --uri <TABLE_URI> [OPTIONS]
 
 **Example:**
 ```bash
-bsdb-admin vacuum --uri "s3://production-data/events_table" --retain-versions 5
+bdb-admin vacuum --uri "s3://production-data/events_table" --retain-versions 5
 ```
 
 ## E2E Testing

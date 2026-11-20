@@ -651,7 +651,7 @@ impl HybridSegmentWriter {
             return Ok(dir);
         }
         let temp_dir = std::env::temp_dir()
-            .join("benostream_staging")
+            .join("benodb_staging")
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(&temp_dir)?;
         let _ = self.remote_staging_dir.set(temp_dir);
@@ -830,7 +830,7 @@ impl HybridSegmentWriter {
             self.config.base_path.contains("://") && !self.config.base_path.starts_with("file://");
         let (path, _local_staging_dir) = if is_remote {
             let temp_dir = std::env::temp_dir()
-                .join("benostream_staging")
+                .join("benodb_staging")
                 .join(uuid::Uuid::new_v4().to_string());
             std::fs::create_dir_all(&temp_dir)?;
             let filename = format!("{}.parquet", self.config.segment_id);
@@ -958,7 +958,7 @@ impl HybridSegmentWriter {
         });
 
         for local_path in files {
-            if !local_path.contains("benostream_staging") {
+            if !local_path.contains("benodb_staging") {
                 // Not a staged file, assume it's already in the right place (or local)
                 final_paths.push(local_path);
                 continue;

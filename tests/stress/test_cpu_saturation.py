@@ -14,7 +14,7 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 np = pytest.importorskip("numpy")
-bsdb = pytest.importorskip("benodb")
+bdb = pytest.importorskip("benodb")
 
 DIM = 64
 ROWS = 5_000
@@ -33,7 +33,7 @@ def _table(offset: int):
 def test_gated_builds_do_not_starve_queries(monkeypatch, table_uri, rows_of):
     monkeypatch.setenv("BDB_INDEX_BUILD_CONCURRENCY", "2")
 
-    table = bsdb.Table.create(
+    table = bdb.Table.create(
         table_uri,
         pa.schema([("id", pa.int64()), ("embedding", pa.list_(pa.float32(), DIM))]),
     )

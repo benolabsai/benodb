@@ -198,7 +198,7 @@ memory budget.
 
 | Operation | Time |
 |---|---|
-| bsdb ingest + commit, 91.7M edges | **37.8 s** |
+| bdb ingest + commit, 91.7M edges | **37.8 s** |
 | `connected_components()` (pointer jumping + edge contraction) | **137.4 s** → 509 components, largest 3.93M nodes |
 | `subgraph()` frontier BFS, hops=1 | **98.4 s** → 884,700 nodes / 18.7M edges |
 | CSR traversals (`shortest_path`, `graph_neighbors`, `connecting_paths`) | milliseconds (memory-mapped `.graph.csr.*`, zero-copy) |

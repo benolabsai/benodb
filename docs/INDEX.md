@@ -2,7 +2,7 @@
 
 BenoDB is an index-overlay engine for the lakehouse built in Rust. It layers reconstructible, persistent secondary indexes—HNSW vector search, BM25 Okapi full-text, Roaring Bitmaps, JSON path filters, and CSR graphs—directly onto Apache Iceberg tables in object storage.
 
-> **⚠️ Deployment Security Notice:** BenoDB network servers (`benodb-flight`, `bsdb-search`, and `benodb-mcp`) do not terminate TLS natively. They support stateless authentication (`BDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benodb/blob/main/SECURITY.md).
+> **⚠️ Deployment Security Notice:** BenoDB network servers (`benodb-flight`, `bdb-search`, and `benodb-mcp`) do not terminate TLS natively. They support stateless authentication (`BDB_API_KEY` or JWT tokens), but should be deployed on a trusted internal network or bound to `127.0.0.1` behind a reverse proxy that terminates TLS. See [SECURITY.md](https://github.com/benolabsai/benodb/blob/main/SECURITY.md).
 
 ---
 

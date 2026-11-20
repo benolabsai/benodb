@@ -338,7 +338,7 @@ pub async fn resolve_initial_metadata_location(table_location: &str) -> String {
 /// Ensure a BenoStreamDB / Iceberg table exists in object storage at `table_location`,
 /// initializing `_manifest/v1.json` and `metadata/v1.metadata.json` only if absent.
 ///
-/// Tolerates tables pre-created by a caller (e.g., `bsdb-search` creating storage
+/// Tolerates tables pre-created by a caller (e.g., `bdb-search` creating storage
 /// before catalog registration) as well as concurrent initialization races, returning
 /// the initial metadata JSON location.
 pub async fn ensure_storage_table_initialized(

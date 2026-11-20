@@ -109,7 +109,7 @@ impl ManifestManager {
             if metadata.discard_add_on_missing_remove
                 && remove_paths.iter().any(|p| !active_map.contains_key(p))
             {
-                metrics::counter!("bsdb_manifest_commit_skipped_removals_total").increment(1);
+                metrics::counter!("bdb_manifest_commit_skipped_removals_total").increment(1);
                 tracing::debug!(
                     "Compaction rebase: an input was already removed in snapshot v{}; discarding this compaction",
                     current_ver
@@ -133,7 +133,7 @@ impl ManifestManager {
                         );
                     }
                     if metadata.skip_missing_remove_paths {
-                        metrics::counter!("bsdb_manifest_commit_skipped_removals_total")
+                        metrics::counter!("bdb_manifest_commit_skipped_removals_total")
                             .increment(1);
                         tracing::debug!(
                             "MVCC rebase: '{}' already removed in snapshot v{}, skipping",
@@ -599,7 +599,7 @@ impl ManifestManager {
                 const MAX_TRACKED_WAL_TX: usize = 256;
                 let mut merged: Vec<String> = Vec::new();
                 let mut seen: HashSet<String> = HashSet::new();
-                if let Some(existing) = new_manifest.properties.get("benostream.committed_wal_tx") {
+                if let Some(existing) = new_manifest.properties.get("benodb.committed_wal_tx") {
                     for token in existing.split(',') {
                         let trimmed = token.trim();
                         if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
@@ -619,7 +619,7 @@ impl ManifestManager {
                 }
                 new_manifest
                     .properties
-                    .insert("benostream.committed_wal_tx".to_string(), merged.join(","));
+                    .insert("benodb.committed_wal_tx".to_string(), merged.join(","));
             }
 
             // Fill in the dimension from a known model id, then enforce the
@@ -680,7 +680,7 @@ impl ManifestManager {
                             || metadata.removed_properties.is_some())
                     {
                         if let Err(e) = self.sync_metadata_properties(&new_manifest).await {
-                            metrics::counter!("bsdb_metadata_property_sync_failures_total")
+                            metrics::counter!("bdb_metadata_property_sync_failures_total")
                                 .increment(1);
                             tracing::warn!(
                                 error = %e,
@@ -694,8 +694,8 @@ impl ManifestManager {
                 }
                 Err(e) if is_already_exists(&e) => {
                     self.invalidate_latest_version_cache().await;
-                    metrics::counter!("bsdb_manifest_commit_retries_total").increment(1);
-                    metrics::counter!("bsdb_manifest_commit_rebases_total").increment(1);
+                    metrics::counter!("bdb_manifest_commit_retries_total").increment(1);
+                    metrics::counter!("bdb_manifest_commit_rebases_total").increment(1);
                     if attempt % 10 == 0 || attempt > 90 {
                         tracing::debug!(
                             "Conflict committing Manifest v{} (attempt {}), retrying...",

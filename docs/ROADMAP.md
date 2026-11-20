@@ -298,11 +298,11 @@ Themes are ordered by priority.
     API is required**:
     ```
     contrib/benodb-ingest/
-      Cargo.toml            # [[lib]] + [[bin]] bsdb-ingest; features = kafka/nats/rabbitmq
+      Cargo.toml            # [[lib]] + [[bin]] bdb-ingest; features = kafka/nats/rabbitmq
       src/kafka.rs          # KafkaWorkCoordinator    : impl WorkCoordinator
       src/nats.rs           # NatsWorkCoordinator     : impl WorkCoordinator
       src/rabbitmq.rs       # RabbitMqWorkCoordinator : impl WorkCoordinator
-      src/main.rs           # bsdb-ingest daemon → Table::ingest_with_coordinator(..)
+      src/main.rs           # bdb-ingest daemon → Table::ingest_with_coordinator(..)
       tests/
     ```
   - **Why `contrib/` and not core:** the broker clients are heavy and
@@ -310,7 +310,7 @@ Themes are ordered by priority.
     and `async-nats`); pulling them into the default engine build would regress
     build time, binary size, and cross-platform reach. This mirrors the existing
     boundary — core = engine + traits, `contrib/` = deployment surfaces
-    (`bsdb-search`, `bsdb-mcp`) — with `bsdb-ingest` as the third column.
+    (`bdb-search`, `bdb-mcp`) — with `bdb-ingest` as the third column.
   - **Semantics to settle at implementation:** a broker *consumer* is a source of
     work, whereas `WorkCoordinator` is the queue/lease authority. Either
     implement the trait directly against the broker's consumer-group offsets
@@ -336,7 +336,7 @@ Themes are ordered by priority.
   schema from the authenticated subject (JWT `sub` / API-key id, sanitized to
   `scratch_<subject>`) and give ephemeral tables a TTL + background GC, so two
   agents never share a namespace. Today `scratch` is a single shared schema.
-- [ ] **Policy tooling & observability** — a `bsdb policy show|set|lint` CLI
+- [ ] **Policy tooling & observability** — a `bdb policy show|set|lint` CLI
   (lint flags schemas present in storage but absent from the policy), an
   effective-permissions read endpoint, and a
   `benostream_policy_denials_total{schema,action}` metric so over-restriction is

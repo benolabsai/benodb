@@ -229,9 +229,9 @@ LIMIT 10;
 ### Python API
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
-table = bsdb.Table("s3://bucket/documents")
+table = bdb.Table("s3://bucket/documents")
 
 # Pass index-tuning parameters alongside the vector filter
 results = table.to_pandas(

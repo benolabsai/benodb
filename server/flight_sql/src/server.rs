@@ -1094,7 +1094,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         tx.autocommit = false;
         tx.staged.clear();
         Ok(ActionBeginTransactionResult {
-            transaction_id: prost::bytes::Bytes::from_static(b"benostream-tx"),
+            transaction_id: prost::bytes::Bytes::from_static(b"benodb-tx"),
         })
     }
 

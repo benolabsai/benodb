@@ -41,9 +41,9 @@ def test_flight_sql_client_operations():
             cur.execute("MSCK REPAIR TABLE mydb.myschema.test_table;")
 
             # --- Session settings ----------------------------------------------
-            print("Executing SET / SHOW benostream.*...")
-            cur.execute("SET benostream.warehouse = '/tmp/bsdb-warehouse';")
-            cur.execute("SHOW benostream.warehouse;")
+            print("Executing SET / SHOW benodb.*...")
+            cur.execute("SET benodb.warehouse = '/tmp/bdb-warehouse';")
+            cur.execute("SHOW benodb.warehouse;")
             settings = cur.fetchall()
             print(f"warehouse = {settings}")
 

@@ -22,8 +22,8 @@ use super::Table;
 /// Remove internal WAL tracking metadata from schema
 fn clean_wal_metadata(schema: &Schema) -> Schema {
     let mut meta = schema.metadata().clone();
-    meta.remove("benostream:tx_id");
-    meta.remove("benostream:seq");
+    meta.remove("benodb:tx_id");
+    meta.remove("benodb:seq");
     schema.clone().with_metadata(meta)
 }
 
@@ -407,10 +407,10 @@ impl TableBuilder {
         // crash case (review case E): the commit succeeded but the process died
         // before the WAL was truncated, so replaying the record would duplicate
         // the committed rows. The committed tx ids are recorded in the manifest
-        // property `benostream.committed_wal_tx` at commit time.
+        // property `benodb.committed_wal_tx` at commit time.
         let committed_tx: std::collections::HashSet<uuid::Uuid> = manifest
             .properties
-            .get("benostream.committed_wal_tx")
+            .get("benodb.committed_wal_tx")
             .map(|s| {
                 s.split(',')
                     .filter_map(|t| uuid::Uuid::parse_str(t.trim()).ok())

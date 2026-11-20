@@ -4317,7 +4317,7 @@ class FlightClient:
 class SearchClient:
     """BenoDB Search client (OpenSearch 7.10 & Qdrant REST compatible).
 
-    Connects to the bsdb-search gateway for full-text lexical search, dense vector search,
+    Connects to the bdb-search gateway for full-text lexical search, dense vector search,
     and hybrid BM25 + dense retrieval.
     """
     def __init__(self, endpoint: str = "http://127.0.0.1:9200", api_key: Optional[str] = None):

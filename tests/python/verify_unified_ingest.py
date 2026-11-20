@@ -2,17 +2,17 @@ import os
 import shutil
 import pandas as pd
 import numpy as np
-import benodb as bsdb
+import benodb as bdb
 
 DB_PATH = "test_unified_verify_db"
 if os.path.exists(DB_PATH):
     shutil.rmtree(DB_PATH)
 
 # Setup
-table = bsdb.Table.create(DB_PATH, bsdb.Schema([
-    bsdb.Field("id", bsdb.DataType.int64()),
-    bsdb.Field("val", bsdb.DataType.float32()),
-    bsdb.Field("embedding", bsdb.DataType.vector(3))
+table = bdb.Table.create(DB_PATH, bdb.Schema([
+    bdb.Field("id", bdb.DataType.int64()),
+    bdb.Field("val", bdb.DataType.float32()),
+    bdb.Field("embedding", bdb.DataType.vector(3))
 ]))
 
 print("Testing Pandas ingest...")
@@ -63,11 +63,11 @@ print(res)
 
 print("\nTesting Unified Vector Search (string query)...")
 # Register fake embedding function
-class FakeEmbedder(bsdb.EmbeddingFunction):
+class FakeEmbedder(bdb.EmbeddingFunction):
     def __call__(self, texts):
         return np.array([[0.1, 0.2, 0.3]] * len(texts), dtype=np.float32)
 
-bsdb.registry.register("fake", FakeEmbedder())
+bdb.registry.register("fake", FakeEmbedder())
 table.define_embedding("text", "fake", vector_column="embedding")
 
 # This should trigger auto-vectorization of "hello" into [0.1, 0.2, 0.3]

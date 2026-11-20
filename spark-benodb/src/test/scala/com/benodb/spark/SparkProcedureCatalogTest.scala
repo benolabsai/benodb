@@ -35,14 +35,14 @@ class SparkProcedureCatalogTest {
 
   private def newCatalog: BenoDBProcedureCatalog = {
     val catalog = new BenoDBProcedureCatalog()
-    catalog.initialize("benostream", CaseInsensitiveStringMap.empty())
+    catalog.initialize("benodb", CaseInsensitiveStringMap.empty())
     catalog
   }
 
   @Test
   def testProcedureCatalogLoadAllProcedures(): Unit = {
     val catalog = newCatalog
-    assertEquals("benostream", catalog.name())
+    assertEquals("benodb", catalog.name())
 
     val systemNamespace = Array("system")
     for (procName <- canonicalProcedures ++ aliases) {

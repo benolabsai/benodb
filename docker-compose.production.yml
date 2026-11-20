@@ -16,28 +16,28 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.search
-    image: benodb/search:${BSDB_VERSION:-latest}
-    container_name: bsdb-search
+    image: benodb/search:${BDB_VERSION:-latest}
+    container_name: bdb-search
     restart: unless-stopped
     ports:
-      - "${BSDB_SEARCH_PORT:-9200}:9200"
-      - "${BSDB_QDRANT_PORT:-6333}:6333"
+      - "${BDB_SEARCH_PORT:-9200}:9200"
+      - "${BDB_QDRANT_PORT:-6333}:6333"
     environment:
-      - BSDB_SEARCH_BIND=0.0.0.0
-      - BSDB_SEARCH_PORT=9200
-      - BSDB_QDRANT_BIND=0.0.0.0
-      - BSDB_QDRANT_PORT=6333
-      - BSDB_AUTH_REQUIRED=1
-      - BSDB_API_KEY=${BSDB_API_KEY:-}
-      - BSDB_SEARCH_STORAGE_URI=${BSDB_SEARCH_STORAGE_URI:-s3://benostream/}
-      - BSDB_SEARCH_AUTO_REFRESH_SECS=${BSDB_SEARCH_AUTO_REFRESH_SECS:-5}
+      - BDB_SEARCH_BIND=0.0.0.0
+      - BDB_SEARCH_PORT=9200
+      - BDB_QDRANT_BIND=0.0.0.0
+      - BDB_QDRANT_PORT=6333
+      - BDB_AUTH_REQUIRED=1
+      - BDB_API_KEY=${BDB_API_KEY:-}
+      - BDB_SEARCH_STORAGE_URI=${BDB_SEARCH_STORAGE_URI:-s3://benodb/}
+      - BDB_SEARCH_AUTO_REFRESH_SECS=${BDB_SEARCH_AUTO_REFRESH_SECS:-5}
       # Resource limits are derived from the container's cgroup memory limit
       # (see RESOURCE_LIMITS.md). Leave these empty to use the derived defaults;
       # set them only to pin a value explicitly.
-      - BSDB_MAX_INGEST_RAM_GB=${BSDB_MAX_INGEST_RAM_GB:-}
-      - BSDB_INGEST_MEMORY_BUDGET_GB=${BSDB_INGEST_MEMORY_BUDGET_GB:-}
-      - BSDB_INDEX_BUILD_CONCURRENCY=${BSDB_INDEX_BUILD_CONCURRENCY:-}
-      - BSDB_MIN_FREE_DISK_GB=${BSDB_MIN_FREE_DISK_GB:-}
+      - BDB_MAX_INGEST_RAM_GB=${BDB_MAX_INGEST_RAM_GB:-}
+      - BDB_INGEST_MEMORY_BUDGET_GB=${BDB_INGEST_MEMORY_BUDGET_GB:-}
+      - BDB_INDEX_BUILD_CONCURRENCY=${BDB_INDEX_BUILD_CONCURRENCY:-}
+      - BDB_MIN_FREE_DISK_GB=${BDB_MIN_FREE_DISK_GB:-}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION:-us-east-1}
@@ -63,9 +63,9 @@ services:
           memory: ${SEARCH_MEMORY:-4G}
           cpus: "${SEARCH_CPUS:-2.0}"
     volumes:
-      - search-cache:/home/benostream/.benodb
+      - search-cache:/home/benodb/.benodb
     networks:
-      - benostream_net
+      - benodb_net
 
   # ---------------------
   # Flight SQL Service (Arrow Flight gRPC)
@@ -74,8 +74,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.flight
-    image: benodb/flight:${BSDB_VERSION:-latest}
-    container_name: bsdb-flight
+    image: benodb/flight:${BDB_VERSION:-latest}
+    container_name: bdb-flight
     restart: unless-stopped
     ports:
       - "${FLIGHT_PORT:-50051}:50051"
@@ -83,17 +83,17 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - BSDB_AUTH_REQUIRED=1
-      - BSDB_API_KEY=${BSDB_API_KEY:-}
-      - BSDB_FLIGHT_BIND=0.0.0.0
+      - BDB_AUTH_REQUIRED=1
+      - BDB_API_KEY=${BDB_API_KEY:-}
+      - BDB_FLIGHT_BIND=0.0.0.0
       - AWS_ENDPOINT=${AWS_ENDPOINT:-}
       - AWS_ALLOW_HTTP=${AWS_ALLOW_HTTP:-false}
       - RUST_LOG=${RUST_LOG:-info}
       # Derived from the container's cgroup memory limit; set to pin explicitly.
-      - BSDB_MAX_INGEST_RAM_GB=${BSDB_MAX_INGEST_RAM_GB:-}
-      - BSDB_INGEST_MEMORY_BUDGET_GB=${BSDB_INGEST_MEMORY_BUDGET_GB:-}
-      - BSDB_INDEX_BUILD_CONCURRENCY=${BSDB_INDEX_BUILD_CONCURRENCY:-}
-      - BSDB_MIN_FREE_DISK_GB=${BSDB_MIN_FREE_DISK_GB:-}
+      - BDB_MAX_INGEST_RAM_GB=${BDB_MAX_INGEST_RAM_GB:-}
+      - BDB_INGEST_MEMORY_BUDGET_GB=${BDB_INGEST_MEMORY_BUDGET_GB:-}
+      - BDB_INDEX_BUILD_CONCURRENCY=${BDB_INDEX_BUILD_CONCURRENCY:-}
+      - BDB_MIN_FREE_DISK_GB=${BDB_MIN_FREE_DISK_GB:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9090/health || exit 1"]
       interval: 30s
@@ -106,9 +106,9 @@ services:
           memory: ${FLIGHT_MEMORY:-4G}
           cpus: "${FLIGHT_CPUS:-2.0}"
     volumes:
-      - flight-cache:/home/benostream/.benodb
+      - flight-cache:/home/benodb/.benodb
     networks:
-      - benostream_net
+      - benodb_net
 
 volumes:
   search-cache:
@@ -117,5 +117,5 @@ volumes:
     driver: local
 
 networks:
-  benostream_net:
+  benodb_net:
     driver: bridge

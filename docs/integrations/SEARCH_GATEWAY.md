@@ -6,7 +6,7 @@
 
 ## Overview
 
-The search gateway runs as a standalone daemon (`bsdb-search`) and exposes two distinct REST interfaces simultaneously:
+The search gateway runs as a standalone daemon (`bdb-search`) and exposes two distinct REST interfaces simultaneously:
 1. **OpenSearch / Elasticsearch 7.10 Wire Protocol (Port 9200)**: Drop-in support for text search, `_bulk` ingestion, `_search` queries, term aggregations, and Kibana/Grafana connectivity.
 2. **Qdrant Vector REST Protocol (Port 6333)**: Compatibility for vector collections, point upserts, payload filtering, and nearest-neighbor search.
 
@@ -42,7 +42,7 @@ The search gateway runs as a standalone daemon (`bsdb-search`) and exposes two d
 
 ```bash
 # Start gateway listening on ports 9200 and 6333
-bsdb-search --bind 127.0.0.1 --port 9200 --storage-uri s3://my-bucket/search
+bdb-search --bind 127.0.0.1 --port 9200 --storage-uri s3://my-bucket/search
 ```
 
 ---

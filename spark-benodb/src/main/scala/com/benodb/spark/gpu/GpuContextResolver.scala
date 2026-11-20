@@ -13,7 +13,7 @@ object GpuContextResolver {
    * Priority:
    * 1. Dynamic TaskContext GPU resource allocation (e.g. spark.task.resource.gpu.amount)
    * 2. CUDA_VISIBLE_DEVICES environment variable
-   * 3. Configured fallback (e.g. table property or spark.benostream.gpu.device)
+   * 3. Configured fallback (e.g. table property or spark.benodb.gpu.device)
    * 4. "auto"
    */
   def resolveGpuDevice(configuredDevice: String = "auto"): String = {

@@ -3,7 +3,7 @@ import time
 import pandas as pd
 import numpy as np
 import pytest
-import benodb as bsdb
+import benodb as bdb
 
 # We will connect to the local Hive Metastore service exposed on port 9083
 HIVE_METASTORE_URL = "thrift://localhost:9083"
@@ -33,15 +33,15 @@ def test_hive_s3_catalog_integration():
     
     # 1. Initialize Hive Metastore Catalog
     try:
-        catalog = bsdb.create_catalog("hive", {"url": HIVE_METASTORE_URL})
+        catalog = bdb.create_catalog("hive", {"url": HIVE_METASTORE_URL})
     except Exception as e:
         pytest.skip(f"Hive Metastore not available: {e}")
 
     # 2. Define schema
-    schema = bsdb.Schema([
-        bsdb.Field("id", bsdb.DataType.int64()),
-        bsdb.Field("name", bsdb.DataType.string()),
-        bsdb.Field("value", bsdb.DataType.float64())
+    schema = bdb.Schema([
+        bdb.Field("id", bdb.DataType.int64()),
+        bdb.Field("name", bdb.DataType.string()),
+        bdb.Field("value", bdb.DataType.float64())
     ])
 
     # 3. Create a unique table in Hive Metastore on RustFS S3 storage

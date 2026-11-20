@@ -9,7 +9,7 @@ import org.junit.Test
  * uses to turn its `table` argument into an engine URI.
  *
  * The regression this guards against: `table.split(".").last` dropped the
- * namespace, so `benostream.default.users` and `users` were indistinguishable and
+ * namespace, so `benodb.default.users` and `users` were indistinguishable and
  * resolved against the wrong location.
  */
 class BenoDBTableResolverTest {
@@ -36,7 +36,7 @@ class BenoDBTableResolverTest {
   def catalogSchemaTableDropsOnlyTheCatalog(): Unit = {
     assertEquals(
       "s3://bucket/warehouse/sales/users",
-      BenoDBTableResolver.resolve(warehouse, "benostream.sales.users")
+      BenoDBTableResolver.resolve(warehouse, "benodb.sales.users")
     )
   }
 

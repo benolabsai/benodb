@@ -16,7 +16,7 @@ Requirements:
 """
 
 import numpy as np
-import benodb as bsdb
+import benodb as bdb
 
 # ============================================================================
 # Example 1: Single-Pair Distance Computations
@@ -37,22 +37,22 @@ def example_single_pair_distances():
     print()
     
     # Compute various distance metrics
-    l2_dist = bsdb.l2(vec_a, vec_b)
+    l2_dist = bdb.l2(vec_a, vec_b)
     print(f"L2 (Euclidean) distance: {l2_dist:.4f}")
     
-    cosine_dist = bsdb.cosine(vec_a, vec_b)
+    cosine_dist = bdb.cosine(vec_a, vec_b)
     print(f"Cosine distance: {cosine_dist:.4f}")
     
-    inner_prod = bsdb.inner_product(vec_a, vec_b)
+    inner_prod = bdb.inner_product(vec_a, vec_b)
     print(f"Inner product: {inner_prod:.4f}")
     
-    l1_dist = bsdb.l1(vec_a, vec_b)
+    l1_dist = bdb.l1(vec_a, vec_b)
     print(f"L1 (Manhattan) distance: {l1_dist:.4f}")
     
-    hamming_dist = bsdb.hamming(vec_a, vec_b)
+    hamming_dist = bdb.hamming(vec_a, vec_b)
     print(f"Hamming distance: {hamming_dist:.4f}")
     
-    jaccard_dist = bsdb.jaccard(vec_a, vec_b)
+    jaccard_dist = bdb.jaccard(vec_a, vec_b)
     print(f"Jaccard distance: {jaccard_dist:.4f}")
     print()
 
@@ -68,23 +68,23 @@ def example_gpu_context():
     print("=" * 80)
     
     # List available backends
-    backends = bsdb.ComputeContext.list_available_backends()
+    backends = bdb.ComputeContext.list_available_backends()
     print(f"Available backends: {backends}")
     print()
     
     # Auto-detect best backend
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     print(f"Auto-detected backend: {ctx.backend}")
     print(f"Device ID: {ctx.device_id}")
     print()
     
     # Create context with specific backend (if available)
     if 'cuda' in backends:
-        cuda_ctx = bsdb.ComputeContext('cuda')
+        cuda_ctx = bdb.ComputeContext('cuda')
         print(f"Created CUDA context: {cuda_ctx}")
     
     # Force CPU computation
-    cpu_ctx = bsdb.ComputeContext('cpu')
+    cpu_ctx = bdb.ComputeContext('cpu')
     print(f"Created CPU context: {cpu_ctx}")
     print()
     
@@ -92,8 +92,8 @@ def example_gpu_context():
     vec_a = np.random.rand(128).astype(np.float32)
     vec_b = np.random.rand(128).astype(np.float32)
     
-    dist_gpu = bsdb.l2(vec_a, vec_b, device=ctx)
-    dist_cpu = bsdb.l2(vec_a, vec_b, device=cpu_ctx)
+    dist_gpu = bdb.l2(vec_a, vec_b, device=ctx)
+    dist_cpu = bdb.l2(vec_a, vec_b, device=cpu_ctx)
     
     print(f"Distance (GPU): {dist_gpu:.6f}")
     print(f"Distance (CPU): {dist_cpu:.6f}")
@@ -123,7 +123,7 @@ def example_batch_operations():
     print()
     
     # Create GPU context for acceleration
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     print(f"Using backend: {ctx.backend}")
     print()
     
@@ -131,7 +131,7 @@ def example_batch_operations():
     import time
     
     start = time.time()
-    distances = bsdb.l2_batch(query, database, device=ctx)
+    distances = bdb.l2_batch(query, database, device=ctx)
     elapsed = time.time() - start
     
     print(f"Computed {len(distances)} distances in {elapsed*1000:.2f}ms")
@@ -150,9 +150,9 @@ def example_batch_operations():
     
     # Compare different metrics
     print("Comparing different distance metrics:")
-    l2_dists = bsdb.l2_batch(query, database[:100], device=ctx)
-    cosine_dists = bsdb.cosine_batch(query, database[:100], device=ctx)
-    inner_prods = bsdb.inner_product_batch(query, database[:100], device=ctx)
+    l2_dists = bdb.l2_batch(query, database[:100], device=ctx)
+    cosine_dists = bdb.cosine_batch(query, database[:100], device=ctx)
+    inner_prods = bdb.inner_product_batch(query, database[:100], device=ctx)
     
     print(f"  L2 distances (first 5): {l2_dists[:5]}")
     print(f"  Cosine distances (first 5): {cosine_dists[:5]}")
@@ -176,12 +176,12 @@ def example_sparse_vectors():
     # Sparse vector A: non-zero at indices [0, 100, 500, 1000]
     indices_a = np.array([0, 100, 500, 1000], dtype=np.uint32)
     values_a = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
-    sparse_a = bsdb.SparseVector(indices_a, values_a, dim)
+    sparse_a = bdb.SparseVector(indices_a, values_a, dim)
     
     # Sparse vector B: non-zero at indices [0, 200, 500, 1500]
     indices_b = np.array([0, 200, 500, 1500], dtype=np.uint32)
     values_b = np.array([1.5, 1.0, 3.5, 2.0], dtype=np.float32)
-    sparse_b = bsdb.SparseVector(indices_b, values_b, dim)
+    sparse_b = bdb.SparseVector(indices_b, values_b, dim)
     
     print(f"Sparse vector A: {len(indices_a)} non-zero elements in {dim} dimensions")
     print(f"  Indices: {indices_a}")
@@ -194,9 +194,9 @@ def example_sparse_vectors():
     print()
     
     # Compute sparse distances
-    l2_sparse = bsdb.l2_sparse(sparse_a, sparse_b)
-    cosine_sparse = bsdb.cosine_sparse(sparse_a, sparse_b)
-    inner_prod_sparse = bsdb.inner_product_sparse(sparse_a, sparse_b)
+    l2_sparse = bdb.l2_sparse(sparse_a, sparse_b)
+    cosine_sparse = bdb.cosine_sparse(sparse_a, sparse_b)
+    inner_prod_sparse = bdb.inner_product_sparse(sparse_a, sparse_b)
     
     print("Sparse distance computations:")
     print(f"  L2 distance: {l2_sparse:.4f}")
@@ -208,9 +208,9 @@ def example_sparse_vectors():
     dense_a = sparse_a.to_dense()
     dense_b = sparse_b.to_dense()
     
-    l2_dense = bsdb.l2(dense_a, dense_b)
-    cosine_dense = bsdb.cosine(dense_a, dense_b)
-    inner_prod_dense = bsdb.inner_product(dense_a, dense_b)
+    l2_dense = bdb.l2(dense_a, dense_b)
+    cosine_dense = bdb.cosine(dense_a, dense_b)
+    inner_prod_dense = bdb.inner_product(dense_a, dense_b)
     
     print("Dense distance computations (for verification):")
     print(f"  L2 distance: {l2_dense:.4f}")
@@ -245,11 +245,11 @@ def example_binary_vectors():
     print()
     
     # Compute Hamming distance (count of differing bits)
-    hamming_dist = bsdb.hamming_packed(binary_a, binary_b)
+    hamming_dist = bdb.hamming_packed(binary_a, binary_b)
     print(f"Hamming distance (packed): {hamming_dist} bits")
     
     # Compute Jaccard distance
-    jaccard_dist = bsdb.jaccard_packed(binary_a, binary_b)
+    jaccard_dist = bdb.jaccard_packed(binary_a, binary_b)
     print(f"Jaccard distance (packed): {jaccard_dist:.4f}")
     print()
     
@@ -263,8 +263,8 @@ def example_binary_vectors():
     print()
     
     # These functions automatically pack the vectors
-    hamming_auto = bsdb.hamming_auto(unpacked_a, unpacked_b)
-    jaccard_auto = bsdb.jaccard_auto(unpacked_a, unpacked_b)
+    hamming_auto = bdb.hamming_auto(unpacked_a, unpacked_b)
+    jaccard_auto = bdb.jaccard_auto(unpacked_a, unpacked_b)
     
     print(f"Hamming distance (auto-packed): {hamming_auto} bits")
     print(f"Jaccard distance (auto-packed): {jaccard_auto:.4f}")
@@ -282,7 +282,7 @@ def example_performance_monitoring():
     print("=" * 80)
     
     # Create GPU context
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     print(f"Using backend: {ctx.backend}")
     print()
     
@@ -294,7 +294,7 @@ def example_performance_monitoring():
     database = np.random.rand(50000, 256).astype(np.float32)
     
     print(f"Computing distances for {len(database)} vectors...")
-    distances = bsdb.l2_batch(query, database, device=ctx)
+    distances = bdb.l2_batch(query, database, device=ctx)
     print(f"Computed {len(distances)} distances")
     print()
     
@@ -345,8 +345,8 @@ def example_semantic_search():
     print(f"Embedding dimension: {document_embeddings.shape[1]}")
     print(f"Query: {query_text}\n")
 
-    ctx = bsdb.ComputeContext.auto_detect()
-    distances = bsdb.cosine_batch(query_embedding, document_embeddings, device=ctx)
+    ctx = bdb.ComputeContext.auto_detect()
+    distances = bdb.cosine_batch(query_embedding, document_embeddings, device=ctx)
 
     k = 5
     top_k_indices = np.argsort(distances)[:k]

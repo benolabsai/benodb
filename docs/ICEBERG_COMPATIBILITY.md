@@ -16,13 +16,13 @@ Iceberg spec's structural requirements.
 | Layer | Test | What it proves |
 |-------|------|----------------|
 | Structural (Rust) | `tests/test_iceberg_conformance.rs` | The metadata JSON, manifest-list Avro, and data-manifest Avro carry the spec-required fields, field-ids, and types. |
-| Independent reader (Python) | `tests/integration/test_bsdb_to_pyiceberg.py` | PyIceberg loads a BenoDB table and reads its data (schema + values) correctly. |
+| Independent reader (Python) | `tests/integration/test_bdb_to_pyiceberg.py` | PyIceberg loads a BenoDB table and reads its data (schema + values) correctly. |
 | Reverse direction (Python) | `tests/integration/test_pyiceberg_compat.py` | BenoDB reads a PyIceberg-written table. |
 
 Run the Python interop tests with the project virtualenv:
 
 ```bash
-.venv/bin/python -m pytest tests/integration/test_bsdb_to_pyiceberg.py -v
+.venv/bin/python -m pytest tests/integration/test_bdb_to_pyiceberg.py -v
 ```
 
 Validated against **pyiceberg 0.12.0** / **pyarrow 25.0.1**.

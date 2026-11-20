@@ -35,21 +35,21 @@ pip install benodb
 > - **Apple**: Requires macOS 12.3+ (Built-in Metal).
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Auto-detect and use best available compute backend
-device = bsdb.Device("auto")
+device = bdb.Device("auto")
 print(f"Using backend: {device.backend}")
 
 # Pick a specific backend (Torch-aligned strings)
-device = bsdb.Device("cuda")    # NVIDIA or AMD ROCm (Torch standard)
-device = bsdb.Device("xpu")     # Intel XPU (Torch standard)
-device = bsdb.Device("mps")     # Apple Silicon Metal
-device = bsdb.Device("cpu")     # CPU fallback (always available)
+device = bdb.Device("cuda")    # NVIDIA or AMD ROCm (Torch standard)
+device = bdb.Device("xpu")     # Intel XPU (Torch standard)
+device = bdb.Device("mps")     # Apple Silicon Metal
+device = bdb.Device("cpu")     # CPU fallback (always available)
 
 # Check availability
-print(bsdb.Device.is_available("cuda"))  # True if NVIDIA or AMD ROCm present
-print(bsdb.Device.is_available("xpu"))   # True if Intel hardware present
+print(bdb.Device.is_available("cuda"))  # True if NVIDIA or AMD ROCm present
+print(bdb.Device.is_available("xpu"))   # True if Intel hardware present
 ```
 
 ## NVIDIA CUDA Setup
@@ -127,17 +127,17 @@ If you are running BenoDB natively on Windows with an NVIDIA GPU, we would love 
 ### Verification
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 import numpy as np
 
 # Create CUDA context
-ctx = bsdb.ComputeContext("cuda")
+ctx = bdb.ComputeContext("cuda")
 print(f"CUDA backend initialized: {ctx.backend}")
 
 # Test GPU computation
 query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(10000, 768).astype(np.float32)
-distances = bsdb.l2_batch(query, database, device=ctx)
+distances = bdb.l2_batch(query, database, device=ctx)
 print(f"Computed {len(distances)} distances on GPU")
 
 # Check performance stats
@@ -215,17 +215,17 @@ sudo reboot
 ### Verification
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create ROCm context
-ctx = bsdb.ComputeContext("rocm")
+ctx = bdb.ComputeContext("rocm")
 print(f"ROCm backend initialized: {ctx.backend}")
 
 # Test computation
 import numpy as np
 query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(10000, 768).astype(np.float32)
-distances = bsdb.l2_batch(query, database, device=ctx)
+distances = bdb.l2_batch(query, database, device=ctx)
 print(f"Computed {len(distances)} distances on AMD GPU")
 ```
 
@@ -251,21 +251,21 @@ print(f"Computed {len(distances)} distances on AMD GPU")
 ### Verification
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Auto-detect should find Metal on Apple Silicon
-ctx = bsdb.ComputeContext.auto_detect()
+ctx = bdb.ComputeContext.auto_detect()
 print(f"Backend: {ctx.backend}")  # Should show "mps"
 
 # Or explicitly create Metal context
-ctx = bsdb.ComputeContext("mps")
+ctx = bdb.ComputeContext("mps")
 print(f"Metal backend initialized")
 
 # Test computation
 import numpy as np
 query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(10000, 768).astype(np.float32)
-distances = bsdb.l2_batch(query, database, device=ctx)
+distances = bdb.l2_batch(query, database, device=ctx)
 print(f"Computed {len(distances)} distances on Apple GPU")
 ```
 
@@ -308,7 +308,7 @@ vulkaninfo | grep "vendorID = 0x8086"
 # Verify Vulkan/WGPU installation
 vulkaninfo | grep vendor
 # Or check adapter listing in BenoDB
-python -c "import benodb as bsdb; print(bsdb.Device.list_available_backends())"
+python -c "import benodb as bdb; print(bdb.Device.list_available_backends())"
 ```
 
 ### Installation on Windows (via WSL2)
@@ -318,17 +318,17 @@ Windows users should ensure they have the latest Intel Graphics drivers installe
 ### Verification
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # Create XPU (Intel) context
-device = bsdb.Device("xpu")
+device = bdb.Device("xpu")
 print(f"Intel backend initialized: {device.backend}")
 
 # Test computation
 import numpy as np
 query = np.random.randn(768).astype(np.float32)
 database = np.random.randn(10000, 768).astype(np.float32)
-distances = bsdb.l2_batch(query, database, device=device)
+distances = bdb.l2_batch(query, database, device=device)
 print(f"Success: Computed on {device.backend}")
 ```
 
@@ -339,15 +339,15 @@ For systems with multiple GPUs, you can pin one device or install a pool.
 Pin a specific device:
 
 ```python
-import benodb as bsdb
+import benodb as bdb
 
 # List available backends
-ctx = bsdb.ComputeContext.auto_detect()
+ctx = bdb.ComputeContext.auto_detect()
 print(f"Available backends: {ctx.list_available_backends()}")
 
 # Use specific GPU device
-ctx = bsdb.ComputeContext("cuda", index=0)  # First GPU
-ctx = bsdb.ComputeContext("cuda", index=1)  # Second GPU
+ctx = bdb.ComputeContext("cuda", index=0)  # First GPU
+ctx = bdb.ComputeContext("cuda", index=1)  # Second GPU
 
 # Check which device is being used
 print(f"Using device: {ctx.device_id}")
@@ -357,11 +357,11 @@ Install a process-wide pool so worker threads spread across devices:
 
 ```python
 # Each worker thread that first asks for a context gets cuda:0 or cuda:1
-bsdb.set_gpu_device_pool("cuda:0,cuda:1")
-print(bsdb.gpu_device_pool())   # ['cuda:0', 'cuda:1']
+bdb.set_gpu_device_pool("cuda:0,cuda:1")
+print(bdb.gpu_device_pool())   # ['cuda:0', 'cuda:1']
 
 # Clear the pool and fall back to the process-wide device
-bsdb.set_gpu_device_pool("")
+bdb.set_gpu_device_pool("")
 ```
 
 For Flight SQL, MCP, and other server processes, use the same list:
@@ -389,14 +389,14 @@ pinned to different devices when you need both GPUs busy with independent search
 
 2. Check backend availability:
    ```python
-   ctx = bsdb.ComputeContext.auto_detect()
+   ctx = bdb.ComputeContext.auto_detect()
    print(ctx.list_available_backends())
    ```
 
 3. Try creating backend explicitly:
    ```python
    try:
-       ctx = bsdb.ComputeContext("cuda")
+       ctx = bdb.ComputeContext("cuda")
    except RuntimeError as e:
        print(f"CUDA not available: {e}")
    ```
@@ -412,7 +412,7 @@ pinned to different devices when you need both GPUs busy with independent search
    all_distances = []
    for i in range(0, len(database), chunk_size):
        chunk = database[i:i+chunk_size]
-       distances = bsdb.l2_batch(query, chunk, device=ctx)
+       distances = bdb.l2_batch(query, chunk, device=ctx)
        all_distances.append(distances)
    all_distances = np.concatenate(all_distances)
    ```

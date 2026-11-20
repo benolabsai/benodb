@@ -8,7 +8,7 @@ ground-truth model kept in Python.
 
 Run with the server listening on ``grpc://localhost:50051``::
 
-    BDB_WAREHOUSE=/tmp/bsdb-warehouse ./target/debug/benodb-flight &
+    BDB_WAREHOUSE=/tmp/bdb-warehouse ./target/debug/benodb-flight &
     pytest -v server/flight_sql/tests/test_flight_randomized_workload.py
 
 Environment:

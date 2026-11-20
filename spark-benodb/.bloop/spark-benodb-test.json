@@ -1,18 +1,18 @@
 {
     "version": "1.4.0",
     "project": {
-        "name": "spark-benostream-test",
-        "directory": "/home/ralbright/projects/benodb/spark-benostream",
-        "workspaceDir": "/home/ralbright/projects/benodb/spark-benostream",
+        "name": "spark-benodb-test",
+        "directory": "/home/ralbright/projects/benodb/spark-benodb",
+        "workspaceDir": "/home/ralbright/projects/benodb/spark-benodb",
         "sources": [
             
         ],
         "dependencies": [
-            "spark-benostream"
+            "spark-benodb"
         ],
         "classpath": [
-            "/home/ralbright/projects/benodb/spark-benostream/target/test-classes",
-            "/home/ralbright/projects/benodb/spark-benostream/target/classes",
+            "/home/ralbright/projects/benodb/spark-benodb/target/test-classes",
+            "/home/ralbright/projects/benodb/spark-benodb/target/classes",
             "/home/ralbright/.m2/repository/org/apache/spark/spark-sql_2.13/4.0.0-preview1/spark-sql_2.13-4.0.0-preview1.jar",
             "/home/ralbright/.m2/repository/org/rocksdb/rocksdbjni/8.11.4/rocksdbjni-8.11.4.jar",
             "/home/ralbright/.m2/repository/com/univocity/univocity-parsers/2.9.1/univocity-parsers-2.9.1.jar",
@@ -180,10 +180,10 @@
             "/home/ralbright/.m2/repository/net/java/dev/jna/jna/5.13.0/jna-5.13.0.jar",
             "/home/ralbright/.m2/repository/org/scala-lang/scala-library/2.13.14/scala-library-2.13.14.jar"
         ],
-        "out": "/home/ralbright/projects/benodb/spark-benostream/target",
-        "classesDir": "/home/ralbright/projects/benodb/spark-benostream/target/test-classes",
+        "out": "/home/ralbright/projects/benodb/spark-benodb/target",
+        "classesDir": "/home/ralbright/projects/benodb/spark-benodb/target/test-classes",
         "resources": [
-            "/home/ralbright/projects/benodb/spark-benostream/src/test/resources"
+            "/home/ralbright/projects/benodb/spark-benodb/src/test/resources"
         ],
         "scala": {
             "organization": "org.scala-lang",

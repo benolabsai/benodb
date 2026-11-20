@@ -20,16 +20,16 @@ use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
 /// Table properties recording which embedding space produced the vectors.
-pub const EMBEDDING_MODEL_PROP: &str = "benostream.embedding.model";
-pub const EMBEDDING_DIM_PROP: &str = "benostream.embedding.dim";
-pub const EMBEDDING_PROVIDER_PROP: &str = "benostream.embedding.provider";
-pub const EMBEDDING_ENDPOINT_PROP: &str = "benostream.embedding.endpoint";
-pub const EMBEDDING_QUERY_PREFIX_PROP: &str = "benostream.embedding.query_prefix";
+pub const EMBEDDING_MODEL_PROP: &str = "benodb.embedding.model";
+pub const EMBEDDING_DIM_PROP: &str = "benodb.embedding.dim";
+pub const EMBEDDING_PROVIDER_PROP: &str = "benodb.embedding.provider";
+pub const EMBEDDING_ENDPOINT_PROP: &str = "benodb.embedding.endpoint";
+pub const EMBEDDING_QUERY_PREFIX_PROP: &str = "benodb.embedding.query_prefix";
 
 /// Dimension produced by a known embedding model.
 ///
 /// This is a curated catalogue, not a downloaded model registry: it lets the
-/// engine derive `benostream.embedding.dim` from `benostream.embedding.model`
+/// engine derive `benodb.embedding.dim` from `benodb.embedding.model`
 /// for the common local and hosted models without loading anything. Unknown or
 /// custom models, and MRL-truncated vectors (e.g. bge-large at 512), still
 /// declare the dimension explicitly.
@@ -60,7 +60,7 @@ pub fn known_embedding_dim(model: &str) -> Option<usize> {
     }
 }
 
-/// Fill in `benostream.embedding.dim` from a known model id when the caller did
+/// Fill in `benodb.embedding.dim` from a known model id when the caller did
 /// not provide one. Never overwrites an explicit dimension (MRL truncation and
 /// custom models are legitimate).
 pub(crate) fn normalize_embedding_properties(properties: &mut HashMap<String, String>) {
@@ -78,7 +78,7 @@ pub(crate) fn normalize_embedding_properties(properties: &mut HashMap<String, St
 /// Reject changes to the declared embedding space once the table has data.
 ///
 /// `proposed` is the complete property map that would be committed. A table
-/// with no `benostream.embedding.model` yet is allowed to adopt provenance even
+/// with no `benodb.embedding.model` yet is allowed to adopt provenance even
 /// when it already holds data: that is the documented repair path for legacy
 /// tables. Once a model is declared, changing or removing it (or a declared
 /// dimension) requires a new table and a re-ingest.
@@ -119,15 +119,15 @@ pub(crate) fn validate_embedding_property_transition(
 }
 
 /// Validate that vectors in `batches` match the declared
-/// `benostream.embedding.dim`.
+/// `benodb.embedding.dim`.
 ///
 /// This runs in the engine's central write path, so Python, SQL/Flight SQL, the
 /// MCP server, and bulk ingest all get the same dimension guard. Tables with no
 /// declared dimension are unaffected (legacy behavior), and a `Field` that is
 /// not a recognizable vector column is ignored.
 ///
-/// The declared `benostream.embedding.dim` wins. When it is absent, the
-/// dimension is derived from a known `benostream.embedding.model` (BGE, E5,
+/// The declared `benodb.embedding.dim` wins. When it is absent, the
+/// dimension is derived from a known `benodb.embedding.model` (BGE, E5,
 /// Nomic, OpenAI, ...), or from a `FixedSizeList` vector column in the Arrow
 /// schema. Unknown/custom models and MRL-truncated vectors must declare the
 /// dimension explicitly.
@@ -534,7 +534,7 @@ mod tests {
         )
         .unwrap();
 
-        // No `benostream.embedding.dim` property: the fixed-size column's
+        // No `benodb.embedding.dim` property: the fixed-size column's
         // dimension (3) still catches the 2-d string vector.
         assert!(
             validate_embedding_batches_inner("file:///t", &HashMap::new(), &[batch], true).is_err()

@@ -1064,7 +1064,7 @@ def corpus_embedding_mismatch(scratch_dir: str, backend) -> str:
     return ""
 
 
-def build_tables(bsdb, scratch_dir: str, records: list, mode: str = "tq8", backend=None,
+def build_tables(bdb, scratch_dir: str, records: list, mode: str = "tq8", backend=None,
                  encode_chunk: int = 1024, encode_eta_limit: float = 7200.0,
                  allow_slow_encode: bool = False, encode_backends=None,
                  edge_weighting: str = "idf", encode_batch_size: int = 32,
@@ -1299,7 +1299,7 @@ def build_tables(bsdb, scratch_dir: str, records: list, mode: str = "tq8", backe
 
     # 1. Ingest Corpus Table
     print(f"    -> Writing musique_corpus Iceberg table ({embed_dim}-d embeddings)...", flush=True)
-    corpus_table = bsdb.Table.create(
+    corpus_table = bdb.Table.create(
         corpus_dir,
         schema=pa.schema([
             pa.field("id", pa.uint64()),
@@ -1331,7 +1331,7 @@ def build_tables(bsdb, scratch_dir: str, records: list, mode: str = "tq8", backe
 
     # 2. Ingest Edge Table
     print("    -> Writing musique_edges Iceberg edge table...", flush=True)
-    edge_table = bsdb.Table.create_edge_table(
+    edge_table = bdb.Table.create_edge_table(
         edge_dir,
         node_id_type="uint64",
         with_relation=True,
@@ -2201,7 +2201,7 @@ def main():
         print(f"[musique] Corpus encode devices: {', '.join(b.device for b in encode_backends)}",
               flush=True)
 
-    import benodb as bsdb
+    import benodb as bdb
 
     dataset_path = ensure_dataset(args.data_dir)
     records = load_musique_records(dataset_path, args.max_questions)
@@ -2250,7 +2250,7 @@ def main():
 
     if args.rebuild or not os.path.exists(corpus_dir) or not os.path.exists(edge_dir):
         corpus_table, edge_table, unique_passages = build_tables(
-            bsdb, args.scratch_dir, records, mode=args.mode, backend=backend,
+            bdb, args.scratch_dir, records, mode=args.mode, backend=backend,
             encode_chunk=args.encode_chunk,
             encode_eta_limit=args.encode_eta_limit,
             allow_slow_encode=args.allow_slow_encode,
@@ -2262,8 +2262,8 @@ def main():
         )
     else:
         print(f"Reusing existing tables at {args.scratch_dir}...")
-        corpus_table = bsdb.Table(corpus_dir)
-        edge_table = bsdb.Table(edge_dir)
+        corpus_table = bdb.Table(corpus_dir)
+        edge_table = bdb.Table(edge_dir)
         # Read exact IDs directly from corpus_table to guarantee 100% ID alignment
         unique_passages = {}
         try:

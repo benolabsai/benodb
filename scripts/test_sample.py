@@ -5,7 +5,7 @@ import pyarrow.parquet as pq
 
 # Ensure benodb is in path
 sys.path.insert(0, os.path.abspath("python"))
-import benodb as bsdb
+import benodb as bdb
 
 def main():
     candidates = [
@@ -22,14 +22,14 @@ def main():
     
     # Check if we've already created it, so we can re-run quickly
     if os.path.exists("data/sample_db"):
-        embt = bsdb.Table(table_uri)
+        embt = bdb.Table(table_uri)
     else:
         import pyarrow as pa
         schema = pa.schema([
             pa.field("section_id", pa.int64()),
             pa.field("embedding", pa.list_(pa.float32()))
         ])
-        embt = bsdb.Table.create(table_uri, schema)
+        embt = bdb.Table.create(table_uri, schema)
         print(f"Loading {part_path}...")
         pq_f = pq.ParquetFile(part_path)
         done = 0

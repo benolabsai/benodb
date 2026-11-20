@@ -29,7 +29,7 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-bsdb-search &
+bdb-search &
 SEARCH_PID=$!
 
 # Wait for either process to exit

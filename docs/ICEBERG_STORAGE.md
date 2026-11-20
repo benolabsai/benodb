@@ -44,10 +44,10 @@ In BenoDB, table state is decoupled into three structural layers:
 
 ```python
 import pyarrow as pa
-import benodb as bsdb
+import benodb as bdb
 
 # Open or create an Iceberg table on local filesystem or object storage (S3/GCS/Azure)
-table = bsdb.Table("s3://lakehouse/warehouse/telemetry_events")
+table = bdb.Table("s3://lakehouse/warehouse/telemetry_events")
 
 # Define an explicit Arrow schema with an embedding column
 schema = pa.schema([
@@ -184,7 +184,7 @@ print(f"Successfully loaded {len(arrow_data)} rows via PyIceberg!")
 
 ## 4. Feature Conformance Matrix (Iceberg V2 / V3)
 
-The table below reflects machine-checked verification via `tests/test_iceberg_conformance.rs` and `tests/integration/test_bsdb_to_pyiceberg.py` against **PyIceberg 0.12.0** and **PyArrow 25.0.1**:
+The table below reflects machine-checked verification via `tests/test_iceberg_conformance.rs` and `tests/integration/test_bdb_to_pyiceberg.py` against **PyIceberg 0.12.0** and **PyArrow 25.0.1**:
 
 | Specification Feature | Target Version | Conformance Status | Technical Notes |
 | :--- | :---: | :---: | :--- |

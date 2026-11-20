@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""ES 7.10 conformance suite for the ``bsdb-search`` binary (plan Step 4.1).
+"""ES 7.10 conformance suite for the ``bdb-search`` binary (plan Step 4.1).
 
 Exercises the live REST API end to end: document ingestion via HTTP POST
 (auto- and explicit-id writes, duplicate rejection), dynamic index creation
 with schema evolution, and hybrid lexical + vector search (BM25 ``match``,
-``knn``, fused hybrid, filters, pagination) against a spawned ``bsdb-search``
+``knn``, fused hybrid, filters, pagination) against a spawned ``bdb-search``
 process.
 
 Run from the repo root:
@@ -25,8 +25,8 @@ import requests
 CRATE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BINARY_CANDIDATES = [
-    CRATE_ROOT / "target" / "debug" / "bsdb-search",
-    REPO_ROOT / "target" / "debug" / "bsdb-search",
+    CRATE_ROOT / "target" / "debug" / "benodb-search",
+    REPO_ROOT / "target" / "debug" / "benodb-search",
 ]
 BINARY = next((p for p in BINARY_CANDIDATES if p.exists()), BINARY_CANDIDATES[0])
 
@@ -41,7 +41,7 @@ def _free_port() -> int:
 
 
 class Api:
-    """HTTP helpers bound to one bsdb-search process."""
+    """HTTP helpers bound to one benodb-search process."""
 
     def __init__(self, base: str, session: requests.Session):
         self.base = base
@@ -112,10 +112,10 @@ class Api:
 @pytest.fixture(scope="session")
 def api(tmp_path_factory):
     if not BINARY.exists():
-        pytest.skip(f"{BINARY} not built; run `cargo build --bin bsdb-search` first")
+        pytest.skip(f"{BINARY} not built; run `cargo build --bin benodb-search` first")
 
     port = _free_port()
-    storage = tmp_path_factory.mktemp("bsdb-search")
+    storage = tmp_path_factory.mktemp("benodb-search")
     env = {
         **os.environ,
         "BDB_SEARCH_BIND": "127.0.0.1",
@@ -146,7 +146,7 @@ def api(tmp_path_factory):
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        pytest.fail("bsdb-search did not become ready within 60s")
+        pytest.fail("bdb-search did not become ready within 60s")
 
     yield Api(base, requests.Session())
 
@@ -162,8 +162,8 @@ def test_cluster_root(api):
     r = api.session.get(api.base + "/")
     assert r.status_code == 200
     body = r.json()
-    assert body["name"] == "bsdb-search-1"
-    assert body["cluster_name"] == "bsdb-search"
+    assert body["name"] == "bdb-search-1"
+    assert body["cluster_name"] == "benodb-search"
     uuid.UUID(body["cluster_uuid"])  # random v4 per process
     version = body["version"]
     assert version["number"] == "7.10.2"
@@ -179,7 +179,7 @@ def test_health_endpoints(api):
         r = api.session.get(api.base + path)
         assert r.status_code == 200, path
         h = r.json()
-        assert h["cluster_name"] == "bsdb-search"
+        assert h["cluster_name"] == "benodb-search"
         assert h["status"] == "green"
         assert h["timed_out"] is False
         assert h["number_of_nodes"] == 1
@@ -197,8 +197,8 @@ def test_metrics(api):
     assert len(r.text.strip()) > 0
     # The merged body must include both the gateway's own registry and the
     # core engine's metrics.
-    assert "bsdb_search_" in r.text
-    assert "bsdb_ingest_rows_total" in r.text
+    assert "bdb_search_" in r.text
+    assert "bdb_ingest_rows_total" in r.text
 
 
 def test_doc_write_semantics(api):
@@ -695,7 +695,7 @@ def test_cat_indices_and_cluster_stats(api):
     r = api.cluster_stats()
     assert r.status_code == 200
     body = r.json()
-    assert body["cluster_name"] == "bsdb-search"
+    assert body["cluster_name"] == "benodb-search"
     assert body["status"] == "green"
     assert body["indices"]["count"] >= 1
     assert body["nodes"]["count"]["total"] == 1

@@ -3,7 +3,7 @@ import sys
 import os
 import time
 import numpy as np
-import benodb as bsdb
+import benodb as bdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path
@@ -57,10 +57,10 @@ def test_vector_search_flow():
     # shutil.rmtree(f"{tempfile.gettempdir()}/benostream_test/embeddings", ignore_errors=True) 
     
     try:
-        table = bsdb.Table(table_uri)
+        table = bdb.Table(table_uri)
     except AttributeError:
         print("AttributeError: Table not found. Checking exposed classes...")
-        print(dir(bsdb))
+        print(dir(bdb))
         sys.exit(1)
 
     # Enable indexing for vector search

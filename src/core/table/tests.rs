@@ -381,20 +381,20 @@ async fn table_properties_are_mirrored_into_iceberg_metadata() -> Result<()> {
     // Only the model is provided; the engine derives the dimension (384) from
     // the known model catalogue.
     table
-        .set_property_async("benostream.embedding.model", "BAAI/bge-small-en-v1.5")
+        .set_property_async("benodb.embedding.model", "BAAI/bge-small-en-v1.5")
         .await?;
 
     let store = crate::core::storage::create_object_store(&uri)?;
     let meta = crate::core::metadata::TableMetadata::load_latest(store.as_ref()).await?;
     assert_eq!(
         meta.properties
-            .get("benostream.embedding.model")
+            .get("benodb.embedding.model")
             .map(String::as_str),
         Some("BAAI/bge-small-en-v1.5")
     );
     assert_eq!(
         meta.properties
-            .get("benostream.embedding.dim")
+            .get("benodb.embedding.dim")
             .map(String::as_str),
         Some("384")
     );
@@ -411,7 +411,7 @@ async fn table_properties_are_mirrored_into_iceberg_metadata() -> Result<()> {
     let meta = crate::core::metadata::TableMetadata::load_latest(store.as_ref()).await?;
     assert_eq!(
         meta.properties
-            .get("benostream.embedding.model")
+            .get("benodb.embedding.model")
             .map(String::as_str),
         Some("BAAI/bge-small-en-v1.5")
     );
@@ -445,7 +445,7 @@ async fn metadata_only_property_commit_is_mirrored() -> Result<()> {
             &[],
             crate::core::manifest::CommitMetadata {
                 updated_properties: Some(std::collections::HashMap::from([(
-                    "benostream.embedding.model".to_string(),
+                    "benodb.embedding.model".to_string(),
                     "custom-embed-v1".to_string(),
                 )])),
                 ..Default::default()
@@ -456,7 +456,7 @@ async fn metadata_only_property_commit_is_mirrored() -> Result<()> {
     let meta = crate::core::metadata::TableMetadata::load_latest(store.as_ref()).await?;
     assert_eq!(
         meta.properties
-            .get("benostream.embedding.model")
+            .get("benodb.embedding.model")
             .map(String::as_str),
         Some("custom-embed-v1")
     );

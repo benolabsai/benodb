@@ -19,7 +19,7 @@ jupyter lab examples/tutorials
 ```
 
 Each notebook is self-contained (no external datasets or model downloads) and
-writes to `/tmp/bsdb_tutorial*`.
+writes to `/tmp/bdb_tutorial*`.
 
 ## Kernels
 

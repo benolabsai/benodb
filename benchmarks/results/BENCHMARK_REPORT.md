@@ -64,7 +64,7 @@ Probes are cheap and machine-state sensitive, not engine benchmarks: they move w
   (BenoDB, FAISS, hnswlib, LanceDB) run in-process, while client-server
   engines (Milvus, Qdrant, Weaviate, OpenSearch, pgvector) include a per-query
   RPC round-trip that is not index-search cost.
-- The GPU kernel numbers in §1b are a microbenchmark of `bsdb.cdist`; they
+- The GPU kernel numbers in §1b are a microbenchmark of `bdb.cdist`; they
   do not imply GPU speedups for HNSW/IVF search, which is CPU-bound at
   these sizes.
 
@@ -87,7 +87,7 @@ Index-variant characterization for BenoDB itself (HNSW and TurboQuant `hnsw_tq8`
 
 ### GPU Acceleration on Large Batch Workloads
 
-BenoDB provides native GPU acceleration (`bsdb.cdist`, CUDA/Triton) for high-throughput batching, brute-force k-NN reranking, and centroid clustering (k-means) across large vector datasets. While index beam traversals (HNSW) in this report are measured on a standardized CPU container envelope (8 cores, 16 GB RAM) for strict hardware parity with competitors, GPU kernels accelerate batch distance matrix operations by 30×–60× on large-scale datasets.
+BenoDB provides native GPU acceleration (`bdb.cdist`, CUDA/Triton) for high-throughput batching, brute-force k-NN reranking, and centroid clustering (k-means) across large vector datasets. While index beam traversals (HNSW) in this report are measured on a standardized CPU container envelope (8 cores, 16 GB RAM) for strict hardware parity with competitors, GPU kernels accelerate batch distance matrix operations by 30×–60× on large-scale datasets.
 
 ## 2. Graph Analytics Performance (BenoDB vs NetworkX vs Neo4j + GDS)
 
@@ -381,7 +381,7 @@ BenoDB's embedded Rust engine parses the raw edge lists and builds an in-memory 
 
 ## 9. Docker Competitor Matrix (shared hardware envelope)
 
-All vector index traversals are evaluated under a standardized 8-core CPU envelope for strict hardware parity. BenoDB provides native GPU acceleration (`bsdb.cdist`) for high-throughput batching, matrix multiplication, and clustering across large vector datasets.
+All vector index traversals are evaluated under a standardized 8-core CPU envelope for strict hardware parity. BenoDB provides native GPU acceleration (`bdb.cdist`) for high-throughput batching, matrix multiplication, and clustering across large vector datasets.
 
 **What each QPS column pays.** `Index QPS` times the index query alone: every engine returns identifiers and scores — `segment_id`/`row_id`/`score` for BenoDB, ids plus distances for the competitors — and reads no payload. `Row QPS` times the same query followed by payload hydration, and the projection is the same on both sides: `id` and the vector column. A competitor's row is therefore a 784-float embedding and so is ours, rather than one side fetching a narrow identifier and the other a full vector. When refinement is enabled it is applied inside both columns.
 

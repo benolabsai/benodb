@@ -12,9 +12,9 @@ echo "1. Generating test data using setup_test_data..."
 cargo run --bin setup_test_data
 
 echo "2. Testing Compaction..."
-cargo run --bin bsdb-admin -- compact --uri "$TEST_URI" --target-file-size 10MB
+cargo run --bin bdb-admin -- compact --uri "$TEST_URI" --target-file-size 10MB
 
 echo "3. Testing Vacuum..."
-cargo run --bin bsdb-admin -- vacuum --uri "$TEST_URI" --retain-versions 1
+cargo run --bin bdb-admin -- vacuum --uri "$TEST_URI" --retain-versions 1
 
 echo "E2E Admin CLI tests completed successfully!"

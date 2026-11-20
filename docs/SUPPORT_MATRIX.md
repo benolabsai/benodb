@@ -23,8 +23,8 @@ smoke-test target (CI runs 3.10–3.12, with ABI3 wheels built on 3.10):
 | macOS | `x86_64`, `aarch64` | |
 | Windows | `x86_64` | `aarch64` not shipped (no aarch64 Python interpreter on the runner) |
 
-Artifacts per release: core wheel, `bsdb-search` gateway wheel, `bsdb-flight`
-server wheel, `bsdb-mcp` server wheel, plus a source distribution. The release
+Artifacts per release: core wheel, `bdb-search` gateway wheel, `bdb-flight`
+server wheel, `bdb-mcp` server wheel, plus a source distribution. The release
 gate runs the weekly soak (`soak.yml`) and a lock-down `soak-gate` job before
 any tag is published. Writes are byte-reproducible for a given revision because
 `SOURCE_DATE_EPOCH` is pinned in the release workflow.

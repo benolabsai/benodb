@@ -4,7 +4,7 @@
 > ([`gather_text`](https://github.com/benolabsai/benodb/blob/main/src/telemetry/metrics.rs#L313) +
 > [`render_metrics`](https://github.com/benolabsai/benodb/blob/main/src/core/telemetry.rs#L50)); the `observability` exporter
 > is configurable (`BDB_METRICS_BIND`/`BDB_METRICS_PORT`, localhost default);
-> Flight SQL serves `/metrics`, `/health`, `/readyz`; `bsdb-search` merges the
+> Flight SQL serves `/metrics`, `/health`, `/readyz`; `bdb-search` merges the
 > core registry; and the JNI `gatherMetrics()` bridge is in place for the Spark
 > and Trino connectors. The env-var prefix was unified to `BDB_` /
 > `BDB_SEARCH_` / `BDB_QDRANT_` (hard rename, no aliases).
@@ -18,7 +18,7 @@
 
 Implements the recommendations from the observability review. Goal: one metrics
 source of truth in the core, exposed by every host — Flight SQL as the canonical
-server-mode surface, `bsdb-search` merged, and a JNI bridge for the JVM
+server-mode surface, `bdb-search` merged, and a JNI bridge for the JVM
 connectors.
 
 ## Design decisions
@@ -84,12 +84,12 @@ Spawn the server on a background task so `init_metrics_exporter()` returns.
       `503` otherwise.
 - Keep the gRPC listener on `50051`; the HTTP listener is separate.
 
-### 4. Merge core registry into `bsdb-search` — `contrib/benodb-search`
+### 4. Merge core registry into `bdb-search` — `contrib/benodb-search`
 
 - `src/handlers/metrics.rs`: append
   `benodb::telemetry::metrics::gather_text()` to
   `state.metrics.gather_text()`. Namespaces do not collide
-  (`bsdb_search_*` vs `benostreamdb_*`).
+  (`bdb_search_*` vs `benostreamdb_*`).
 - Add a test asserting a core metric name appears in the `/metrics` body.
 
 ### 5. JNI bridge — `src/core/ffi.rs`
@@ -129,13 +129,13 @@ Follow-up (optional, larger): register the parsed metrics into Spark's
 - `cargo build --features java`
 - `cargo test -p benodb-flight` and the search metrics test.
 - Manual: `curl localhost:9090/metrics` on Flight SQL; confirm
-  `benostreamdb_*` and `bsdb_search_*` both appear on `bsdb-search`.
+  `benostreamdb_*` and `bdb_search_*` both appear on `bdb-search`.
 
 ### 7. Documentation
 
 - `docs/monitoring.md`: document the endpoints per deployment mode, the
   `BDB_METRICS_BIND`/`BDB_METRICS_PORT` knobs, and the full metric catalog
-  (`benostreamdb_*` and `bsdb_search_*`) with what a rising value means.
+  (`benostreamdb_*` and `bdb_search_*`) with what a rising value means.
 - `docs/CONFIGURATION.md`: add the two metrics env vars.
 - `docs/RESOURCE_LIMITS.md`: cross-reference the metrics endpoint.
 

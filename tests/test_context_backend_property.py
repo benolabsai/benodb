@@ -11,7 +11,7 @@ the backend name that was used to create it.
 """
 import pytest
 from hypothesis import given, settings, strategies as st
-import benodb as bsdb
+import benodb as bdb
 
 
 # Strategy for valid backend names
@@ -35,12 +35,12 @@ def test_context_backend_property(backend, device_id):
     backend is available on the current system.
     """
     # Get list of available backends
-    available_backends = bsdb.ComputeContext.list_available_backends()
+    available_backends = bdb.ComputeContext.list_available_backends()
     
     # Property: backend property should match the backend used to create it
     if backend in available_backends:
         # Backend is available - should succeed
-        ctx = bsdb.ComputeContext(backend, index=device_id)
+        ctx = bdb.ComputeContext(backend, index=device_id)
         
         assert ctx.backend == backend.lower(), \
             f"Expected backend '{backend.lower()}', got '{ctx.backend}'"
@@ -49,7 +49,7 @@ def test_context_backend_property(backend, device_id):
     else:
         # Backend is not available. All backends now probe and fall back to
         # CPU instead of raising RuntimeError.
-        ctx = bsdb.ComputeContext(backend, index=device_id)
+        ctx = bdb.ComputeContext(backend, index=device_id)
         assert ctx.backend == 'cpu', \
             f"Unavailable backend '{backend}' should fall back to cpu, got '{ctx.backend}'"
 
@@ -61,7 +61,7 @@ def test_auto_detect_backend_property(device_id):
     Property: For auto-detected contexts, the backend property should return
     one of the valid backend names.
     """
-    ctx = bsdb.ComputeContext.auto_detect()
+    ctx = bdb.ComputeContext.auto_detect()
     
     # Property: backend should be one of the valid backends
     valid_backend_names = ['cpu', 'cuda', 'rocm', 'mps', 'intel']
@@ -69,7 +69,7 @@ def test_auto_detect_backend_property(device_id):
         f"Auto-detected backend '{ctx.backend}' is not valid"
     
     # Property: backend should be in the list of available backends
-    available_backends = bsdb.ComputeContext.list_available_backends()
+    available_backends = bdb.ComputeContext.list_available_backends()
     assert ctx.backend in available_backends, \
         f"Auto-detected backend '{ctx.backend}' not in available backends: {available_backends}"
 
@@ -95,11 +95,11 @@ def test_backend_case_insensitive_property(backend):
     backend_lower = backend.lower()
     
     # Get list of available backends
-    available_backends = bsdb.ComputeContext.list_available_backends()
+    available_backends = bdb.ComputeContext.list_available_backends()
     
     if backend_lower in available_backends:
         # Backend is available - should succeed
-        ctx = bsdb.ComputeContext(backend)
+        ctx = bdb.ComputeContext(backend)
         
         # Property: backend property should always return lowercase
         assert ctx.backend == backend_lower, \

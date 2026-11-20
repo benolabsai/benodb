@@ -1,4 +1,4 @@
-import benodb as bsdb
+import benodb as bdb
 import pandas as pd
 import numpy as np
 import os
@@ -23,7 +23,7 @@ def run_rag_demo():
     ctx = None
     for target in ["cuda", "intel"]:
         try:
-            ctx = bsdb.ComputeContext(target)
+            ctx = bdb.ComputeContext(target)
             print(f"Using {target.upper()} GPU compute context")
             break
         except Exception:
@@ -49,7 +49,7 @@ def run_rag_demo():
 
     # 4. Ingest into BenoStreamDB
     print(f"Ingesting {len(df)} entries into BenoStreamDB...")
-    table = bsdb.Table(db_path, explain=True, device=ctx)
+    table = bdb.Table(db_path, explain=True, device=ctx)
     table.add_index_columns(["embedding", "doc_id", "title"])
     table.write_pandas(df)
     table.commit()

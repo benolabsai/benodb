@@ -12,12 +12,12 @@ metrics regardless of how the engine is deployed.
 |---|---|---|
 | **Embedded library** (Python / Rust) | `http://<BDB_METRICS_BIND>:<BDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`), enabled by the `observability` feature | `/health`, `/readyz` |
 | **Flight SQL server** (`benodb-flight`) | `http://<BDB_METRICS_BIND>:<BDB_METRICS_PORT>/metrics` (default `127.0.0.1:9090`) | `/health`, `/readyz` |
-| **Search gateway** (`bsdb-search`) | `http://<BDB_SEARCH_BIND>:<BDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
+| **Search gateway** (`bdb-search`) | `http://<BDB_SEARCH_BIND>:<BDB_SEARCH_PORT>/metrics` (default `127.0.0.1:9200`) | `/_health`, `/healthz`, `/livez`, `/readyz` |
 | **Gateway / Iceberg REST bins** | `GET /metrics` (gateway), `GET /v1/metrics` (iceberg_rest) | `GET /health`, `GET /v1/health` |
 | **Spark / Trino connectors** | `BenoDBJNIBridge.gatherMetrics()` / `BenoDBJNIBridge.gatherMetrics()` — bridge into the host's metrics system | host-provided |
 
-The search gateway's `/metrics` serves **both** its own `bsdb_search_*` registry
-and the core engine's `bsdb_*` metrics, so one scrape covers the whole
+The search gateway's `/metrics` serves **both** its own `bdb_search_*` registry
+and the core engine's `bdb_*` metrics, so one scrape covers the whole
 process.
 
 ### Metrics configuration
@@ -37,63 +37,63 @@ process.
 
 ## Metric catalog
 
-### Engine metrics (`bsdb_*`)
+### Engine metrics (`bdb_*`)
 
 Recorded with the `prometheus` crate in `src/telemetry/metrics.rs`:
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `bsdb_ingest_rows_total` | counter | — | Rows ingested. |
-| `bsdb_query_latency_seconds` | histogram | — | Query latency. |
-| `bsdb_search_latency_seconds` | histogram | — | Vector/keyword search latency. |
-| `bsdb_commit_duration_seconds` | histogram | — | Manifest commit duration. |
-| `bsdb_compaction_duration_seconds` | histogram | — | Compaction duration. |
-| `bsdb_index_build_duration_seconds` | histogram | — | HNSW-IVF build duration. |
-| `bsdb_active_files` | gauge | — | Active Parquet files. |
-| `bsdb_active_segments` | gauge | — | Active segments. |
-| `bsdb_cache_hits_total` / `_misses_total` | counter | `cache_name` | Cache hit/miss by cache. |
-| `bsdb_io_bytes_read_total` / `_written_total` | counter | — | Object-store I/O bytes. |
-| `bsdb_manifest_conflicts_total` | counter | — | OCC commit conflicts. |
-| `bsdb_ingest_rss_bytes` | gauge | — | Process RSS during ingest. |
-| `bsdb_ingest_backpressure_pauses_total` | counter | — | Ingest pauses on the RAM high-water mark. |
-| `bsdb_ingest_backpressure_pause_seconds` | histogram | — | Duration of each pause. |
-| `bsdb_index_build_gate_wait_seconds` | histogram | — | Wait for an index-build permit. |
-| `bsdb_free_disk_bytes` | gauge | — | Free disk for local tables. |
-| `bsdb_merged_deletes_phase_seconds` | histogram | `phase` | Merge-on-read delete phases. |
-| `bsdb_merged_deletes_cache_total` | counter | `result` | Merged-deletes cache hit/miss. |
-| `bsdb_delete_file_cache_total` | counter | `result` | Parsed-delete cache hit/miss. |
-| `bsdb_merged_deletes_files_total` | counter | `kind` | Delete files merged by kind. |
-| `bsdb_merged_deletes_calls_total` | counter | — | `load_merged_deletes` calls. |
-| `bsdb_read_phase_seconds` | histogram | `phase` | Parquet read phases. |
-| `bsdb_parquet_meta_cache_total` | counter | `result` | Parquet-metadata cache hit/miss. |
+| `bdb_ingest_rows_total` | counter | — | Rows ingested. |
+| `bdb_query_latency_seconds` | histogram | — | Query latency. |
+| `bdb_search_latency_seconds` | histogram | — | Vector/keyword search latency. |
+| `bdb_commit_duration_seconds` | histogram | — | Manifest commit duration. |
+| `bdb_compaction_duration_seconds` | histogram | — | Compaction duration. |
+| `bdb_index_build_duration_seconds` | histogram | — | HNSW-IVF build duration. |
+| `bdb_active_files` | gauge | — | Active Parquet files. |
+| `bdb_active_segments` | gauge | — | Active segments. |
+| `bdb_cache_hits_total` / `_misses_total` | counter | `cache_name` | Cache hit/miss by cache. |
+| `bdb_io_bytes_read_total` / `_written_total` | counter | — | Object-store I/O bytes. |
+| `bdb_manifest_conflicts_total` | counter | — | OCC commit conflicts. |
+| `bdb_ingest_rss_bytes` | gauge | — | Process RSS during ingest. |
+| `bdb_ingest_backpressure_pauses_total` | counter | — | Ingest pauses on the RAM high-water mark. |
+| `bdb_ingest_backpressure_pause_seconds` | histogram | — | Duration of each pause. |
+| `bdb_index_build_gate_wait_seconds` | histogram | — | Wait for an index-build permit. |
+| `bdb_free_disk_bytes` | gauge | — | Free disk for local tables. |
+| `bdb_merged_deletes_phase_seconds` | histogram | `phase` | Merge-on-read delete phases. |
+| `bdb_merged_deletes_cache_total` | counter | `result` | Merged-deletes cache hit/miss. |
+| `bdb_delete_file_cache_total` | counter | `result` | Parsed-delete cache hit/miss. |
+| `bdb_merged_deletes_files_total` | counter | `kind` | Delete files merged by kind. |
+| `bdb_merged_deletes_calls_total` | counter | — | `load_merged_deletes` calls. |
+| `bdb_read_phase_seconds` | histogram | `phase` | Parquet read phases. |
+| `bdb_parquet_meta_cache_total` | counter | `result` | Parquet-metadata cache hit/miss. |
 
 Recorded with the `metrics` facade (query planner, compaction, manifest commit):
 
 | Metric | Type | Meaning |
 |---|---|---|
-| `bsdb_manifest_commit_skipped_removals_total` | counter | Commits that skipped removals. |
-| `bsdb_manifest_commit_retries_total` | counter | OCC commit retries. |
-| `bsdb_manifest_commit_rebases_total` | counter | OCC commit rebases. |
-| `bsdb.query.planning_duration` | histogram | Query planning duration. |
-| `bsdb.query.segment_pruning_duration` | histogram | Segment pruning duration. |
-| `bsdb.query.segment_search_duration` | histogram | Per-segment search duration. |
-| `bsdb.pruned.vector_bbox` | counter | Segments pruned by vector bounding box. |
-| `bsdb_data_files_compacted` | counter | Data files compacted. |
-| `bsdb_compaction_bytes_written` | counter | Bytes written by compaction. |
+| `bdb_manifest_commit_skipped_removals_total` | counter | Commits that skipped removals. |
+| `bdb_manifest_commit_retries_total` | counter | OCC commit retries. |
+| `bdb_manifest_commit_rebases_total` | counter | OCC commit rebases. |
+| `bdb.query.planning_duration` | histogram | Query planning duration. |
+| `bdb.query.segment_pruning_duration` | histogram | Segment pruning duration. |
+| `bdb.query.segment_search_duration` | histogram | Per-segment search duration. |
+| `bdb.pruned.vector_bbox` | counter | Segments pruned by vector bounding box. |
+| `bdb_data_files_compacted` | counter | Data files compacted. |
+| `bdb_compaction_bytes_written` | counter | Bytes written by compaction. |
 
-### Search gateway metrics (`bsdb_search_*`)
+### Search gateway metrics (`bdb_search_*`)
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `bsdb_search_active_requests` | gauge | — | In-flight HTTP requests. |
-| `bsdb_search_http_requests_total` | counter | `method`, `route` | Requests by route class. |
-| `bsdb_search_http_request_duration_seconds` | histogram | `method`, `route` | Request latency. |
-| `bsdb_search_query_seconds` | histogram | `op` | Search latency by op (`match`/`knn`/`hybrid`/`filter`). |
-| `bsdb_search_docs_indexed_total` | counter | `result` | Documents indexed. |
-| `bsdb_search_bulk_items_total` | counter | `status` | Bulk items by outcome. |
-| `bsdb_search_refresh_seconds` | histogram | — | `_refresh` duration. |
-| `bsdb_search_index_cache_hits_total` / `_misses_total` | counter | — | Index table-cache hit/miss. |
-| `bsdb_search_index_fetch_bytes_total` | counter | `kind` | Index bytes fetched from object storage. |
+| `bdb_search_active_requests` | gauge | — | In-flight HTTP requests. |
+| `bdb_search_http_requests_total` | counter | `method`, `route` | Requests by route class. |
+| `bdb_search_http_request_duration_seconds` | histogram | `method`, `route` | Request latency. |
+| `bdb_search_query_seconds` | histogram | `op` | Search latency by op (`match`/`knn`/`hybrid`/`filter`). |
+| `bdb_search_docs_indexed_total` | counter | `result` | Documents indexed. |
+| `bdb_search_bulk_items_total` | counter | `status` | Bulk items by outcome. |
+| `bdb_search_refresh_seconds` | histogram | — | `_refresh` duration. |
+| `bdb_search_index_cache_hits_total` / `_misses_total` | counter | — | Index table-cache hit/miss. |
+| `bdb_search_index_fetch_bytes_total` | counter | `kind` | Index bytes fetched from object storage. |
 
 ## Telemetry & Tracing
 
@@ -115,36 +115,36 @@ We instrument key paths to provide visibility into latency and bottlenecks:
 - **Read Path:** `read_async`, `stream_all`, `vector_search_index`, `vector_search_flat`
 - **Manifest Orchestration:** Optimistic concurrency loops, schema updates, and conflict resolution in the `ManifestManager`.
 
-## Stateless Operational CLI (`bsdb`)
+## Stateless Operational CLI (`bdb`)
 
-The `bsdb` binary is a standalone CLI tool that performs administrative actions directly against the object storage tier without requiring a long-running database server to be active.
+The `bdb` binary is a standalone CLI tool that performs administrative actions directly against the object storage tier without requiring a long-running database server to be active.
 
 ### Usage
 
 ```bash
 # Start an interactive SQL REPL
-bsdb repl
+bdb repl
 
 # Execute a single SQL query
-bsdb query --query "SELECT * FROM my_table LIMIT 10"
+bdb query --query "SELECT * FROM my_table LIMIT 10"
 
 # Register a table in the session
-bsdb register --name my_table --uri s3://my-bucket/my-table
+bdb register --name my_table --uri s3://my-bucket/my-table
 ```
 
 ### Table Management
 
-You can perform routine maintenance using the `bsdb table` subcommand:
+You can perform routine maintenance using the `bdb table` subcommand:
 
 ```bash
 # Inspect table metadata and statistics
-bsdb table inspect --uri s3://my-bucket/my-table
+bdb table inspect --uri s3://my-bucket/my-table
 
 # Compact small data files to optimize read performance
-bsdb table compact --uri s3://my-bucket/my-table
+bdb table compact --uri s3://my-bucket/my-table
 
 # Vacuum (delete) data files that are no longer referenced and older than N days
-bsdb table vacuum --uri s3://my-bucket/my-table --older-than-days 7
+bdb table vacuum --uri s3://my-bucket/my-table --older-than-days 7
 ```
 
 *Note: The CLI is stateless; it interacts directly with the storage URI.*

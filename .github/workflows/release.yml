@@ -811,7 +811,7 @@ jobs:
           done
           exit "$failed"
       # The connector matrices publish band-keyed artefacts
-      # (`spark-benostream-spark-4.0-java-17.jar`, `trino-benostream-484.zip`) —
+      # (`spark-benodb-spark-4.0-java-17.jar`, `trino-benodb-484.zip`) —
       # names that carry the *tooling* version, not ours. The download page offers
       # one default build per connector under a name that carries the release
       # version, so derive those aliases here and the two can never disagree.
@@ -821,8 +821,8 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           for pair in \
-            "spark-benostream-spark-4.0-java-17.jar:spark-benostream-${version}.jar" \
-            "trino-benostream-484.zip:trino-benostream-${version}.zip"; do
+            "spark-benodb-spark-4.0-java-17.jar:spark-benodb-${version}.jar" \
+            "trino-benodb-484.zip:trino-benodb-${version}.zip"; do
             src="${pair%%:*}"
             dst="${pair##*:}"
             if [ -f "connector-artifacts/${src}" ]; then

@@ -2,12 +2,12 @@ package com.benodb.trino;
 
 /**
  * Maps a Trino schema/table name to a BenoDB table URI under a
- * configurable warehouse root (the {@code benostream.warehouse} catalog
+ * configurable warehouse root (the {@code benodb.warehouse} catalog
  * property, default {@code s3://default}).
  */
 public final class BenoDBTableUri {
 
-    /** Default warehouse root when {@code benostream.warehouse} is not set. */
+    /** Default warehouse root when {@code benodb.warehouse} is not set. */
     public static final String DEFAULT_WAREHOUSE = "s3://default";
 
     private BenoDBTableUri() {

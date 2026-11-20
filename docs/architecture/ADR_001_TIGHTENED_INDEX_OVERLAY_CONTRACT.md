@@ -419,12 +419,12 @@ Each rejection triggers automatic graceful degradation to Parquet brute-force sc
 
 | Metric | Type | Description |
 |---|---|---|
-| `bsdb_io_bytes_read_total` | Counter | Total bytes read from storage (Parquet + index artifacts). |
-| `bsdb_cache_hits_total{cache}` | Counter | Cache hits per cache tier (`inverted_index`, `hnsw_ivf`, `index`, `analyzer_meta`). |
-| `bsdb_cache_misses_total{cache}` | Counter | Cache misses triggering storage reads. |
-| `bsdb_index_segments_accelerated` | Gauge | Number of segments resolved via index (vs. brute-force) per query. |
-| `bsdb_index_segments_fallback` | Gauge | Number of segments that fell back to Parquet scan. |
-| `bsdb_vacuum_artifacts_purged` | Counter | Physical index files deleted during `vacuum_indexes`. |
+| `bdb_io_bytes_read_total` | Counter | Total bytes read from storage (Parquet + index artifacts). |
+| `bdb_cache_hits_total{cache}` | Counter | Cache hits per cache tier (`inverted_index`, `hnsw_ivf`, `index`, `analyzer_meta`). |
+| `bdb_cache_misses_total{cache}` | Counter | Cache misses triggering storage reads. |
+| `bdb_index_segments_accelerated` | Gauge | Number of segments resolved via index (vs. brute-force) per query. |
+| `bdb_index_segments_fallback` | Gauge | Number of segments that fell back to Parquet scan. |
+| `bdb_vacuum_artifacts_purged` | Counter | Physical index files deleted during `vacuum_indexes`. |
 
 ### 9.3 Cache Invalidation Contract
 

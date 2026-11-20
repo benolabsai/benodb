@@ -5,7 +5,7 @@ Tests S3 (RustFS), Azure (Azurite), and GCP (fake-gcs-server) storage backends.
 These tests require the respective services to be running via docker-compose.
 """
 
-import benodb as bsdb
+import benodb as bdb
 import pyarrow as pa
 import pytest
 import os
@@ -46,7 +46,7 @@ def test_s3_with_rustfs():
     table_uri = f"s3://test-bucket/benostream-test-{int(time.time())}"
     
     try:
-        table = bsdb.Table(table_uri)
+        table = bdb.Table(table_uri)
         
         # Write data
         schema = pa.schema([
@@ -88,7 +88,7 @@ def test_azure_with_azurite():
     table_uri = f"az://test-container/benostream-test-{int(time.time())}"
     
     try:
-        table = bsdb.Table(table_uri)
+        table = bdb.Table(table_uri)
         
         # Write data
         schema = pa.schema([
@@ -125,7 +125,7 @@ def test_local_filesystem_comprehensive():
     with tempfile.TemporaryDirectory() as tmp_dir:
         table_uri = f"file://{tmp_dir}/test_table"
         
-        table = bsdb.Table(table_uri)
+        table = bdb.Table(table_uri)
         
         # Test 1: Basic write and read
         schema = pa.schema([
@@ -179,7 +179,7 @@ def test_http_storage():
     try:
         # This will likely fail without a real HTTP server, but shouldn't crash
         table_uri = "https://example.com/data/table"
-        result = bsdb.Table(table_uri)
+        result = bdb.Table(table_uri)
         # If it succeeds, that's fine
     except Exception as e:
         # Should fail gracefully with a clear error

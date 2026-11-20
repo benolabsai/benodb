@@ -12,7 +12,7 @@
 //! dialect so that `OPTIMIZE TABLE` (ClickHouse/Generic only) is recognized.
 //!
 //! Statements that sqlparser does not model (`COMPACT`, `MSCK REPAIR TABLE`,
-//! `ALTER TABLE ... EXECUTE`, `SET benostream.*`, `SHOW benostream.*`,
+//! `ALTER TABLE ... EXECUTE`, `SET benodb.*`, `SHOW benodb.*`,
 //! `DELETE FROM`) are handled by a small hand-rolled pre-parser.
 
 use anyhow::{bail, Context, Result};
@@ -76,7 +76,7 @@ pub enum Handled {
     No,
     /// Ours, with no result set (DDL / maintenance).
     Ddl,
-    /// Ours, with a result set (e.g. `SHOW benostream.*`).
+    /// Ours, with a result set (e.g. `SHOW benodb.*`).
     Query,
 }
 
@@ -135,7 +135,7 @@ pub fn classify(sql: &str) -> Handled {
             .map(|x| x.1)
             .unwrap_or("")
             .trim_start();
-        return if rest.to_ascii_lowercase().starts_with("benostream.") {
+        return if is_engine_setting_prefix(rest) {
             Handled::Query
         } else {
             Handled::No
@@ -147,7 +147,7 @@ pub fn classify(sql: &str) -> Handled {
             .map(|x| x.1)
             .unwrap_or("")
             .trim_start();
-        return if rest.to_ascii_lowercase().starts_with("benostream.") {
+        return if is_engine_setting_prefix(rest) {
             Handled::Ddl
         } else {
             Handled::No
@@ -313,28 +313,20 @@ async fn try_hand_rolled(session: &BenoStreamSession, sql: &str) -> Result<Optio
     let trimmed = collapse_ws(sql.trim().trim_end_matches(';'));
     let upper = trimmed.to_ascii_uppercase();
 
-    // SET benostream.<key> = <value>
+    // SET benodb.<key> = <value>
     if upper.starts_with("SET ") {
         if let Some(rest) = trimmed.get(4..) {
-            if rest
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with("benostream.")
-            {
+            if is_engine_setting_prefix(rest.trim_start()) {
                 return set_session_setting(session, rest.trim()).await.map(Some);
             }
         }
         return Ok(None);
     }
 
-    // SHOW benostream.<key>
+    // SHOW benodb.<key>
     if upper.starts_with("SHOW ") {
         if let Some(rest) = trimmed.get(5..) {
-            if rest
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with("benostream.")
-            {
+            if is_engine_setting_prefix(rest.trim_start()) {
                 return show_session_setting(session, rest.trim()).await.map(Some);
             }
         }
@@ -1348,6 +1340,11 @@ fn count_batch(value: i64) -> Result<RecordBatch> {
     )]));
     let array: ArrayRef = Arc::new(Int64Array::from(vec![value]));
     Ok(RecordBatch::try_new(schema, vec![array])?)
+}
+
+/// True when a statement object names an engine session setting.
+fn is_engine_setting_prefix(rest: &str) -> bool {
+    rest.to_ascii_lowercase().starts_with("benodb.")
 }
 
 #[cfg(test)]

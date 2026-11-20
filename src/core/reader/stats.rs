@@ -12,7 +12,7 @@
 //! and the I/O claim is false.
 //!
 //! The counters are process wide atomics, reset by the benchmark harness before
-//! each pass through `bsdb.reset_reader_stats()`.
+//! each pass through `bdb.reset_reader_stats()`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;

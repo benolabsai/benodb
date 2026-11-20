@@ -41,9 +41,9 @@ Add the JAR to Spark's classpath and configure the catalog:
 
 ```bash
 spark-shell \
-  --jars target/spark-benostream-0.15.1.jar \
-  --conf spark.sql.catalog.benostream=com.benodb.spark.BenoDBCatalog \
-  --conf spark.sql.catalog.benostream.warehouse=s3://my-bucket/warehouse
+  --jars target/spark-benodb-0.15.1.jar \
+  --conf spark.sql.catalog.benodb=com.benodb.spark.BenoDBCatalog \
+  --conf spark.sql.catalog.benodb.warehouse=s3://my-bucket/warehouse
 ```
 
 On Spark 4.x use `com.benodb.spark.BenoDBProcedureCatalog` to get tables, namespaces, `system.*` procedures, and catalog functions from a single catalog.
@@ -77,26 +77,26 @@ The distance/hybrid functions are exposed as **DSv2 catalog functions** — no r
 
 ```sql
 -- Compute Cosine Distance
-SELECT id, benostream.system.cosine_distance(embedding, array(0.1, 0.2, 0.3)) as dist
-FROM benostream.default.my_table
+SELECT id, benodb.system.cosine_distance(embedding, array(0.1, 0.2, 0.3)) as dist
+FROM benodb.default.my_table
 ORDER BY dist ASC
 LIMIT 10;
 
 -- Compute L2 Distance
-SELECT id, benostream.system.l2_distance(embedding, array(0.1, 0.2, 0.3)) as dist FROM benostream.default.my_table;
+SELECT id, benodb.system.l2_distance(embedding, array(0.1, 0.2, 0.3)) as dist FROM benodb.default.my_table;
 
 -- Compute Dot Product
-SELECT id, benostream.system.dot_product(embedding, array(0.1, 0.2, 0.3)) as score FROM benostream.default.my_table;
+SELECT id, benodb.system.dot_product(embedding, array(0.1, 0.2, 0.3)) as score FROM benodb.default.my_table;
 
 -- Sparse Dot Product (SPLADE / BM25)
-SELECT benostream.system.sparse_dot_product(query_indices, query_values, doc_indices, doc_values) FROM t;
+SELECT benodb.system.sparse_dot_product(query_indices, query_values, doc_indices, doc_values) FROM t;
 
 -- Hybrid Score & Reciprocal Rank Fusion (RRF)
-SELECT benostream.system.hybrid_score(dense_score, sparse_score, 0.7) as final_score FROM t;
-SELECT benostream.system.reciprocal_rank_fusion(array(dense_rank, sparse_rank), 60) as rrf;
+SELECT benodb.system.hybrid_score(dense_score, sparse_score, 0.7) as final_score FROM t;
+SELECT benodb.system.reciprocal_rank_fusion(array(dense_rank, sparse_rank), 60) as rrf;
 ```
 
-`SHOW FUNCTIONS IN benostream.system` lists them. Scala/Java users can also register session-level aliases (`BenoDBFunctions.register(spark)`) to use the unqualified names. pgvector operators (`<->`) are intentionally **not** supported in Spark SQL — Spark's grammar rejects them and they would confuse mixed-catalog sessions; use the function spelling above (same names as Trino/DataFusion).
+`SHOW FUNCTIONS IN benodb.system` lists them. Scala/Java users can also register session-level aliases (`BenoDBFunctions.register(spark)`) to use the unqualified names. pgvector operators (`<->`) are intentionally **not** supported in Spark SQL — Spark's grammar rejects them and they would confuse mixed-catalog sessions; use the function spelling above (same names as Trino/DataFusion).
 
 Fluent DataFrame API:
 ```scala
@@ -111,10 +111,10 @@ val withDist = df.withVectorDistance(outputCol = "_dist", vectorCol = "embedding
 
 ### Row-Level Operations (DELETE / UPDATE / MERGE)
 
-Native `SupportsRowLevelOperations` (`SupportsDelta`): row identity is the table's primary key (declare with `CALL benostream.system.set_primary_key(...)` or the `primary_key` property; defaults to the first column). Matched deletes/updates become predicate deletes in the engine; inserts and updated rows are appended as Arrow batches. The full MERGE matrix is verified on Spark 3.5.9 and 4.2.0 with whole-stage codegen enabled.
+Native `SupportsRowLevelOperations` (`SupportsDelta`): row identity is the table's primary key (declare with `CALL benodb.system.set_primary_key(...)` or the `primary_key` property; defaults to the first column). Matched deletes/updates become predicate deletes in the engine; inserts and updated rows are appended as Arrow batches. The full MERGE matrix is verified on Spark 3.5.9 and 4.2.0 with whole-stage codegen enabled.
 
 ```sql
-MERGE INTO benostream.default.users t
+MERGE INTO benodb.default.users t
 USING updates s ON t.id = s.id
 WHEN MATCHED AND s.age < 0 THEN DELETE
 WHEN MATCHED THEN UPDATE SET age = s.age
@@ -123,21 +123,21 @@ WHEN NOT MATCHED THEN INSERT (id, age) VALUES (s.id, s.age);
 
 ### Stored Procedures (`system.*`)
 
-Spark 4.x: configure `spark.sql.catalog.benostream=com.benodb.spark.BenoDBProcedureCatalog` (native DSv2 procedures). Spark 3.5: procedures require `iceberg-spark-runtime` on the classpath plus `spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions` (Spark 3.5 has no native `CALL` support); table/row-level features remain fully native there.
+Spark 4.x: configure `spark.sql.catalog.benodb=com.benodb.spark.BenoDBProcedureCatalog` (native DSv2 procedures). Spark 3.5: procedures require `iceberg-spark-runtime` on the classpath plus `spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions` (Spark 3.5 has no native `CALL` support); table/row-level features remain fully native there.
 
 ```sql
 -- Index Management
-CALL benostream.system.add_index('my_table', 'embedding', 'vector');
-CALL benostream.system.build_index('my_table');
-CALL benostream.system.rebuild_index('my_table', 'embedding');
-CALL benostream.system.rebuild_cluster_index('my_table', 'embedding', 1024, 16, 200, 512);
-CALL benostream.system.warmup('my_table', 500, 8.0);
-CALL benostream.system.drop_index('my_table', 'embedding', 'vector');
-CALL benostream.system.show_indexes('my_table');
+CALL benodb.system.add_index('my_table', 'embedding', 'vector');
+CALL benodb.system.build_index('my_table');
+CALL benodb.system.rebuild_index('my_table', 'embedding');
+CALL benodb.system.rebuild_cluster_index('my_table', 'embedding', 1024, 16, 200, 512);
+CALL benodb.system.warmup('my_table', 500, 8.0);
+CALL benodb.system.drop_index('my_table', 'embedding', 'vector');
+CALL benodb.system.show_indexes('my_table');
 
 -- Table Maintenance
-CALL benostream.system.compact('my_table');
-CALL benostream.system.set_primary_key('my_table', 'id');
+CALL benodb.system.compact('my_table');
+CALL benodb.system.set_primary_key('my_table', 'id');
 ```
 
 ### Dynamic GPU Task Binding

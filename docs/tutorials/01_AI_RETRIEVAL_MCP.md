@@ -41,7 +41,7 @@ Register it with your MCP client (Claude Desktop, Cursor, Antigravity) using `uv
     "benodb": {
       "command": "uvx",
       "args": ["benodb-mcp"],
-      "env": { "BDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BDB_GPU_DEVICE": "auto" }
+      "env": { "BDB_WAREHOUSE": "/tmp/bdb_warehouse", "BDB_GPU_DEVICE": "auto" }
     }
   }
 }
@@ -57,7 +57,7 @@ cargo build --release --manifest-path contrib/benodb-mcp/Cargo.toml
   "mcpServers": {
     "benodb": {
       "command": "/path/to/benodb-mcp",
-      "env": { "BDB_WAREHOUSE": "/tmp/bsdb_warehouse", "BDB_GPU_DEVICE": "auto" }
+      "env": { "BDB_WAREHOUSE": "/tmp/bdb_warehouse", "BDB_GPU_DEVICE": "auto" }
     }
   }
 }
