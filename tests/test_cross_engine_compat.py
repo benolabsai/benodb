@@ -100,11 +100,23 @@ def _require_or_skip(reason: str) -> None:
     pytest.skip(reason)
 
 class TestSparkCompatibility:
-    """Test BenoStreamDB → Spark compatibility"""
+    """Test BenoDB → Spark compatibility"""
     
     def setup_method(self):
-        """Create test table with V2/V3 features"""
+        """Create and commit the test table with V2 features.
+
+        The commit is load bearing, for the reason spelled out in the Trino
+        class: `write_pandas` buffers into the write ahead log, so an
+        uncommitted table holds no Parquet and no `metadata/version-hint.text`.
+        Spark then has no Iceberg table to open and reports
+        TABLE_OR_VIEW_NOT_FOUND, which names the directory as a namespace and
+        sends the reader looking for a catalog problem that does not exist.
+        """
         self.table_path = str(TEST_DIR / "spark_test_table")
+        # Removing the directory first keeps each run at one committed state;
+        # a leftover table would be appended to and the row count would be the
+        # sum of every run on the machine.
+        shutil.rmtree(self.table_path, ignore_errors=True)
         self.table = bdb.Table(self.table_path)
         
         # Write test data with V2 features
@@ -118,9 +130,10 @@ class TestSparkCompatibility:
         # Configure V2 features
         self.table.set_sort_order(["timestamp", "id"], ascending=[False, True])
         self.table.write_pandas(df)
+        self.table.commit()
     
     def test_spark_read_basic(self):
-        """Test Spark can read a BenoStreamDB table as an Iceberg table."""
+        """Test Spark can read a BenoDB table as an Iceberg table."""
         if not _spark_submit_available():
             _require_or_skip("spark-submit not available")
         # The pip-installed pyspark lacks the Iceberg JAR, so plain CI skips.
@@ -136,7 +149,7 @@ class TestSparkCompatibility:
         from pyspark.sql import SparkSession
 
         spark = SparkSession.builder \\
-            .appName("BenoStreamDB Compat Test") \\
+            .appName("BenoDB Compat Test") \\
             .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \\
             .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \\
             .config("spark.sql.catalog.local.type", "hadoop") \\
@@ -189,7 +202,7 @@ class TestSparkCompatibility:
         from pyspark.sql import SparkSession
 
         spark = SparkSession.builder \\
-            .appName("BenoStreamDB V3 Lineage Test") \\
+            .appName("BenoDB V3 Lineage Test") \\
             .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \\
             .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \\
             .config("spark.sql.catalog.local.type", "hadoop") \\
@@ -432,6 +445,7 @@ def create_sample_table_for_spark():
     
     table.set_sort_order(["timestamp"], ascending=[False])
     table.write_pandas(df)
+    table.commit()
     
     print(f"✅ Created test table at: {table_path}")
     print("\nTo test with Spark:")
@@ -452,7 +466,8 @@ def create_sample_table_for_trino():
     })
     
     table.write_pandas(df)
-    
+    table.commit()
+
     print(f"✅ Created test table at: {table_path}")
     print("\nTo test with Trino:")
     print(f"  SELECT COUNT(*) FROM iceberg.default.\"{table_path.split('/')[-1]}\";")
