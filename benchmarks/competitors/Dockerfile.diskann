@@ -1,0 +1,24 @@
+# Dedicated DiskANN benchmark runner container.
+#
+# Microsoft diskannpy 0.7.0 requires NumPy 1.x (numpy==1.25.0) and Python <= 3.11,
+# whereas newer Faiss and LanceDB wheels require NumPy 2.x. Isolating DiskANN
+# in this container provides clean binary compatibility without ABI mismatch.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir "diskannpy==0.7.0" "numpy==1.25.0" h5py "pandas<2.2.0" "pyarrow<18"
+
+WORKDIR /opt/bench
+COPY benchmarks/competitors/run_competitor.py /opt/bench/run_competitor.py
+COPY benchmarks/ann_benchmarks/run.py /opt/bench/ann_benchmarks.py
+COPY benchmarks/iceberg_roundtrip/run.py /opt/bench/iceberg_roundtrip.py
+COPY benchmarks/competitors/run_bench.sh /opt/bench/run_bench.sh
+RUN chmod +x /opt/bench/run_bench.sh
+
+ENTRYPOINT ["/bin/sh", "-lc"]
+CMD ["/opt/bench/run_bench.sh"]

@@ -1132,7 +1132,6 @@ dependencies = [
  "datafusion-functions",
  "datafusion-functions-aggregate",
  "datafusion-functions-aggregate-common",
- "dhat",
  "dirs",
  "env_logger",
  "faststr",

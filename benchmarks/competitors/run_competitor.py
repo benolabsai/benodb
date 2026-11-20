@@ -64,6 +64,11 @@ DATASET_METRIC = {
     "glove-200-angular": "cosine",
     "nytimes-256-angular": "cosine",
     "lastfm-64-dot": "inner_product",
+    "bigann-10m": "l2",
+    "bigann-10M": "l2",
+    "bigann": "l2",
+    "bigann-100m": "l2",
+    "bigann-100M": "l2",
 }
 
 
@@ -376,6 +381,148 @@ class PgvectorAdapter(VectorAdapter):
         cur = handle.cursor()
         cur.execute("SELECT pg_total_relation_size('bdb_bench')")
         return int(cur.fetchone()[0])
+
+
+class DiskANNAdapter(VectorAdapter):
+    """Microsoft DiskANN disk-backed Vamana index.
+
+    Implements out-of-core graph traversal over SSDs using Microsoft's
+    diskannpy bindings. Builds a compressed disk layout with in-memory centroids
+    and PQ-quantized routing codes, paired with disk-resident neighborhood lists.
+    """
+
+    def __init__(self, index_type: str = "disk") -> None:
+        name = "diskann" if index_type == "disk" else "diskann_mem"
+        super().__init__(name=name, module="diskannpy")
+        self.index_type = index_type
+        self.index_precision = "pq-128" if index_type == "disk" else "f32"
+        self._dir: Optional[str] = None
+        self.last_build_s: float = 0.0
+
+    def build(self, train: np.ndarray, params: dict, ctx: dict):
+        import diskannpy as dap
+
+        index_dir = ctx.get("path") or tempfile.mkdtemp(prefix="diskann_bench_")
+        os.makedirs(index_dir, exist_ok=True)
+        self._dir = index_dir
+        metric_str = params.get("metric", "l2")
+        dap_metric = "mips" if metric_str in ("inner_product", "cosine") else "l2"
+        v_dtype = train.dtype if isinstance(train, np.ndarray) else np.float32
+        if v_dtype not in (np.float32, np.uint8, np.int8):
+            v_dtype = np.float32
+
+        data = np.ascontiguousarray(train, dtype=v_dtype)
+        if metric_str == "cosine":
+            norms = np.linalg.norm(data, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            data = (data / norms).astype(np.float32)
+            v_dtype = np.float32
+
+        num_threads = int(os.environ.get("BENCH_CPUS", "8") or 8)
+        search_mem = float(os.environ.get("DISKANN_SEARCH_MEM_GB", "4.0") or 4.0)
+        build_mem = float(os.environ.get("DISKANN_BUILD_MEM_GB", "12.0") or 12.0)
+        r = int(params.get("m", 32) or 32)
+        l_build = int(params.get("ef_construction", 64) or 64)
+        stats_file = os.path.join(index_dir, "build_stats.json")
+
+        if self.index_type == "disk":
+            disk_index_file = os.path.join(index_dir, "ann_disk.index")
+            if not os.path.exists(disk_index_file):
+                t_b0 = time.time()
+                dap.build_disk_index(
+                    data=data,
+                    distance_metric=dap_metric,
+                    index_directory=index_dir,
+                    complexity=l_build,
+                    graph_degree=r,
+                    search_memory_maximum=search_mem,
+                    build_memory_maximum=build_mem,
+                    num_threads=num_threads,
+                    vector_dtype=v_dtype,
+                )
+                self.last_build_s = round(time.time() - t_b0, 3)
+                try:
+                    with open(stats_file, "w") as f:
+                        json.dump({"build_s": self.last_build_s}, f)
+                except Exception:
+                    pass
+            else:
+                if os.path.exists(stats_file):
+                    try:
+                        with open(stats_file) as f:
+                            self.last_build_s = float(json.load(f).get("build_s", 0.0))
+                    except Exception:
+                        pass
+            index = dap.StaticDiskIndex(
+                index_directory=index_dir,
+                num_threads=num_threads,
+                num_nodes_to_cache=1000,
+                distance_metric=dap_metric,
+                vector_dtype=v_dtype,
+                dimensions=data.shape[1],
+            )
+        else:
+            mem_index_file = os.path.join(index_dir, "ann_mem.index")
+            if not os.path.exists(mem_index_file):
+                t_b0 = time.time()
+                dap.build_memory_index(
+                    data=data,
+                    distance_metric=dap_metric,
+                    vector_dtype=v_dtype,
+                    graph_degree=r,
+                    complexity=l_build,
+                    num_threads=num_threads,
+                    index_directory=index_dir,
+                )
+                self.last_build_s = round(time.time() - t_b0, 3)
+                try:
+                    with open(stats_file, "w") as f:
+                        json.dump({"build_s": self.last_build_s}, f)
+                except Exception:
+                    pass
+            else:
+                if os.path.exists(stats_file):
+                    try:
+                        with open(stats_file) as f:
+                            self.last_build_s = float(json.load(f).get("build_s", 0.0))
+                    except Exception:
+                        pass
+            index = dap.StaticMemoryIndex(
+                distance_metric=dap_metric,
+                vector_dtype=v_dtype,
+                index_directory=index_dir,
+                num_threads=num_threads,
+            )
+        return (index, index_dir, dap_metric, v_dtype)
+
+    def search(
+        self, handle, queries: np.ndarray, k: int, ef_search: int, metric: str
+    ) -> np.ndarray:
+        index, _index_dir, _dap_metric, v_dtype = handle
+        q = np.ascontiguousarray(queries, dtype=v_dtype)
+        if metric == "cosine":
+            norms = np.linalg.norm(q, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            q = (q / norms).astype(np.float32)
+        num_threads = int(os.environ.get("BENCH_CPUS", "8") or 8)
+        beam_width = int(os.environ.get("DISKANN_BEAM_WIDTH", "2") or 2)
+        res = index.batch_search(
+            q,
+            k_neighbors=int(k),
+            complexity=int(ef_search),
+            num_threads=num_threads,
+            beam_width=beam_width,
+        )
+        return np.asarray(res.identifiers)
+
+    def search_full_row(
+        self, handle, queries: np.ndarray, k: int, ef_search: int, metric: str
+    ) -> Any:
+        return self.search(handle, queries, k, ef_search, metric)
+
+    def index_bytes(self, handle) -> int:
+        index_dir = handle[1]
+        return _dir_size(index_dir)
 
 
 class LanceDbAdapter(VectorAdapter):
@@ -1033,6 +1180,8 @@ class WeaviateAdapter(VectorAdapter):
 
 def vector_adapters() -> dict[str, VectorAdapter]:
     return {
+        "diskann": DiskANNAdapter("disk"),
+        "diskann_mem": DiskANNAdapter("memory"),
         "faiss": FaissAdapter("flat"),
         "faiss_sq": FaissAdapter("hnsw_sq"),
         "hnswlib": HnswlibAdapter(),
@@ -1072,6 +1221,8 @@ def _vector_backend(adapter: "VectorAdapter", device: str) -> str:
 # Vector workload
 # --------------------------------------------------------------------------- #
 def download(dataset: str) -> str:
+    if dataset.lower().startswith("bigann"):
+        return dataset
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = os.path.join(CACHE_DIR, f"{dataset}.hdf5")
     if os.path.exists(path):
@@ -1084,7 +1235,39 @@ def download(dataset: str) -> str:
     return path
 
 
-def load_dataset(path: str):
+def load_dataset(path: str, data_dir: Optional[str] = None):
+    if path.lower().startswith("bigann") or (data_dir and os.path.exists(os.path.join(data_dir, "base.10M.u8bin"))):
+        cands = [
+            data_dir,
+            os.environ.get("BENCH_DATA_DIR"),
+            "/opt/bench/data",
+            "/home/ralbright/data/datasets/bigann",
+            CACHE_DIR,
+        ]
+        chosen_dir = None
+        for c in cands:
+            if c and os.path.exists(os.path.join(c, "base.10M.u8bin")):
+                chosen_dir = c
+                break
+        if not chosen_dir:
+            raise FileNotFoundError(
+                f"Could not find BigANN dataset in any candidate directory: {cands}"
+            )
+        base_path = os.path.join(chosen_dir, "base.10M.u8bin")
+        query_path = os.path.join(chosen_dir, "query.public.10K.u8bin")
+        gt_path = os.path.join(chosen_dir, "GT.10M")
+        if not os.path.exists(gt_path):
+            gt_path = os.path.join(chosen_dir, "bigann-10M")
+
+        train = np.memmap(base_path, dtype=np.uint8, mode="r", offset=8, shape=(10_000_000, 128))
+        test = np.memmap(query_path, dtype=np.uint8, mode="r", offset=8, shape=(10_000, 128))
+
+        with open(gt_path, "rb") as f:
+            header = np.fromfile(f, dtype=np.int32, count=2)
+            n_q, file_k = int(header[0]), int(header[1])
+            neighbors = np.fromfile(f, dtype=np.uint32, offset=8, count=n_q * file_k).reshape((n_q, file_k))
+        return train, test, neighbors
+
     import h5py
 
     with h5py.File(path, "r") as f:
@@ -1103,22 +1286,23 @@ def exact_ground_truth(train, test, q, k, metric):
     """
     truth = []
     if metric == "cosine":
-        train_n = train / (np.linalg.norm(train, axis=1, keepdims=True) + 1e-12)
+        train_n = train.astype(np.float32) / (np.linalg.norm(train, axis=1, keepdims=True) + 1e-12)
         for i in range(q):
-            query = test[i] / (np.linalg.norm(test[i]) + 1e-12)
+            query = test[i].astype(np.float32) / (np.linalg.norm(test[i]) + 1e-12)
             truth.append(np.argsort(1.0 - train_n @ query)[:k])
     elif metric in ("inner_product", "ip", "dot"):
         for i in range(q):
-            truth.append(np.argsort(-(train @ test[i]))[:k])
+            truth.append(np.argsort(-(train.astype(np.float32) @ test[i].astype(np.float32)))[:k])
     else:
         for i in range(q):
-            truth.append(np.argsort(np.linalg.norm(train - test[i], axis=1))[:k])
+            truth.append(np.argsort(np.linalg.norm(train.astype(np.float32) - test[i].astype(np.float32), axis=1))[:k])
     return np.array(truth)
 
 
 def run_vector(adapter: VectorAdapter, args) -> dict:
     metric = args.metric or DATASET_METRIC.get(args.dataset, "l2")
-    train, test, neighbors = load_dataset(download(args.dataset))
+    data_dir = getattr(args, "data_dir", None)
+    train, test, neighbors = load_dataset(download(args.dataset), data_dir)
     if args.limit and args.limit < len(train):
         train = train[: args.limit]
         neighbors = None  # ground truth invalid for a subset
@@ -1140,6 +1324,8 @@ def run_vector(adapter: VectorAdapter, args) -> dict:
     t0 = time.time()
     handle = adapter.build(train, params, ctx)
     build_s = time.time() - t0
+    if hasattr(adapter, "last_build_s") and adapter.last_build_s > 0:
+        build_s = adapter.last_build_s
 
     if neighbors is None:
         q = min(args.queries, len(test))
@@ -2394,6 +2580,7 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--sql", default=None)
     ap.add_argument("--parquet", default=None)
+    ap.add_argument("--data-dir", default=None, help="Directory containing binary dataset files (e.g. bigann)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 

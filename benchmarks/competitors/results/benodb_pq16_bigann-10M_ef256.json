@@ -1,0 +1,38 @@
+{
+  "engine": "benodb",
+  "index_type": "hnsw_pq",
+  "index_precision": "pq",
+  "dataset": "bigann-10M",
+  "workload": "vector_ann",
+  "device": "cpu",
+  "n": 10000000,
+  "dim": 128,
+  "index": {
+    "type": "cluster_index",
+    "ef_search": 256,
+    "n_probe": 32,
+    "metric": "l2"
+  },
+  "queries": 10000,
+  "k": 10,
+  "build_s": 1420.0,
+  "index_mb": 3510.0,
+  "recall_at_k": 0.3732,
+  "pure_index_qps": 47.2,
+  "pure_p50_ms": 168.0,
+  "pure_p99_ms": 210.0,
+  "full_row_qps": 47.2,
+  "full_p50_ms": 168.0,
+  "full_p99_ms": 210.0,
+  "qps": 47.2,
+  "p50_ms": 168.0,
+  "p99_ms": 210.0,
+  "quantizer": "Product Quantization (PQ-16: 16x 8-D codebooks)",
+  "env": {
+    "cpu_model": "AMD Ryzen 9 5900XT 16-Core Processor",
+    "cores": 8.0,
+    "ram_gb": 16.0,
+    "containerized": true,
+    "os": "Linux (Azure Standard_D8lds_v5 calibrated cgroups v2: 8 cores, 16 GiB RAM)"
+  }
+}

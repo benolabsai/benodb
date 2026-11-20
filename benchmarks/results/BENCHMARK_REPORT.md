@@ -1,8 +1,7 @@
 # BenoDB Comprehensive Benchmark Report
 
-- **Generated At**: 2026-11-13 02:24:03 UTC
-- **Engine version**: 0.17.0
-- **Updated At**: 2026-11-19
+- **Generated At**: 2026-11-20 17:46:55 UTC
+- **Engine version**: 0.16.0
 - **Platform**: Linux-7.0.0-42-generic-x86_64-with-glibc2.43
 - **Python**: 3.14.4
 - **Session**: 8c5598405a7d
@@ -16,11 +15,11 @@
 
 | Section | Scope | Artifacts last modified (UTC) |
 |---|---|---|
-| §2 Graph | 10k–5.5M edges, CPU-only engines | 2026-11-12 |
-| §3 SQL, §6 filters | 200k–500k rows | 2026-11-12 |
-| §4 BEIR | 3.6k–8.7k documents | 2026-11-12 |
-| §5, §7, §8 production / resilience / soak | 8–32 threads; 60 s soak | 2026-11-12 |
-| §9 vector matrix | 20k vectors, 500 queries; standardized CPU | 2026-11-12 – 2026-11-13 |
+| §2 Graph | 10k–5.5M edges, CPU-only engines | 2026-11-18 |
+| §3 SQL, §6 filters | 200k–500k rows | 2026-11-18 – 2026-11-20 |
+| §4 BEIR | 3.6k–8.7k documents | 2026-11-12 – 2026-11-18 |
+| §5, §7, §8 production / resilience / soak | 8–32 threads; 60 s soak | 2026-11-12 – 2026-11-20 |
+| §9 vector matrix | 20k vectors, 500 queries; standardized CPU | 2026-11-17 – 2026-11-20 |
 
 ## Machine state (part of the measurement)
 
@@ -36,11 +35,11 @@ Session `8c5598405a7d` — every stamped section below was measured on this host
 
 | Probe | First | Last |
 |---|---|---|
-| random gather (ns/access) | 9.5562 | 7.4271 (-22.3%) |
-| triad (GB/s) | 9.5937 | 12.6328 (+31.7%) |
-| matmul fp64 1024³ (GFLOPS) | 57.7142 | 79.5714 (+37.9%) |
+| random gather (ns/access) | 9.5562 | 8.7167 (-8.8%) |
+| triad (GB/s) | 9.5937 | 12.6183 (+31.5%) |
+| matmul fp64 1024³ (GFLOPS) | 57.7142 | 88.0079 (+52.5%) |
 
-Probes are cheap and machine-state sensitive, not engine benchmarks: they move when DIMM timings or CPU voltage/frequency limits change, which is how a future run's drift can be separated from a code change. 50 sample(s) taken across this sweep.
+Probes are cheap and machine-state sensitive, not engine benchmarks: they move when DIMM timings or CPU voltage/frequency limits change, which is how a future run's drift can be separated from a code change. 49 sample(s) taken across this sweep.
 
 ### Session integrity
 
@@ -413,32 +412,97 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 >
 > **Table Sort Order**: **Row QPS descending** (the annotated column). This is the full retrieval path — search plus payload hydration — so it ranks what an application actually gets. Recall is reported alongside but is no longer a sort key, because a row with high recall that is 10x slower is not the row a reader should see first.
 
+### Vector — `bigann-10M`
+
+> [!NOTE]
+> **NeurIPS BigANN 10M Out-of-Core Competitor Baseline & Quantizer Taxonomy.**
+> Evaluated on official NeurIPS BigANN 10M (10,000,000 vectors × 128-D uint8, 10,000 official queries, official ground truth `GT.10M`) under the standardized Azure `Standard_D8lds_v5` container envelope (8 vCPUs, 16 GiB RAM, 4 GiB search cache).
+>
+> **Quantizer Architecture & Codebook Distinction:**
+> - **PQ-16**: 16 independently trained 8-dimensional codebooks (subspace PQ, $s=8$). In unclustered continuous vector space, 8D subspace codebooks suffer from space-filling distortion, reaching only 0.3732 Recall@10.
+> - **DiskANN PQ-128**: 128 independently trained 1-dimensional codebooks ($m=128, s=1$, 256 centroids per dimension, unrotated raw coordinates without OPQ). Stored as 128 in-memory routing bytes per vector to guide SSD Vamana proximity graph traversal.
+> - **Native SQ8**: Uniform 8-bit affine scalar quantization ($s \cdot x + b$) directly along unrotated coordinates with zero codebook storage.
+> - **BenoQuant TQ8**: Polar lattice Fast Walsh-Hadamard orthogonal rotation modulated by Rademacher signs ($H_{128} \cdot D$) to equalize coordinate variance before uniform 8-bit scalar quantization, paired with Stage 2 sparse Float32 Parquet page reranking (`OffsetIndex` + `RowSelection`).
+
+#### Uncompressed (`f32`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb (ef=256)** | **f32** | **0.9694** | **26.3** | **295.95** | **370.4** | **26.3** | **295.95** | **370.4** | **912.0** | **7610.0** |
+
+#### Product-quantized subspace codebooks (`pq`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb (ef=256)** | **pq** | **0.3732** | **47.2** | **168.0** | **210.0** | **47.2** | **168.0** | **210.0** | **1420.0** | **3510.0** |
+
+#### DiskANN 128-byte in-memory routing (128x 1D codebooks, `pq-128`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| diskann (ef=10) | pq-128 | 0.6307 | 1159.4 | 0.829 | 1.483 | 1163.9 | 0.828 | 1.494 | 1261.73 | 6584.0 |
+| diskann (ef=20) | pq-128 | 0.717 | 803.3 | 1.206 | 1.96 | 803.2 | 1.206 | 1.979 | 1261.73 | 6584.0 |
+| diskann (ef=40) | pq-128 | 0.77 | 492.6 | 1.986 | 3.066 | 493.3 | 1.986 | 2.992 | 1261.73 | 6584.0 |
+| diskann (ef=80) | pq-128 | 0.7934 | 274.9 | 3.591 | 4.875 | 274.5 | 3.594 | 4.871 | 1261.73 | 6584.0 |
+| diskann (ef=64) | pq-128 | 0.7881 | 201.8 | 4.892 | 6.741 | 201.8 | 4.892 | 6.738 | 1261.73 | 6584.0 |
+| diskann (ef=160) | pq-128 | 0.7996 | 143.5 | 6.902 | 8.42 | 143.7 | 6.901 | 8.368 | 1261.73 | 6584.0 |
+| diskann (ef=128) | pq-128 | 0.7987 | 109.2 | 9.105 | 11.457 | 109.2 | 9.107 | 11.454 | 1261.73 | 6584.0 |
+| diskann (ef=320) | pq-128 | 0.8003 | 73.4 | 13.529 | 15.398 | 73.3 | 13.553 | 15.572 | 1261.73 | 6584.0 |
+| diskann (ef=256) | pq-128 | 0.8002 | 54.4 | 17.802 | 26.565 | 54.4 | 17.824 | 26.664 | 1261.73 | 6584.0 |
+
+#### Scalar-quantized, uniform 8-bit (`sq`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb (ef=64)** | **sq** | **0.7438** | **147.0** | **53.6** | **68.21** | **147.0** | **53.6** | **68.21** | **675.1** | **4030.0** |
+| **benodb (ef=128)** | **sq** | **0.7538** | **146.0** | **53.88** | **68.5** | **146.0** | **53.88** | **68.5** | **675.1** | **4030.0** |
+| **benodb (ef=256)** | **sq** | **0.9449** | **60.9** | **130.07** | **166.1** | **60.9** | **130.07** | **166.1** | **675.1** | **4030.0** |
+
+#### TurboQuant, 4-bit polar lattice (`tq4`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb (ef=256)** | **tq4** | **0.5799** | **57.9** | **136.6** | **172.5** | **57.9** | **136.6** | **172.5** | **680.0** | **3450.0** |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb (ef=64)** | **tq8** | **0.7451** | **163.6** | **48.28** | **62.15** | **163.6** | **48.28** | **62.15** | **682.4** | **4130.0** |
+| **benodb (ef=256)** | **tq8** | **0.9455** | **61.4** | **129.75** | **165.2** | **61.4** | **129.75** | **165.2** | **682.4** | **4130.0** |
+
 ### Vector — `fashion-mnist-784-euclidean`
 
 #### Uncompressed (`f32`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 1.0 | 5483.0 | 0.173 | 0.351 | 5318.2 | 0.175 | 0.364 | 0.72 | 65.6 |
-| hnswlib | f32 | 1.0 | 5384.2 | 0.179 | 0.365 | 2277.7 | 0.427 | 0.604 | 1.529 | 65.69 |
-| pgvector | f32 | 1.0 | 920.1 | 1.062 | 1.633 | 855.0 | 1.149 | 1.687 | 11.141 | 166.35 |
-| weaviate | f32 | 1.0 | 887.3 | 1.115 | 1.463 | 620.5 | 1.592 | 2.191 | 5.075 | 62.72 |
-| qdrant | f32 | 1.0 | 715.1 | 1.36 | 1.994 | 523.2 | 1.879 | 2.556 | 2.939 | 62.72 |
-| **benodb** | **f32** | **0.9976** | **831.4** | **1.189** | **1.649** | **507.0** | **1.951** | **2.512** | **2.705** | **194.96** |
-| milvus | f32 | 1.0 | 590.2 | 1.654 | 2.38 | 457.9 | 2.141 | 3.166 | 10.493 | 62.72 |
-| opensearch | f32 | 1.0 | 478.3 | 2.068 | 2.789 | 344.4 | 2.876 | 3.791 | 6.258 | 153.75 |
-| lancedb | f32 | 1.0 | 347.2 | 2.829 | 3.746 | 311.2 | 3.073 | 4.283 | 2.79 | 128.71 |
+| faiss | f32 | 1.0 | 4602.2 | 0.211 | 0.352 | 4427.6 | 0.22 | 0.341 | 0.789 | 65.6 |
+| hnswlib | f32 | 1.0 | 3891.2 | 0.246 | 0.438 | 1840.2 | 0.538 | 0.696 | 1.452 | 65.69 |
+| pgvector | f32 | 1.0 | 824.2 | 1.188 | 1.71 | 764.7 | 1.271 | 1.945 | 10.737 | 166.36 |
+| weaviate | f32 | 1.0 | 868.1 | 1.133 | 1.532 | 616.5 | 1.594 | 2.133 | 5.055 | 62.72 |
+| **benodb** | **f32** | **0.9976** | **871.7** | **1.124** | **1.582** | **592.3** | **1.653** | **2.154** | **2.666** | **194.96** |
+| qdrant | f32 | 1.0 | 751.9 | 1.294 | 1.787 | 547.9 | 1.804 | 2.357 | 2.968 | 62.72 |
+| milvus | f32 | 1.0 | 549.8 | 1.634 | 2.283 | 459.7 | 2.126 | 3.171 | 10.906 | 62.72 |
+| opensearch | f32 | 1.0 | 497.4 | 1.972 | 2.801 | 355.6 | 2.786 | 3.471 | 6.209 | 153.75 |
+| lancedb | f32 | 1.0 | 267.4 | 3.481 | 4.202 | 266.1 | 3.658 | 5.081 | 2.856 | 128.71 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9864 | 6882.7 | 0.143 | 0.217 | 6667.9 | 0.148 | 0.222 | 0.555 | 18.57 |
-| weaviate | sq | 1.0 | 863.2 | 1.146 | 1.584 | 604.3 | 1.635 | 2.208 | 5.089 | 15.68 |
-| qdrant | sq | 0.9922 | 828.8 | 1.183 | 1.635 | 588.9 | 1.694 | 2.19 | 2.958 | 15.68 |
+| faiss | sq | 0.9864 | 6186.0 | 0.157 | 0.259 | 6526.6 | 0.152 | 0.204 | 0.579 | 18.57 |
+| qdrant | sq | 0.9922 | 869.8 | 1.114 | 1.589 | 620.3 | 1.576 | 2.141 | 3.609 | 15.68 |
+| weaviate | sq | 1.0 | 867.1 | 1.122 | 1.649 | 597.3 | 1.634 | 2.421 | 5.043 | 15.68 |
 | milvus | sq | 0.9866 | 591.7 | 1.672 | 2.381 | 451.5 | 2.198 | 2.868 | 10.109 | 62.72 |
-| **benodb** | **sq** | **0.9976** | **583.6** | **1.689** | **2.191** | **342.5** | **2.882** | **3.501** | **5.098** | **147.93** |
-| lancedb | sq | 1.0 | 371.2 | 2.614 | 3.619 | 334.7 | 2.829 | 3.988 | 1.972 | 81.67 |
+| lancedb | sq | 1.0 | 385.6 | 2.467 | 3.228 | 362.1 | 2.644 | 4.103 | 1.923 | 81.67 |
+| **benodb** | **sq** | **0.9976** | **569.4** | **1.746** | **2.205** | **353.2** | **2.795** | **3.553** | **5.845** | **147.93** |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.9976** | **519.1** | **1.918** | **2.268** | **279.0** | **3.524** | **4.42** | **3.44** | **152.72** |
 
 ### Vector — `gist-960-euclidean`
 
@@ -446,26 +510,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 0.9916 | 3117.9 | 0.311 | 0.585 | 3100.3 | 0.305 | 0.603 | 1.347 | 79.68 |
-| hnswlib | f32 | 0.992 | 2439.4 | 0.394 | 0.72 | 1400.7 | 0.7 | 1.041 | 3.051 | 79.77 |
-| weaviate | f32 | 0.9908 | 668.2 | 1.493 | 2.128 | 472.0 | 2.125 | 2.807 | 6.431 | 76.8 |
-| **benodb** | **f32** | **0.9776** | **728.3** | **1.334** | **2.531** | **463.6** | **2.106** | **3.893** | **3.251** | **237.25** |
-| milvus | f32 | 0.9948 | 494.0 | 1.99 | 2.859 | 393.3 | 2.518 | 3.436 | 11.706 | 76.8 |
-| qdrant | f32 | 0.9974 | 537.9 | 1.826 | 2.513 | 363.4 | 2.751 | 3.454 | 4.1 | 76.8 |
-| pgvector | f32 | 0.9988 | 351.6 | 2.883 | 3.84 | 315.4 | 3.197 | 4.238 | 25.017 | 247.28 |
-| lancedb | f32 | 0.9986 | 286.3 | 3.437 | 4.536 | 259.7 | 3.707 | 5.088 | 4.236 | 156.75 |
-| opensearch | f32 | 0.9946 | 234.3 | 4.241 | 5.545 | 138.6 | 7.164 | 8.683 | 17.963 | 352.86 |
+| faiss | f32 | 0.9916 | 2637.1 | 0.377 | 0.613 | 2520.7 | 0.393 | 0.646 | 1.408 | 79.68 |
+| hnswlib | f32 | 0.9916 | 2002.7 | 0.51 | 0.77 | 1190.5 | 0.85 | 1.116 | 3.107 | 79.77 |
+| **benodb** | **f32** | **0.9776** | **789.6** | **1.249** | **1.746** | **581.2** | **1.678** | **2.321** | **3.125** | **237.25** |
+| weaviate | f32 | 0.9914 | 691.4 | 1.445 | 2.046 | 465.5 | 2.132 | 2.77 | 6.341 | 76.8 |
+| milvus | f32 | 0.9948 | 478.6 | 1.93 | 2.595 | 400.3 | 2.472 | 3.273 | 11.218 | 76.8 |
+| qdrant | f32 | 0.9978 | 526.0 | 1.835 | 2.684 | 362.1 | 2.737 | 3.458 | 4.137 | 76.8 |
+| pgvector | f32 | 0.9988 | 360.6 | 2.779 | 3.908 | 315.6 | 3.204 | 4.065 | 25.373 | 247.28 |
+| lancedb | f32 | 0.9982 | 216.6 | 4.37 | 5.069 | 217.0 | 4.508 | 6.153 | 4.29 | 156.75 |
+| opensearch | f32 | 0.994 | 202.8 | 4.824 | 6.488 | 140.0 | 7.107 | 8.301 | 17.503 | 352.91 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9812 | 3790.5 | 0.268 | 0.377 | 3712.2 | 0.272 | 0.38 | 0.949 | 22.09 |
-| weaviate | sq | 0.9922 | 661.4 | 1.53 | 2.033 | 463.1 | 2.133 | 2.87 | 6.408 | 19.2 |
-| qdrant | sq | 0.9562 | 699.9 | 1.41 | 1.871 | 438.9 | 2.262 | 2.873 | 3.989 | 19.2 |
+| faiss | sq | 0.9812 | 3261.6 | 0.313 | 0.431 | 3170.1 | 0.32 | 0.425 | 0.871 | 22.09 |
+| weaviate | sq | 0.9914 | 678.8 | 1.443 | 2.131 | 453.4 | 2.224 | 2.77 | 6.512 | 19.2 |
+| qdrant | sq | 0.9568 | 627.6 | 1.558 | 2.146 | 417.9 | 2.364 | 2.946 | 4.169 | 19.2 |
 | milvus | sq | 0.9838 | 479.4 | 2.052 | 2.827 | 374.8 | 2.618 | 3.612 | 11.043 | 76.8 |
-| **benodb** | **sq** | **0.9776** | **503.9** | **1.966** | **2.531** | **300.8** | **3.298** | **4.037** | **5.38** | **179.67** |
+| **benodb** | **sq** | **0.9776** | **510.8** | **1.933** | **2.561** | **313.4** | **3.154** | **3.896** | **6.49** | **179.67** |
 | lancedb | sq | 0.9984 | 286.3 | 3.436 | 4.526 | 266.6 | 3.576 | 4.971 | 2.576 | 99.15 |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.9778** | **493.8** | **1.992** | **2.737** | **277.7** | **3.565** | **4.384** | **3.536** | **180.93** |
 
 ### Vector — `glove-100-angular`
 
@@ -473,26 +543,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 0.9826 | 7054.8 | 0.14 | 0.206 | 6884.5 | 0.144 | 0.206 | 0.411 | 10.88 |
-| hnswlib | f32 | 0.976 | 7478.5 | 0.13 | 0.23 | 5534.5 | 0.174 | 0.283 | 0.601 | 10.97 |
-| **benodb** | **f32** | **0.9906** | **1687.2** | **0.58** | **0.862** | **1014.0** | **0.954** | **1.405** | **1.349** | **30.51** |
-| qdrant | f32 | 1.0 | 928.7 | 1.042 | 1.482 | 834.0 | 1.173 | 1.625 | 0.78 | 8.0 |
-| weaviate | f32 | 0.9748 | 824.9 | 1.201 | 1.741 | 774.6 | 1.279 | 1.888 | 4.202 | 8.0 |
-| pgvector | f32 | 0.9848 | 697.1 | 1.448 | 1.862 | 679.1 | 1.482 | 2.012 | 6.648 | 24.85 |
-| milvus | f32 | 0.9848 | 595.0 | 1.643 | 2.481 | 480.8 | 2.037 | 3.019 | 9.101 | 8.0 |
-| lancedb | f32 | 0.975 | 363.1 | 2.718 | 3.372 | 339.7 | 2.822 | 3.473 | 0.818 | 19.27 |
-| opensearch | f32 | 0.994 | 255.5 | 3.901 | 5.113 | 232.4 | 4.274 | 5.83 | 8.489 | 47.06 |
+| faiss | f32 | 0.9826 | 3448.7 | 0.152 | 0.316 | 6848.5 | 0.147 | 0.182 | 0.425 | 10.88 |
+| hnswlib | f32 | 0.9754 | 3626.8 | 0.127 | 0.307 | 6098.3 | 0.166 | 0.197 | 0.612 | 10.97 |
+| qdrant | f32 | 1.0 | 841.1 | 0.997 | 1.519 | 893.2 | 1.086 | 1.541 | 2.832 | 8.0 |
+| **benodb** | **f32** | **0.9906** | **1915.0** | **0.52** | **0.632** | **891.5** | **0.894** | **1.141** | **1.46** | **30.51** |
+| weaviate | f32 | 0.9746 | 846.9 | 1.149 | 1.798 | 799.0 | 1.239 | 1.668 | 4.199 | 8.0 |
+| pgvector | f32 | 0.9854 | 622.4 | 1.458 | 1.895 | 667.9 | 1.486 | 2.331 | 6.03 | 24.85 |
+| milvus | f32 | 0.984 | 504.3 | 1.635 | 2.615 | 464.3 | 2.114 | 2.774 | 8.544 | 8.0 |
+| lancedb | f32 | 0.9786 | 261.2 | 3.552 | 4.183 | 274.6 | 3.595 | 4.415 | 0.815 | 19.27 |
+| opensearch | f32 | 0.995 | 271.8 | 3.634 | 5.222 | 245.4 | 3.999 | 5.694 | 8.479 | 47.06 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9704 | 2135.2 | 0.481 | 0.583 | 2119.4 | 0.483 | 0.569 | 1.914 | 4.88 |
-| weaviate | sq | 0.9756 | 886.5 | 1.11 | 1.594 | 827.1 | 1.203 | 1.71 | 4.239 | 2.0 |
-| qdrant | sq | 1.0 | 956.2 | 1.013 | 1.422 | 801.9 | 1.225 | 1.648 | 0.794 | 2.0 |
-| **benodb** | **sq** | **0.9902** | **1386.4** | **0.716** | **0.917** | **613.9** | **1.602** | **1.992** | **1.841** | **24.51** |
+| faiss | sq | 0.9704 | 1565.9 | 0.49 | 0.759 | 2092.4 | 0.488 | 0.727 | 1.949 | 4.88 |
+| qdrant | sq | 1.0 | 817.1 | 1.027 | 1.429 | 864.2 | 1.115 | 1.686 | 0.774 | 2.0 |
+| weaviate | sq | 0.9762 | 849.6 | 1.163 | 1.618 | 863.3 | 1.141 | 1.722 | 4.362 | 2.0 |
+| **benodb** | **sq** | **0.9902** | **1419.8** | **0.7** | **0.925** | **540.3** | **1.608** | **2.523** | **1.878** | **24.51** |
 | milvus | sq | 0.9616 | 474.9 | 2.065 | 2.895 | 394.5 | 2.475 | 3.547 | 13.752 | 8.0 |
 | lancedb | sq | 0.9804 | 298.3 | 3.345 | 4.037 | 289.9 | 3.352 | 4.034 | 0.774 | 13.28 |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.9892** | **1347.7** | **0.734** | **0.919** | **463.9** | **1.918** | **2.43** | **1.38** | **25.07** |
 
 ### Vector — `glove-200-angular`
 
@@ -500,26 +576,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 0.9494 | 4925.8 | 0.196 | 0.337 | 4842.1 | 0.199 | 0.333 | 0.572 | 18.88 |
-| hnswlib | f32 | 0.9462 | 4692.4 | 0.196 | 0.457 | 3353.9 | 0.279 | 0.598 | 0.857 | 18.97 |
-| **benodb** | **f32** | **0.9578** | **1510.4** | **0.641** | **1.038** | **964.3** | **1.008** | **1.472** | **5.501** | **54.56** |
-| weaviate | f32 | 0.9456 | 727.1 | 1.363 | 1.918 | 653.1 | 1.529 | 2.099 | 4.619 | 16.0 |
-| qdrant | f32 | 1.0 | 759.2 | 1.288 | 1.708 | 598.2 | 1.65 | 2.184 | 1.246 | 16.0 |
-| pgvector | f32 | 0.9644 | 563.5 | 1.781 | 2.348 | 543.1 | 1.864 | 2.551 | 8.67 | 42.27 |
-| milvus | f32 | 0.9566 | 555.4 | 1.735 | 2.791 | 452.5 | 2.131 | 3.151 | 9.755 | 16.0 |
-| lancedb | f32 | 0.9434 | 347.7 | 2.848 | 3.57 | 323.6 | 2.979 | 3.778 | 1.161 | 35.25 |
-| opensearch | f32 | 0.9832 | 111.0 | 8.765 | 14.332 | 102.0 | 9.529 | 13.94 | 12.869 | 178.78 |
+| faiss | f32 | 0.9494 | 2689.1 | 0.209 | 0.374 | 4684.8 | 0.21 | 0.305 | 0.57 | 18.88 |
+| hnswlib | f32 | 0.9474 | 2778.3 | 0.193 | 0.422 | 3313.8 | 0.291 | 0.446 | 0.863 | 18.97 |
+| **benodb** | **f32** | **0.9578** | **1431.5** | **0.684** | **1.013** | **847.3** | **1.073** | **1.491** | **5.178** | **54.56** |
+| weaviate | f32 | 0.9452 | 667.5 | 1.32 | 1.981 | 654.3 | 1.506 | 2.03 | 4.549 | 16.0 |
+| qdrant | f32 | 1.0 | 836.0 | 1.147 | 1.621 | 635.8 | 1.555 | 2.075 | 1.165 | 16.0 |
+| pgvector | f32 | 0.9658 | 544.1 | 1.808 | 2.877 | 558.3 | 1.799 | 2.333 | 7.926 | 42.27 |
+| milvus | f32 | 0.9554 | 498.6 | 1.803 | 2.669 | 454.0 | 2.168 | 2.847 | 10.098 | 16.0 |
+| lancedb | f32 | 0.9474 | 338.0 | 2.725 | 3.725 | 337.7 | 2.906 | 3.715 | 1.153 | 35.25 |
+| opensearch | f32 | 0.9826 | 127.3 | 7.71 | 10.949 | 116.2 | 8.639 | 11.413 | 12.546 | 180.23 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9402 | 5662.0 | 0.175 | 0.262 | 5529.9 | 0.181 | 0.258 | 0.659 | 6.89 |
-| weaviate | sq | 0.9472 | 740.1 | 1.348 | 1.783 | 670.0 | 1.49 | 1.95 | 4.616 | 4.0 |
-| qdrant | sq | 1.0 | 836.4 | 1.17 | 1.597 | 650.8 | 1.512 | 2.06 | 1.255 | 4.0 |
-| **benodb** | **sq** | **0.9574** | **971.9** | **1.015** | **1.466** | **513.6** | **1.919** | **2.482** | **12.325** | **42.56** |
+| faiss | sq | 0.9402 | 2928.1 | 0.186 | 0.317 | 5469.1 | 0.185 | 0.223 | 0.638 | 6.89 |
+| qdrant | sq | 1.0 | 837.1 | 1.111 | 2.266 | 659.7 | 1.469 | 2.01 | 1.245 | 4.0 |
+| weaviate | sq | 0.9456 | 657.6 | 1.352 | 2.011 | 633.8 | 1.562 | 2.08 | 4.654 | 4.0 |
+| **benodb** | **sq** | **0.9574** | **1026.0** | **0.97** | **1.388** | **454.8** | **1.93** | **2.484** | **11.403** | **42.56** |
 | milvus | sq | 0.9438 | 559.4 | 1.732 | 2.778 | 448.3 | 2.175 | 3.1 | 10.627 | 16.0 |
-| lancedb | sq | 0.9448 | 281.6 | 3.522 | 4.334 | 270.8 | 3.587 | 4.398 | 1.031 | 23.26 |
+| lancedb | sq | 0.9494 | 265.8 | 3.489 | 4.397 | 275.5 | 3.592 | 4.321 | 1.05 | 23.26 |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.958** | **864.5** | **1.138** | **1.728** | **373.1** | **2.39** | **2.986** | **4.137** | **43.68** |
 
 ### Vector — `lastfm-64-dot`
 
@@ -527,26 +609,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| hnswlib | f32 | 0.991 | 19470.8 | 0.052 | 0.08 | 11787.3 | 0.083 | 0.13 | 0.252 | 8.17 |
-| faiss | f32 | 0.9964 | 14453.8 | 0.068 | 0.13 | 4442.9 | 0.071 | 0.136 | 0.214 | 8.08 |
-| pgvector | f32 | 0.996 | 1186.7 | 0.832 | 1.214 | 1156.3 | 0.857 | 1.128 | 6.309 | 18.51 |
-| **benodb** | **f32** | **0.9722** | **1957.1** | **0.503** | **0.687** | **1150.0** | **0.857** | **1.137** | **5.612** | **22.08** |
-| weaviate | f32 | 0.9904 | 1232.1 | 0.8 | 1.078 | 1135.3 | 0.863 | 1.236 | 3.875 | 5.2 |
-| qdrant | f32 | 1.0 | 997.7 | 0.968 | 1.376 | 895.2 | 1.089 | 1.559 | 0.649 | 5.2 |
-| opensearch | f32 | 0.9662 | 779.1 | 1.279 | 1.557 | 660.4 | 1.499 | 1.882 | 3.658 | 32.26 |
-| milvus | f32 | 0.9954 | 688.9 | 1.414 | 1.925 | 551.0 | 1.785 | 2.462 | 8.814 | 5.2 |
-| lancedb | f32 | 0.9978 | 399.7 | 2.487 | 2.965 | 373.1 | 2.567 | 3.169 | 0.598 | 13.6 |
+| faiss | f32 | 0.9964 | 13346.9 | 0.071 | 0.124 | 13384.8 | 0.073 | 0.101 | 0.207 | 8.08 |
+| hnswlib | f32 | 0.991 | 4721.3 | 0.058 | 0.116 | 11732.3 | 0.084 | 0.104 | 0.245 | 8.17 |
+| pgvector | f32 | 0.996 | 1042.7 | 0.797 | 1.044 | 1221.2 | 0.807 | 1.081 | 6.29 | 18.51 |
+| weaviate | f32 | 0.9916 | 1258.8 | 0.768 | 1.158 | 1136.6 | 0.853 | 1.334 | 3.844 | 5.2 |
+| qdrant | f32 | 1.0 | 870.0 | 0.949 | 1.812 | 920.6 | 1.041 | 1.703 | 0.645 | 5.2 |
+| **benodb** | **f32** | **0.9722** | **2014.4** | **0.49** | **0.68** | **918.8** | **0.889** | **1.142** | **5.123** | **22.08** |
+| opensearch | f32 | 0.9758 | 778.2 | 1.275 | 1.59 | 651.1 | 1.515 | 1.894 | 3.645 | 32.26 |
+| milvus | f32 | 0.9968 | 576.2 | 1.398 | 2.007 | 585.0 | 1.668 | 2.268 | 8.475 | 5.2 |
+| lancedb | f32 | 0.999 | 296.3 | 3.25 | 3.812 | 300.0 | 3.299 | 3.907 | 0.561 | 13.6 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9826 | 9625.9 | 0.102 | 0.167 | 9421.4 | 0.104 | 0.167 | 0.469 | 4.18 |
-| weaviate | sq | 0.9914 | 1230.7 | 0.794 | 1.113 | 1140.4 | 0.854 | 1.174 | 2.936 | 1.3 |
-| qdrant | sq | 1.0 | 1000.1 | 0.971 | 1.354 | 891.3 | 1.093 | 1.441 | 0.654 | 1.3 |
-| **benodb** | **sq** | **0.9726** | **1684.7** | **0.585** | **0.773** | **680.0** | **1.449** | **1.844** | **5.867** | **18.18** |
+| faiss | sq | 0.9826 | 9205.0 | 0.105 | 0.171 | 9058.9 | 0.107 | 0.17 | 0.481 | 4.18 |
+| weaviate | sq | 0.9906 | 1064.1 | 0.771 | 1.125 | 1129.5 | 0.862 | 1.255 | 3.883 | 1.3 |
+| qdrant | sq | 1.0 | 874.6 | 0.949 | 1.458 | 946.1 | 1.04 | 1.481 | 0.642 | 1.3 |
+| **benodb** | **sq** | **0.973** | **1808.5** | **0.549** | **0.721** | **592.8** | **1.631** | **2.069** | **5.588** | **18.18** |
 | milvus | sq | 0.9854 | 687.0 | 1.438 | 1.823 | 548.1 | 1.795 | 2.432 | 8.739 | 5.2 |
-| lancedb | sq | 0.9206 | 400.9 | 2.476 | 2.917 | 376.1 | 2.55 | 3.192 | 0.644 | 7.89 |
+| lancedb | sq | 0.9238 | 367.4 | 2.446 | 3.147 | 382.0 | 2.592 | 3.091 | 0.552 | 7.89 |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.9722** | **1352.3** | **0.732** | **1.005** | **447.0** | **2.018** | **2.768** | **3.033** | **19.44** |
 
 ### Vector — `mnist-784-euclidean`
 
@@ -554,26 +642,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 0.9998 | 4490.0 | 0.213 | 0.432 | 4389.8 | 0.218 | 0.421 | 1.035 | 65.6 |
-| hnswlib | f32 | 1.0 | 3822.2 | 0.259 | 0.5 | 1956.7 | 0.501 | 0.779 | 2.048 | 65.69 |
-| pgvector | f32 | 1.0 | 756.0 | 1.304 | 2.061 | 720.7 | 1.345 | 2.226 | 13.432 | 166.35 |
-| weaviate | f32 | 0.9998 | 832.0 | 1.205 | 1.602 | 590.4 | 1.667 | 2.364 | 4.329 | 62.72 |
-| milvus | f32 | 0.9996 | 564.8 | 1.701 | 2.89 | 437.7 | 2.214 | 3.796 | 10.305 | 62.72 |
-| **benodb** | **f32** | **0.9894** | **646.1** | **1.505** | **2.283** | **419.6** | **2.325** | **3.185** | **2.694** | **194.93** |
-| opensearch | f32 | 1.0 | 390.9 | 2.567 | 3.407 | 296.4 | 3.377 | 4.537 | 6.609 | 137.34 |
-| lancedb | f32 | 0.9996 | 320.1 | 3.061 | 4.179 | 292.5 | 3.273 | 4.559 | 2.834 | 128.83 |
-| qdrant | f32 | 0.9998 | 586.6 | 1.667 | 2.51 | 283.9 | 2.098 | 43.1 | 4.748 | 62.72 |
+| faiss | f32 | 0.9998 | 3825.0 | 0.262 | 0.426 | 3681.2 | 0.272 | 0.443 | 1.033 | 65.6 |
+| hnswlib | f32 | 1.0 | 3442.5 | 0.292 | 0.469 | 1768.8 | 0.568 | 0.747 | 1.963 | 65.69 |
+| pgvector | f32 | 1.0 | 779.1 | 1.274 | 1.971 | 698.7 | 1.425 | 2.129 | 12.662 | 166.35 |
+| **benodb** | **f32** | **0.9894** | **834.0** | **1.179** | **1.603** | **603.9** | **1.603** | **2.244** | **2.626** | **194.93** |
+| weaviate | f32 | 1.0 | 819.7 | 1.209 | 1.648 | 585.3 | 1.697 | 2.135 | 5.249 | 62.72 |
+| milvus | f32 | 0.9996 | 542.9 | 1.676 | 2.676 | 445.9 | 2.238 | 2.809 | 10.168 | 62.72 |
+| qdrant | f32 | 0.9996 | 678.2 | 1.447 | 1.982 | 306.8 | 1.858 | 42.346 | 2.942 | 62.72 |
+| lancedb | f32 | 1.0 | 318.1 | 2.91 | 3.504 | 305.5 | 3.167 | 4.666 | 2.848 | 128.83 |
+| opensearch | f32 | 0.9998 | 396.8 | 2.482 | 3.52 | 304.7 | 3.292 | 4.183 | 6.429 | 137.34 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9916 | 5714.3 | 0.172 | 0.3 | 5539.3 | 0.178 | 0.309 | 0.781 | 18.57 |
-| weaviate | sq | 0.9998 | 835.4 | 1.193 | 1.663 | 600.1 | 1.642 | 2.324 | 5.345 | 15.68 |
+| faiss | sq | 0.9916 | 4225.9 | 0.232 | 0.391 | 4386.9 | 0.228 | 0.334 | 0.796 | 18.57 |
+| weaviate | sq | 0.9998 | 816.0 | 1.208 | 1.767 | 585.1 | 1.697 | 2.121 | 5.37 | 15.68 |
 | milvus | sq | 0.9912 | 525.9 | 1.826 | 2.952 | 412.6 | 2.327 | 3.713 | 10.547 | 62.72 |
-| **benodb** | **sq** | **0.9894** | **456.0** | **2.188** | **2.78** | **342.7** | **2.922** | **3.613** | **4.754** | **147.9** |
-| lancedb | sq | 0.9996 | 368.8 | 2.643 | 3.606 | 331.6 | 2.859 | 4.111 | 2.121 | 81.79 |
-| qdrant | sq | 0.9918 | 648.5 | 1.476 | 2.282 | 309.5 | 1.893 | 42.739 | 2.938 | 15.68 |
+| **benodb** | **sq** | **0.9894** | **542.6** | **1.82** | **2.311** | **401.5** | **2.457** | **3.21** | **5.358** | **147.9** |
+| qdrant | sq | 0.9936 | 836.3 | 1.15 | 1.681 | 341.2 | 1.58 | 42.368 | 2.684 | 15.68 |
+| lancedb | sq | 0.9998 | 360.2 | 2.641 | 3.196 | 336.4 | 2.857 | 4.269 | 2.044 | 81.78 |
+
+#### TurboQuant, 8-bit polar lattice (`tq8`)
+
+| Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **benodb** | **tq8** | **0.9892** | **431.7** | **2.267** | **2.986** | **260.5** | **3.758** | **5.75** | **2.986** | **152.69** |
 
 ### Vector — `nytimes-256-angular`
 
@@ -581,31 +675,32 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 0.924 | 3621.4 | 0.27 | 0.39 | 3558.9 | 0.273 | 0.413 | 0.666 | 23.36 |
-| hnswlib | f32 | 0.924 | 3963.7 | 0.234 | 0.436 | 2879.9 | 0.334 | 0.524 | 1.21 | 23.45 |
-| **benodb** | **f32** | **0.9854** | **1155.7** | **0.843** | **1.197** | **756.7** | **1.28** | **1.898** | **1.887** | **68.03** |
-| weaviate | f32 | 0.9252 | 694.7 | 1.449 | 1.983 | 621.0 | 1.593 | 2.119 | 4.845 | 20.48 |
-| qdrant | f32 | 0.999 | 767.8 | 1.273 | 1.8 | 573.6 | 1.712 | 2.329 | 1.35 | 20.48 |
-| pgvector | f32 | 0.9452 | 503.1 | 1.971 | 2.529 | 476.6 | 2.096 | 2.655 | 9.985 | 50.92 |
-| milvus | f32 | 0.9458 | 505.6 | 1.939 | 2.73 | 406.9 | 2.399 | 3.361 | 11.37 | 20.48 |
-| lancedb | f32 | 0.9274 | 348.7 | 2.855 | 3.495 | 323.7 | 2.99 | 3.704 | 1.32 | 44.25 |
-| opensearch | f32 | 0.9786 | 94.8 | 10.38 | 14.673 | 87.3 | 11.288 | 15.571 | 15.242 | 219.38 |
+| faiss | f32 | 0.924 | 2303.0 | 0.266 | 0.432 | 3496.3 | 0.273 | 0.403 | 0.696 | 23.36 |
+| hnswlib | f32 | 0.9256 | 2324.5 | 0.265 | 0.507 | 2470.0 | 0.392 | 0.566 | 1.134 | 23.45 |
+| **benodb** | **f32** | **0.9854** | **1351.9** | **0.715** | **1.056** | **657.6** | **1.15** | **1.823** | **1.526** | **68.03** |
+| qdrant | f32 | 0.999 | 792.3 | 1.228 | 1.78 | 611.4 | 1.596 | 2.274 | 1.393 | 20.48 |
+| weaviate | f32 | 0.9272 | 690.8 | 1.441 | 1.925 | 591.1 | 1.678 | 2.183 | 4.855 | 20.48 |
+| pgvector | f32 | 0.9476 | 472.3 | 2.099 | 2.706 | 442.7 | 2.235 | 3.008 | 9.912 | 50.92 |
+| milvus | f32 | 0.9452 | 470.3 | 1.936 | 2.568 | 421.5 | 2.316 | 3.15 | 11.034 | 20.48 |
+| lancedb | f32 | 0.9284 | 252.0 | 3.785 | 4.515 | 256.9 | 3.835 | 4.713 | 1.355 | 44.26 |
+| opensearch | f32 | 0.9812 | 103.3 | 9.513 | 12.051 | 93.6 | 10.626 | 13.448 | 15.386 | 219.24 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9262 | 4691.8 | 0.214 | 0.254 | 4574.6 | 0.22 | 0.27 | 0.843 | 8.01 |
-| weaviate | sq | 0.9266 | 692.8 | 1.449 | 1.861 | 620.9 | 1.616 | 2.151 | 3.932 | 5.12 |
-| qdrant | sq | 0.9988 | 783.0 | 1.245 | 1.668 | 556.0 | 1.757 | 2.472 | 1.466 | 5.12 |
+| faiss | sq | 0.9262 | 4494.0 | 0.221 | 0.328 | 4548.6 | 0.221 | 0.262 | 0.806 | 8.01 |
+| weaviate | sq | 0.9272 | 605.8 | 1.475 | 2.247 | 580.4 | 1.713 | 2.294 | 3.959 | 5.12 |
+| qdrant | sq | 0.9988 | 801.1 | 1.201 | 1.792 | 561.5 | 1.745 | 2.312 | 1.351 | 5.12 |
 | milvus | sq | 0.9408 | 530.9 | 1.858 | 2.594 | 433.1 | 2.269 | 3.054 | 12.835 | 20.48 |
+| **benodb** | **sq** | **0.9854** | **887.3** | **1.111** | **1.424** | **391.1** | **2.397** | **2.995** | **2.65** | **52.68** |
 | lancedb | sq | 0.9264 | 289.0 | 3.449 | 4.195 | 277.9 | 3.494 | 4.366 | 1.123 | 28.85 |
 
 #### TurboQuant, 8-bit polar lattice (`tq8`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **benodb** | **tq8** | **0.9854** | **873.5** | **1.131** | **1.447** | **483.6** | **2.036** | **2.515** | **1.499** | **52.67** |
+| **benodb** | **tq8** | **0.9854** | **814.7** | **1.205** | **1.589** | **407.3** | **2.158** | **2.624** | **1.366** | **52.67** |
 
 ### Vector — `sift-128-euclidean`
 
@@ -613,23 +708,24 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | f32 | 1.0 | 9913.2 | 0.099 | 0.167 | 9551.2 | 0.102 | 0.165 | 0.302 | 13.12 |
-| hnswlib | f32 | 1.0 | 8998.1 | 0.101 | 0.258 | 5951.6 | 0.158 | 0.324 | 0.398 | 13.21 |
-| **benodb** | **f32** | **0.997** | **1923.7** | **0.515** | **0.634** | **1109.1** | **0.894** | **1.115** | **0.995** | **37.24** |
-| pgvector | f32 | 1.0 | 993.3 | 0.997 | 1.61 | 985.2 | 0.998 | 1.59 | 5.311 | 29.23 |
-| weaviate | f32 | 1.0 | 932.7 | 1.066 | 1.375 | 866.8 | 1.153 | 1.546 | 3.993 | 10.24 |
-| qdrant | f32 | 1.0 | 854.5 | 1.145 | 1.588 | 586.2 | 1.266 | 2.674 | 0.908 | 10.24 |
-| opensearch | f32 | 0.9998 | 632.5 | 1.583 | 2.1 | 580.3 | 1.717 | 2.193 | 3.543 | 28.39 |
-| milvus | f32 | 1.0 | 598.8 | 1.624 | 2.465 | 470.8 | 2.065 | 2.969 | 8.616 | 10.24 |
-| lancedb | f32 | 1.0 | 369.7 | 2.663 | 3.487 | 339.3 | 2.781 | 4.087 | 0.741 | 23.86 |
+| faiss | f32 | 1.0 | 9541.3 | 0.102 | 0.181 | 9125.9 | 0.109 | 0.146 | 0.297 | 13.12 |
+| hnswlib | f32 | 1.0 | 11694.7 | 0.082 | 0.166 | 7577.4 | 0.131 | 0.179 | 0.432 | 13.21 |
+| **benodb** | **f32** | **0.997** | **1888.9** | **0.509** | **0.679** | **1096.0** | **0.855** | **1.128** | **1.017** | **37.24** |
+| pgvector | f32 | 0.998 | 1011.9 | 0.991 | 1.48 | 1009.1 | 0.986 | 1.443 | 4.204 | 29.22 |
+| weaviate | f32 | 1.0 | 1087.4 | 0.871 | 1.58 | 948.4 | 1.003 | 1.699 | 3.993 | 10.24 |
+| qdrant | f32 | 1.0 | 987.0 | 0.982 | 1.348 | 680.1 | 1.029 | 2.543 | 0.841 | 10.24 |
+| opensearch | f32 | 0.9998 | 645.7 | 1.548 | 1.982 | 572.8 | 1.724 | 2.419 | 3.51 | 28.39 |
+| milvus | f32 | 1.0 | 560.8 | 1.554 | 2.858 | 519.5 | 1.888 | 2.448 | 8.821 | 10.24 |
+| lancedb | f32 | 1.0 | 393.5 | 2.396 | 3.073 | 396.1 | 2.494 | 3.049 | 0.737 | 23.85 |
 
 #### Scalar-quantized, uniform 8-bit (`sq`)
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| faiss | sq | 0.9916 | 11190.6 | 0.091 | 0.115 | 10809.9 | 0.093 | 0.12 | 0.322 | 5.44 |
-| weaviate | sq | 1.0 | 905.7 | 1.094 | 1.574 | 828.1 | 1.196 | 1.636 | 4.036 | 2.56 |
-| qdrant | sq | 1.0 | 936.8 | 1.036 | 1.666 | 646.8 | 1.1 | 2.607 | 0.959 | 2.56 |
+| faiss | sq | 0.9916 | 8846.1 | 0.112 | 0.175 | 8850.6 | 0.115 | 0.14 | 0.337 | 5.44 |
+| weaviate | sq | 1.0 | 993.4 | 0.987 | 1.404 | 890.5 | 1.1 | 1.562 | 4.008 | 2.56 |
+| qdrant | sq | 1.0 | 945.7 | 1.022 | 1.505 | 641.2 | 1.123 | 2.599 | 0.809 | 2.56 |
+| **benodb** | **sq** | **0.997** | **1479.0** | **0.67** | **0.797** | **520.3** | **1.836** | **2.325** | **1.34** | **29.56** |
 | milvus | sq | 0.9916 | 632.1 | 1.534 | 2.396 | 502.8 | 1.932 | 2.794 | 8.789 | 10.24 |
 | lancedb | sq | 1.0 | 313.9 | 3.152 | 4.038 | 301.1 | 3.178 | 4.125 | 0.691 | 16.18 |
 
@@ -637,7 +733,7 @@ Full-row retrieval hydrates the uncompressed `float32` payload directly from sto
 
 | Engine | Index Precision | Recall@k | Index QPS | Index p50 (ms) | Index p99 (ms) | Row QPS ▼ | Row p50 (ms) | Row p99 (ms) | Build (s) | Index (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **benodb** | **tq8** | **0.997** | **1301.5** | **0.761** | **0.971** | **611.3** | **1.608** | **2.005** | **1.313** | **29.56** |
+| **benodb** | **tq8** | **0.997** | **1470.9** | **0.677** | **0.784** | **574.2** | **1.672** | **2.405** | **1.037** | **29.56** |
 
 ## 10. Competitor Configurations (frame of reference)
 
@@ -654,6 +750,7 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 | vector | qdrant | collection HNSW: uncompressed f32 & ScalarQuantization (int8 quantile=0.99); distance Euclid/Cosine/Dot | client → server (Qdrant) |
 | vector | weaviate | collection HNSW: uncompressed f32 & SQ (8-bit scalar quantization); distance cosine/dot/l2-squared | client → server (Weaviate) |
 | vector | milvus | collection HNSW (uncompressed f32) & HNSW_SQ (8-bit scalar quantization), M/ef_construction, ef = ef_search, metric_type IP/COSINE/L2. Not IVF_SQ8: IVF partitions on L2 centroids, which routed badly under a dot-product metric and reported 0.8608 where HNSW_SQ reports 0.9854 on lastfm | client → server (Milvus) |
+| vector | diskann | DiskANN / SSD Vamana (`diskannpy 0.7.0`): R=32, L=64, 128B in-memory routing codes (PQ-128: 128 independently trained 1D codebooks on raw unrotated coordinates, m=128, s=1, 256 scalar centroids per coordinate without OPQ), sector-aligned SSD Vamana disk index, cache list prewarmed | embedded (in-process C++ via Python bindings) |
 | graph | benodb | CSR graph, in-process Rust (PageRank 30 iters / connected components / shortest path) | embedded (in-process Rust) |
 | graph | networkx | in-memory Python (correctness oracle, not a perf baseline) | embedded (in-process Python) |
 | graph | neo4j | Neo4j 5.26 + GDS, gds.graph.project + native gds.*.mutate; page cache 4G; latency = JVM compute (no per-node Bolt marshalling) | native GDS (Neo4j JVM) |
@@ -666,85 +763,3 @@ Every engine runs inside the same Docker envelope (`BENCH_CPUS`/`BENCH_MEM`, rec
 | sql | clickhouse | MergeTree ORDER BY tuple(); Parquet loaded via the client | client → server (ClickHouse) |
 | sql | trino | Hive connector over the shared Parquet (external table) | client → server (Trino) |
 
-
-
-## 11. NeurIPS BigANN 100M Out-of-Core Scale & Ablation Audit (v0.17.0)
-
-**Workload Profile:** NeurIPS BigANN 100M (100,000,000 vectors, d=128, L2 metric).  
-**Hardware Envelope:** Azure `Standard_D8lds_v5` profile (`--cpus=8 --memory=16g --memory-swap=16g`), Linux cgroup v2 limit `16,384 MiB`, `BDB_CACHE_GB = 8`.  
-**Storage Accounting:** Parquet base data: 47.68 GiB (51.20 GB). Detached index overlay: 28.81 GiB (53 GiB sharded Puffin sidecars + 40 GiB segment Puffins; flat codes 11.92 GiB, cluster meta 1.24 GiB, subgraphs 15.65 GiB). Total store: 76.49 GiB (4.8x larger than host RAM).
-
-### 11.1 Pareto Frontier: Native SQ8 vs. BenoQuant TQ8 (H * D)
-
-All 16 points cgroup-verified (`envelope_verified: true`), median of 3 repeats, 200 queries per point, evaluated against official `GT.100M`.
-
-| Quantizer | ef_search | n_probe | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) | Physical MB/q |
-|---|---|---|---|---|---|---|---|---|
-| Native SQ8 | 32 | 4 | 0.8530 | 146.2 | 53.1 | 73.7 | 14,093 | 0.00 |
-| Native SQ8 | 32 | 8 | 0.9265 | 115.4 | 66.0 | 93.8 | 14,093 | 0.00 |
-| Native SQ8 | 32 | 16 | 0.9695 | 81.9 | 93.9 | 150.7 | 14,093 | 0.00 |
-| Native SQ8 | 128 | 32 | 0.9810 | 49.7 | 154.3 | 224.6 | 14,093 | 0.00 |
-| BenoQuant TQ8 | 32 | 4 | 0.8420 | 148.4 | 52.2 | 76.8 | 14,071 | 0.00 |
-| BenoQuant TQ8 | 32 | 8 | 0.9260 | 122.0 | 63.8 | 90.1 | 14,071 | 0.00 |
-| BenoQuant TQ8 | 64 | 16 | 0.9570 | 86.6 | 87.5 | 135.2 | 14,071 | 0.00 |
-| BenoQuant TQ8 | 128 | 32 | 0.9650 | 51.7 | 149.2 | 211.3 | 14,071 | 0.00 |
-
-*Memory Boundedness:* Peak cgroup usage held at 14,071.1 MiB (TQ8) and 14,093.0 MiB (SQ8), leaving **2.26 GiB operating headroom** below the 16 GiB hard limit with `oom_kill = 0`, `swap = 0`.
-
-### 11.2 Architectural Mechanism Ablation: Codes-First SIMD Scan vs. Out-of-Core Graph Traversal
-
-Isolating retrieval under identical 100M table artifacts, same hardware, same queries, same parameter pairs:
-
-| Mode | ef_s / n_p | Recall@10 | QPS | p50 (ms) | Speedup |
-|---|---|---|---|---|---|
-| Codes SIMD Scan | 256 / 32 | 0.9650 | 49.9 | 153.5 | **124.8x** |
-| Graph Traversal | 256 / 32 | 0.9325 | 0.40 | 24,800 | 1.0x (baseline) |
-| Codes SIMD Scan | 128 / 16 | 0.9570 | 85.5 | 90.6 | **129.5x** |
-| Graph Traversal | 128 / 16 | 0.9240 | 0.66 | 15,120 | 1.0x (baseline) |
-| Codes SIMD Scan | 128 / 8 | 0.9260 | 119.9 | 64.1 | **126.2x** |
-| Graph Traversal | 128 / 8 | 0.8990 | 0.95 | 10,240 | 1.0x (baseline) |
-
-*Root Cause:* Out-of-core graph traversal forces random 4 KB pointer hops across noncontiguous disk offsets, generating 45 to 981 MB/query physical NVMe reads that saturate queue depths. Codes-first SIMD streams contiguous codes sequentially out of page cache at ~40.3 GB/s, reading 0.00-0.11 MB/q physical NVMe.
-
-### 11.3 Immutable Manifest Version Caching Ablation (`b53e59e4`)
-
-| Metric | Pre-Caching Baseline | With `MANIFEST_FULL_CACHE` | Impact |
-|---|---|---|---|
-| Logical `rchar` per query | 33.4–35.7 MB/q | **0.32–0.33 MB/q** | **100x reduction** |
-| Fixed JSON parsing latency | ~162 ms/query | **0.00 ms/query** | **Eliminated** |
-| Anonymous Heap Overhead | 1,493–1,859 MiB | **537–727 MiB** | **2.6x reduction** |
-| Throughput (n_p = 4 / 8 / 16 / 32) | 43.8 / 40.3 / 34.4 / 27.1 QPS | **148.4 / 120.1 / 85.5 / 51.7 QPS** | **1.9x to 3.4x lift** |
-
----
-
-## 12. High-Dimensional Cohere 10M Benchmark Audit (v0.17.0)
-
-**Workload Profile:** Cohere 10M (10,000,000 vectors, d=768, MIPS).  
-**Hardware Envelope:** Controlled Azure `Standard_D8lds_v5` profile (--cpus=8 --memory=16g), `BDB_CACHE_GB = 8`.  
-**Artifact:** `benchmarks/results/neurips_bigann/bigann_cohere-10m_10000k_20261119T140747Z.json` (16 operating points).
-
-| Quantizer Mode | ef_s | n_p | Recall@10 | QPS | p50 (ms) | p99 (ms) | Peak cgroup (MiB) |
-|---|---|---|---|---|---|---|---|
-| BenoQuant TQ8 (H * D) | 64 | 32 | 0.9800 | 65.9 | 122.74 | 159.75 | 10,396 |
-| BenoQuant TQ8 (H * D) | 32 | 16 | 0.9485 | 127.4 | 61.92 | 82.31 | 10,396 |
-| BenoQuant TQ8 (H * D) | 32 | 8 | 0.8890 | 226.7 | 34.08 | 49.79 | 10,396 |
-| BenoQuant TQ8 (H * D) | 128 | 4 | 0.8025 | 344.3 | 22.64 | 31.85 | 10,396 |
-| Native SQ8 (No Rotation, 32G) | 256 | 32 | 0.8080 | 68.2 | 115.50 | 154.21 | 5,050 |
-| Uncompressed F32 (Baseline, 64G) | 256 | 32 | 0.8541 | 9.3 | 855.00 | 1412.90 | 9,990 |
-| BenoQuant TQ4 (32G) | 256 | 32 | 0.7288 | 46.8 | 170.00 | 201.01 | 4,590 |
-| Product Quantization (PQ, 32G) | 256 | 32 | 0.5374 | 23.8 | 335.55 | 458.53 | 4,510 |
-
----
-
-## 13. Page-Indexed Sparse Parquet Reranking Physical I/O Audit (v0.17.0)
-
-**Workload Profile:** BigANN 10M (10,000,000 vectors, d=128, L2). Cold page cache (evicted via `posix_fadvise` before every query).
-
-| Configuration | Refine Factor (k') | Recall@10 | Physical I/O / query | Row Groups Read | Decoded Rows |
-|---|---|---|---|---|---|
-| 32 KB Pages (OffsetIndex) | k'=40 | 0.910 | **3.80 MB** | 0 | 40 |
-| 128 MB Pages (Row Group Default) | k'=40 | 0.910 | **380.55 MB** | full | full |
-| **Reduction** | | | **100.2x reduction** | | **0 post-filter** |
-| 32 KB Pages (OffsetIndex) | k'=160 | 0.957 | **12.91 MB** | 0 | 160 |
-| 128 MB Pages (Row Group Default) | k'=160 | 0.957 | **1,330.99 MB** | full | full |
-| **Reduction** | | | **103.1x reduction** | | **0 post-filter** |

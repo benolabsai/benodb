@@ -197,6 +197,12 @@ COMPETITOR_CONFIG = [
      "ef = ef_search, metric_type IP/COSINE/L2. Not IVF_SQ8: IVF partitions on L2 centroids, which "
      "routed badly under a dot-product metric and reported 0.8608 where HNSW_SQ reports 0.9854 on lastfm",
      "client → server (Milvus)"),
+    ("vector", "diskann",
+     "DiskANN / SSD Vamana (`diskannpy 0.7.0`): R=32, L=64, 128B in-memory routing codes "
+     "(PQ-128: 128 independently trained 1D codebooks on raw unrotated coordinates, m=128, s=1, "
+     "256 scalar centroids per coordinate without OPQ), sector-aligned SSD Vamana disk index, "
+     "cache list prewarmed",
+     "embedded (in-process C++ via Python bindings)"),
     ("graph", "benodb",
      "CSR graph, in-process Rust (PageRank 30 iters / connected components / shortest path)",
      "embedded (in-process Rust)"),
@@ -1161,10 +1167,16 @@ def generate_summary(
             continue
         # Normalize engine precision metadata:
         eng = r.get("engine", "")
-        if eng.endswith("_sq") or r.get("index_type") in ("hnsw_sq", "sq"):
+        if eng == "diskann":
+            r["index_precision"] = "pq-128"
+        elif eng.endswith("_sq") or r.get("index_type") in ("hnsw_sq", "sq"):
             r["index_precision"] = "sq"
         elif eng.endswith("_tq8") or r.get("index_type") in ("hnsw_tq8", "tq8"):
             r["index_precision"] = "tq8"
+        elif eng.endswith("_tq4") or r.get("index_type") in ("hnsw_tq4", "tq4"):
+            r["index_precision"] = "tq4"
+        elif eng.endswith("_pq") or r.get("index_type") in ("hnsw_pq", "pq"):
+            r["index_precision"] = "pq"
         elif eng == "lancedb_hnsw":
             r["engine"] = "lancedb_sq"
             r["index_type"] = "hnsw_sq"
@@ -1189,12 +1201,23 @@ def generate_summary(
         # second measurement of the same engine/dataset/device that trades throughput
         # for recall, so collapsing on the first three fields would silently keep the
         # faster unrefined row and drop the refined one.
-        key = (
-            r.get("engine"),
-            r.get("dataset"),
-            r.get("device"),
-            _record_refine(r),
-        )
+        if r.get("dataset") == "bigann-10M":
+            ef = r.get("index", {}).get("ef_search") if isinstance(r.get("index"), dict) else r.get("ef_search")
+            key = (
+                r.get("engine"),
+                r.get("dataset"),
+                r.get("device"),
+                _record_refine(r),
+                r.get("index_precision"),
+                ef,
+            )
+        else:
+            key = (
+                r.get("engine"),
+                r.get("dataset"),
+                r.get("device"),
+                _record_refine(r),
+            )
         if key not in _best or (r.get("qps") or 0) > (_best[key].get("qps") or 0):
             _best[key] = r
     vector = list(_best.values())
@@ -1246,25 +1269,42 @@ def generate_summary(
             sections.append(f"### Vector — `{ds}`")
             sections.append("")
 
+            if ds == "bigann-10M":
+                sections.append(
+                    "> [!NOTE]\n"
+                    "> **NeurIPS BigANN 10M Out-of-Core Competitor Baseline & Quantizer Taxonomy.**\n"
+                    "> Evaluated on official NeurIPS BigANN 10M (10,000,000 vectors × 128-D uint8, 10,000 official queries, official ground truth `GT.10M`) under the standardized Azure `Standard_D8lds_v5` container envelope (8 vCPUs, 16 GiB RAM, 4 GiB search cache).\n"
+                    ">\n"
+                    "> **Quantizer Architecture & Codebook Distinction:**\n"
+                    "> - **PQ-16**: 16 independently trained 8-dimensional codebooks (subspace PQ, $s=8$). In unclustered continuous vector space, 8D subspace codebooks suffer from space-filling distortion, reaching only 0.3732 Recall@10.\n"
+                    "> - **DiskANN PQ-128**: 128 independently trained 1-dimensional codebooks ($m=128, s=1$, 256 centroids per dimension, unrotated raw coordinates without OPQ). Stored as 128 in-memory routing bytes per vector to guide SSD Vamana proximity graph traversal.\n"
+                    "> - **Native SQ8**: Uniform 8-bit affine scalar quantization ($s \\cdot x + b$) directly along unrotated coordinates with zero codebook storage.\n"
+                    "> - **BenoQuant TQ8**: Polar lattice Fast Walsh-Hadamard orthogonal rotation modulated by Rademacher signs ($H_{128} \\cdot D$) to equalize coordinate variance before uniform 8-bit scalar quantization, paired with Stage 2 sparse Float32 Parquet page reranking (`OffsetIndex` + `RowSelection`)."
+                )
+                sections.append("")
+
             def _get_idx_prec(r):
                 eng = r.get("engine", "")
                 raw = str(r.get("index_type") or "-").lower()
                 prec = r.get("index_precision")
                 if prec:
                     return prec
+                if eng == "diskann":
+                    return "pq-128"
                 if eng.endswith("_sq") or "sq" in raw:
                     return "sq"
                 if eng.endswith("_tq8") or "tq8" in raw:
                     return "tq8"
+                if eng.endswith("_tq4") or "tq4" in raw:
+                    return "tq4"
+                if eng.endswith("_pq") or "pq" in raw:
+                    return "pq"
                 return "f32"
 
-            # One row per engine and precision. Where two-stage refining was also
-            # measured, the row shown is whichever configuration reached the higher
-            # recall, with the faster full-row path breaking a tie. Two rows for one
-            # engine+precision would differ only in a flag, and what a reader wants is
-            # the best answer that engine gives at that precision -- not an inventory
-            # of the switches that were tried.
             def _cell(r):
+                if ds == "bigann-10M":
+                    ef = r.get("index", {}).get("ef_search") if isinstance(r.get("index"), dict) else r.get("ef_search")
+                    return (_eng_label(r.get("engine")), _get_idx_prec(r), ef)
                 return (_eng_label(r.get("engine")), _get_idx_prec(r))
 
             def _rank(r):
@@ -1289,7 +1329,8 @@ def generate_summary(
                 # total and a re-render is byte-stable.
                 row_qps = _row_qps(r)
                 q = float(row_qps) if isinstance(row_qps, (int, float)) else float("-inf")
-                return (-q, r.get("engine", ""))
+                ef = r.get("index", {}).get("ef_search") if isinstance(r.get("index"), dict) else r.get("ef_search")
+                return (-q, r.get("engine", ""), ef or 0)
 
             # Group by the precision value itself, not by "compressed or not": `sq` is a
             # uniform 8-bit code and `tq8` is an 8-bit polar-lattice encoding, so ranking
@@ -1305,7 +1346,8 @@ def generate_summary(
                 "sq8": "Scalar-quantized, uniform 8-bit (`sq`)",
                 "tq8": "TurboQuant, 8-bit polar lattice (`tq8`)",
                 "tq4": "TurboQuant, 4-bit polar lattice (`tq4`)",
-                "pq": "Product-quantized (`pq`)",
+                "pq": "Product-quantized subspace codebooks (`pq`)",
+                "pq-128": "DiskANN 128-byte in-memory routing (128x 1D codebooks, `pq-128`)",
             }
             order = sorted(by_precision, key=lambda p: (p != "f32", p))
             for prec in order:
@@ -1321,8 +1363,13 @@ def generate_summary(
                 for r in sorted(rows, key=_sort_key):
                     eng = r.get("engine", "")
                     idx = _get_idx_prec(r)
+                    if ds == "bigann-10M":
+                        ef = r.get("index", {}).get("ef_search") if isinstance(r.get("index"), dict) else r.get("ef_search")
+                        eng_str = f"{_eng_label(eng)} (ef={ef})" if ef else _eng_label(eng)
+                    else:
+                        eng_str = _eng_label(eng)
                     cells = [
-                        _eng_label(eng),
+                        eng_str,
                         idx,
                         r.get("recall_at_k"),
                         _index_qps(r),
@@ -1339,8 +1386,8 @@ def generate_summary(
                     # bolding only the name left them visually detached from it.
                     if str(eng).startswith("benodb"):
                         cells = [
-                            f"**{str(c).strip('*')}**" if i == 0 else f"**{c}**"
-                            for i, c in enumerate(cells)
+                            f"**{str(c).replace('*', '')}**"
+                            for c in cells
                         ]
                     sections.append("| " + " | ".join(str(c) for c in cells) + " |")
                 sections.append("")
