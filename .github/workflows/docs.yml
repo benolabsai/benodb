@@ -3,6 +3,8 @@ name: Documentation Site
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
     paths:
       - "src/**"
       - "python/**"
