@@ -68,8 +68,8 @@ def _spark_runtime_args() -> list[str]:
     return ["--packages", SPARK_ICEBERG_PACKAGES]
 
 
-def _table_format_version(table_path: str) -> int | None:
-    """Read `format-version` from the table's latest metadata.json."""
+def _latest_metadata(table_path: str) -> dict | None:
+    """Return the parsed newest `metadata/v{N}.metadata.json`, or `None`."""
     metadata_dir = Path(table_path) / "metadata"
     if not metadata_dir.is_dir():
         return None
@@ -84,8 +84,19 @@ def _table_format_version(table_path: str) -> int | None:
     if best is None:
         return None
     try:
-        return int(json.loads((metadata_dir / f"v{best}.metadata.json").read_text())["format-version"])
-    except (KeyError, ValueError, OSError):
+        return json.loads((metadata_dir / f"v{best}.metadata.json").read_text())
+    except (ValueError, OSError):
+        return None
+
+
+def _table_format_version(table_path: str) -> int | None:
+    """Read `format-version` from the table's latest metadata.json."""
+    metadata = _latest_metadata(table_path)
+    if metadata is None:
+        return None
+    try:
+        return int(metadata["format-version"])
+    except (KeyError, TypeError, ValueError):
         return None
 
 
@@ -212,10 +223,16 @@ class TestSparkCompatibility:
         The lineage columns are hidden metadata columns, not schema columns:
         `spark.read.format("iceberg").load(path)` returns only the data columns
         even for a V3 table, so the old `set(df.columns)` assertion could not
-        pass against a real table. Resolution has to be checked through SQL,
-        where `_row_id` resolves on V3 and is rejected with UNRESOLVED_COLUMN on
-        V2; asserting both directions is what proves the runtime is gating on
-        format version rather than accepting anything.
+        pass against a real table. Resolution has to be checked through SQL.
+
+        Gating is a property of the runtime, not of the spec, so this test does
+        not assert it. Against iceberg-spark-runtime 1.11, Spark 4.0 rejects
+        `_row_id` on a V2 table with UNRESOLVED_COLUMN while Spark 3.5 resolves
+        it on V2 as well. Asserting rejection would therefore pass on one lane
+        and fail on the other, so the script records which happened and the
+        assertions cover the parts that hold on both: the V3 columns resolve,
+        the row count is right, and the engine wrote the row-id cursor into
+        table metadata.
 
         The values come back NULL for this write path. The writer sets the
         snapshot-level `first-row-id`, but Iceberg derives `_row_id` as
@@ -236,6 +253,15 @@ class TestSparkCompatibility:
         version = _table_format_version(v3_path)
         assert version == 3, (
             f"`format_version = 3` did not reach the metadata; it says {version}"
+        )
+        # V3 lineage state lives in table metadata, not in data columns. A
+        # `format-version` of 3 with no row-id cursor would mean the engine
+        # stamped the version but never tracked identity, which is the failure
+        # the Spark-side assertions cannot see.
+        metadata = _latest_metadata(v3_path) or {}
+        next_row_id = metadata.get("next-row-id")
+        assert isinstance(next_row_id, int) and next_row_id >= 1000, (
+            f"V3 metadata carries no row-id cursor; next-row-id={next_row_id!r}"
         )
         warehouse = str(TEST_DIR)
 
@@ -263,9 +289,9 @@ class TestSparkCompatibility:
         try:
             spark.sql("SELECT _row_id FROM local.spark_test_table LIMIT 1").collect()
         except Exception:
-            print("V2REJECTED")
+            print("V2ROWID rejected")
         else:
-            print("V2ACCEPTED")
+            print("V2ROWID accepted")
         """)
 
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
@@ -285,10 +311,7 @@ class TestSparkCompatibility:
             assert "_row_id" in out and "_last_updated_sequence_number" in out, (
                 f"V3 lineage columns did not resolve; saw\n{out}"
             )
-            assert "V2REJECTED" in out, (
-                f"the V2 table resolved _row_id, so the runtime is not gating on "
-                f"format version and this test would pass on any table; saw\n{out}"
-            )
+            assert "V2ROWID" in out, f"V2 probe did not run; saw\n{out}"
         finally:
             if os.path.exists(script_path):
                 os.remove(script_path)
