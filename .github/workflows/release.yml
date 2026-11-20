@@ -284,12 +284,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+      # sccache is off on Windows because its wrapper re-invokes rustc with the
+      # full argument list, and cargo's own argfile escape hatch does not apply
+      # once a wrapper is in front. The dependency graph here passes more
+      # `-L dependency=` and `-L native=` entries than CreateProcess accepts
+      # (32,767 characters), so the MCP build died with
+      # "sccache: caused by: The filename or extension is too long. (os error 206)"
+      # while compiling datafusion-catalog. Without the wrapper, cargo keeps the
+      # command line under the limit itself. All four builds share one target
+      # directory, so the dependency tree still compiles once per job.
       - name: Build core wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --features "python"
-          sccache: "true"
+          sccache: "false"
       # §3.1: clean-environment install + import of the freshly built wheel.
       # Windows `run:` defaults to PowerShell, which does not expand globs — so
       # resolve the wheel explicitly (a bare `dist/benodb-*.whl` fails with
@@ -306,19 +315,19 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --manifest-path contrib/benodb-search/Cargo.toml --out contrib/benodb-search/dist
-          sccache: "true"
+          sccache: "false"
       - name: Build flight server wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --manifest-path server/flight_sql/Cargo.toml --out server/flight_sql/dist
-          sccache: "true"
+          sccache: "false"
       - name: Build MCP server wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --manifest-path contrib/benodb-mcp/Cargo.toml --out contrib/benodb-mcp/dist
-          sccache: "true"
+          sccache: "false"
       - name: Upload core wheels
         uses: actions/upload-artifact@v7
         with:
