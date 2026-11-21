@@ -1025,6 +1025,11 @@ Benchmarks published in the project repository ([`benchmarks/results/BENCHMARK_R
 
 ## Architecture Flow
 
+![BenoDB Graph RAG Architecture Flow](architecture_flow.svg)
+
+<details>
+<summary>View Mermaid Flowchart Source</summary>
+
 ```mermaid
 flowchart TD
     classDef table fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e;
@@ -1062,6 +1067,7 @@ flowchart TD
     K --> L["LLM Context Assembly"]:::compute
     L --> M["Cited Response Generation"]:::agent
 ```
+</details>
 
 
 ## The BenoDB Architecture Series
