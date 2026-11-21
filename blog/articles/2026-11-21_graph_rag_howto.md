@@ -1,12 +1,12 @@
 # RAG Meets Graph Analytics: Building Hybrid Retrieval on Your Existing Iceberg Data
 
-*By Rick Albright · Part 1 of the BenoDB Architecture Series · [Documentation](https://www.benolabsai.com/docs/) · [GitHub](https://github.com/benolabsai/benodb)*
+*By Rick Albright · Article 1 of the BenoDB Architecture Series · [Documentation](https://www.benolabsai.com/docs/) · [GitHub](https://github.com/benolabsai/benodb)*
 
 ---
 
-Every time I look at a modern AI architecture diagram, I wince.
+Every time I look at a modern AI architecture diagram, I think to myself, there has to be a better way.
 
-To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multi-hop relationship reasoning. Throw in fragile ETL synchronization pipelines to keep them from drifting, and you are paying what I call the **"Three-System Tax"**: triple the cloud infrastructure bills, synchronization lag that silently breaks data consistency at 2 AM, compounding network latency on every agent query, and proprietary vendor lock-in that traps your data across three walled gardens.
+To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multi-hop relationship reasoning. This architecture triples infrastructure spend, introduces dual write synchronization drift, adds network latency to every query, and locks data into proprietary storage formats.
 
 Why are we operating three database servers for a 50,000-document corpus?
 
@@ -14,7 +14,7 @@ The thesis for AI agents is straightforward: **don't choose between vectors, key
 
 We built [BenoDB](https://www.benolabsai.com/docs/) to eliminate this sprawl. By embedding Apache DataFusion in Rust directly over open Apache Iceberg tables, BenoDB runs vector ANN search (HNSW), full-text retrieval (BM25), and graph traversal (CSR) in a single in-process engine—with native pgvector ANSI SQL syntax (`<=>`), zero server daemons, and open Parquet lakehouse storage.
 
-In this walkthrough, we take **5,183 peer-reviewed research papers** from the BEIR SciFact benchmark and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in-process pgvector SQL to GPU graph derivation and cited LLM answers.
+In this walkthrough, I take **5,183 peer-reviewed research papers** from the BEIR SciFact benchmark and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in-process pgvector SQL to GPU graph derivation and cited LLM answers.
 
 > **Developer Preview Scope (>= v0.17.0):** Ready today for evaluation and experimentation: embedded in-process execution (Python and Rust), native pgvector ANSI SQL (`<=>`, `<->`, `<#>`), advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multi-node consensus, distributed sharding, and cross-table multi-statement transactions.
 >
@@ -115,7 +115,7 @@ print(f"  first sentence: {d['sentences'][0][:100]}...")
 
 ### Intelligent Chunking: Respecting Section Boundaries
 
-Notice that 977 of these abstracts come with structured, all-caps section labels. Most RAG tutorials treat text like a salami—they slice it evenly into 500-token chunks with a 50-token overlap. But in technical and medical literature, that naive strategy is fatal. A chunk that starts in `METHODS` and bleeds into `RESULTS` muddles what was tested with what was discovered.
+Of these abstracts, 977 contain explicit uppercase section headers. Conventional RAG pipelines rely on fixed 500-token windows with 50-token overlap. In scientific literature, **blind windowing violates structural boundaries:** a chunk spanning METHODS and RESULTS conflates experimental protocol with observed findings, degrading downstream retrieval precision.
 
 Here, we partition text **strictly within labelled section boundaries**, producing coherent passages of ~80 words. If a section ends, the chunk ends. No bleeding, no blurred context:
 
@@ -258,9 +258,9 @@ print(f"Embeddings shape: {vectors.shape}")
 
 ## Step 2: Creating the Lakehouse Table (Parquet + Advisory Sidecars)
 
-Here is where the traditional AI architecture forks into madness.
+At this point, typical RAG architectures introduce unnecessary distributed overhead.
 
-In the standard playbook, you would now write code to push these vectors into Pinecone, serialize the raw text into Elasticsearch, write custom mapping logic to keep IDs aligned, and set up a Kafka or CDC pipeline to keep them from drifting.
+Conventionally, you would push vectors to Pinecone, serialize text into Elasticsearch, reconcile disparate identifiers across both engines, and operate a CDC pipeline to mitigate synchronization lag.
 
 In BenoDB, we do something radically simpler: **we write one table directly to open Apache Iceberg storage**.
 
@@ -322,13 +322,14 @@ print("Indexes ready: hnsw(embedding) + bm25(text)")
 
 ### Under the Hood: Why Lakehouse Storage & Sidecars Matter
 
-Look at what just happened in the cell above. There is no proprietary database server running in the background. No Postgres daemon. No JVM.
+In the ingestion above, BenoDB runs entirely in-process, with no external database server running in the background, no Postgres daemon, and no JVM runtime.
 
-Under the hood, BenoDB wrote standard Apache Parquet data files tracked by an open Apache Iceberg manifest. But here's the architectural mechanism that makes it both fast and manageable:
+Under the hood, BenoDB wrote standard Apache Parquet data files tracked by an open Apache Iceberg manifest. Two architectural mechanisms make this layout both performant and operationally manageable:
 
-1. **Zero Data Duplication & Open Standards:** Primary data (text, IDs, metadata, and embeddings) lives in standard Parquet files. Because Iceberg is an open lakehouse standard, your data is never trapped in a proprietary database silo. You can query these exact same tables with DuckDB, Trino, or Apache Spark anytime.
-2. **Advisory Puffin Sidecars:** Secondary indexes (HNSW graphs for vectors, BM25 posting lists for text, and CSR matrices for graphs) are stored alongside Parquet files as advisory sidecars (standard Puffin format). If you ever drop or rebuild an index, your underlying data remains 100% intact. You never have to re-export or migrate raw tables.
-3. **TurboQuant™ TQ8 Quantization (4x Memory Slash):** Storing 1024-dimensional float32 vectors uncompressed requires 4KB of RAM per row just for the raw array. At scale, uncompressed vectors and HNSW graph structures quickly balloon memory consumption, forcing teams onto expensive high-memory cloud instances. TurboQuant™ TQ8 quantizes 1024-d vectors by 4x down to 8-bit integers (~1KB per vector) while retaining >98% Recall@10. On a standard 16GB developer laptop or workstation, this 4x memory reduction keeps multi-million-row indexes running smoothly in-process without triggering out-of-memory crashes or thrashing swap.
+1. **Zero Data Duplication & Open Standards:** Primary data (text, identifiers, metadata, and Float32 embeddings) resides in standard Parquet files. Because Iceberg is an open table format, data is never locked in a proprietary database silo; the exact same tables remain directly queryable by DuckDB, Trino, or Apache Spark.
+2. **Advisory Puffin Sidecars:** econdary indexes (HNSW graphs for vectors, BM25 inverted lists for text, and CSR matrices for graph topology) are stored alongside Parquet files as advisory sidecars in standard Puffin format. If an index is rebuilt or dropped, the underlying table data remains untouched—eliminating the need to re-export or migrate raw data.
+
+**Production Scale & Quantization:** In this walkthrough, we built an uncompressed Float32 HNSW index (hnsw). For multi-million-row datasets where memory is constrained, BenoDB supports pluggable 8-bit quantization (hnsw_tq8 with randomized Walsh-Hadamard rotation on power-of-two dimensions, and sq8 for uniform scalar quantization), combined with second-pass Float32 reranking read directly from 32 KB Parquet data pages.
 
 > 📖 **Dive Deeper:** For complete storage layout specifications, Iceberg table properties, and memory budgeting rules, see the [Lakehouse Architecture Guide](https://www.benolabsai.com/docs/guides/architecture.html) and [Resource Limits & Memory Discipline](https://www.benolabsai.com/docs/guides/resource_limits.html).
 
@@ -339,7 +340,7 @@ Now that our table is committed, how do we query it?
 
 This is where most vector databases make you learn a proprietary REST API or custom SDK DSL. If you want SQL, they tell you to spin up a managed PostgreSQL instance and install `pgvector`.
 
-BenoDB embeds **Apache DataFusion** directly in Rust. That means you get full ANSI SQL with native `pgvector` distance operators running directly inside your Python process—with zero servers to configure, zero port-forwarding, and zero daemon maintenance.
+BenoDB embeds **Apache DataFusion** directly in Rust. That means you get full ANSI SQL with native `pgvector` distance operators running directly inside your Python process, with zero servers to configure, zero port-forwarding, and zero daemon maintenance.
 
 Let's register our table in an embedded session and inspect it with standard SQL:
 
@@ -846,10 +847,10 @@ print(ctx_text[:1200])
     ### Graph RAG Context (Mode: local)
     
     #### Discovered Entities (Ranked by Relevance)
-    - [Node 26067999] (Score: 0.0757): A modeling study performed for the USPSTF estimated that 10% to 12% of screen-detected cancer cases are overdiagnosedthat is, they would not have been detected in the patient's lifetime without screening. Radiation harms, including cancer resulting from cumulative exposure to radiation, vary depe...
-    - [Node 26067999] (Score: 0.0757): USPSTF Assessment The USPSTF concludes with moderate certainty that annual screening for lung cancer with LDCT is of moderate net benefit in asymptomatic persons who are at high risk for lung cancer based on age, total cumulative exposure to tobacco smoke, and years since quitting smoking.
     - [Node 26067999] (Score: 0.0757): The moderate net benefit of screening depends on limiting screening to persons who are at high risk, the accuracy of image interpretation being similar to that found in the NLST (National Lung Screening Trial), and the resolution of most false-positive results without invasive procedures (4). Cli...
-    - [Node 26067999] (Score: 0.0757): The best evidence for the benefit of screening comes from the NLST, which enrolled 
+    - [Node 26067999] (Score: 0.0757): The best evidence for the benefit of screening comes from the NLST, which enrolled adults aged 55 to 74 years who had at least a 30 pack-year smoking history and were current smokers or had quit within the past 15 years. As with all screening trials, the NLST tested a specific intervention over a...
+    - [Node 26067999] (Score: 0.0757): Because initial eligibility extended through age 74 years and participants received 3 annual screening computed tomographic scans, the oldest participants in the trial were aged 77 years. The USPSTF used modeling studies to predict the benefits and harms of screening programs that use different s...
+    - [Node 26067999] (Score: 0.0757): A program that annually screens adults aged 55 to 80 years who have a 30 
 
 
 ### Generating Verified Answers with Live LLM Citations
@@ -864,53 +865,91 @@ We pass the formatted Graph RAG context to an LLM, prompting it to answer the qu
 import os
 from openai import OpenAI
 
-# OpenAI-compatible LLM configuration via OpenRouter.
-# Supports standard models (e.g., openai/gpt-4o-mini, anthropic/claude-3.5-haiku, meta-llama/llama-3.3-70b-instruct).
+# OpenRouter Configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or "YOUR_API_KEY_HERE"
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-LLM_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+
+# Explicitly use Google Gemma 4 26B
+LLM_MODEL = "google/gemma-4-26b-a4b-it"
 
 llm = OpenAI(
     base_url=OPENROUTER_BASE_URL,
     api_key=OPENROUTER_API_KEY,
+    default_headers={
+        "HTTP-Referer": "https://github.com/benolabsai/benodb",
+        "X-Title": "BenoDB Graph RAG",
+    }
 )
-print(f"Configured endpoint: {OPENROUTER_BASE_URL} (model: {LLM_MODEL})")
+
+print(f"Configured endpoint: {OPENROUTER_BASE_URL}")
+print(f"Target model: {LLM_MODEL}")
 if OPENROUTER_API_KEY == "YOUR_API_KEY_HERE":
     print("Notice: No OPENROUTER_API_KEY provided — running in deterministic fallback mode.")
+else:
+    print("API Key detected. Live calls enabled.")
 
 ```
 
-    Configured endpoint: https://openrouter.ai/api/v1 (model: qwen/qwen3.8-27b:free)
+    Configured endpoint: https://openrouter.ai/api/v1
+    Target model: google/gemma-4-26b-a4b-it
+    API Key detected. Live calls enabled.
 
 
 
 ```python
 def generate(prompt, system="Answer only from the provided context.",
-             max_tokens=600, temperature=0.1):
-    try:
-        if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "YOUR_API_KEY_HERE":
-            raise ValueError("No active API key provided")
+             max_tokens=600, temperature=0.1, model=None):
+    """
+    Executes live text generation via OpenRouter with automatic provider compatibility:
+    - Retries with system prompt merged into user message if provider rejects 'system' role
+    - Displays exact error messages on failure
+    - Falls back to deterministic benchmark citations if no key is present or call fails
+    """
+    use_model = model or LLM_MODEL
+    current_key = os.environ.get("OPENROUTER_API_KEY") or OPENROUTER_API_KEY
 
-        r = llm.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+    try:
+        if not current_key or current_key == "YOUR_API_KEY_HERE":
+            raise ValueError("No active API key provided (set OPENROUTER_API_KEY in environment)")
+
+        # First attempt: standard role separation
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            r = llm.chat.completions.create(
+                model=use_model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        except Exception as api_err:
+            err_str = str(api_err).lower()
+            # If provider rejects the system role (common on Gemma/Mistral endpoints), merge it
+            if "system" in err_str or "role" in err_str or "400" in err_str:
+                combined_prompt = f"{system}\n\n{prompt}" if system else prompt
+                r = llm.chat.completions.create(
+                    model=use_model,
+                    messages=[{"role": "user", "content": combined_prompt}],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+            else:
+                raise api_err
+
         content = r.choices[0].message.content
         if content:
             return content.strip()
         return "[Empty response from model]"
+
     except Exception as e:
-        print("[DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]")
+        print(f"[LLM ERROR]: {type(e).__name__}: {e}")
+        print("[FALLBACK TRIGGERED — RUNNING DETERMINISTIC RESPONSE]")
         if "research theme" in prompt.lower():
-            return "Molecular mechanisms and epigenetic regulation of cellular reprogramming to pluripotency and stem cell self-renewal."
-        return '''1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."
-
-2. Doc 7639744 provides empirical evidence that "Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer."
-
-Conclusion: The retrieved evidence confirms that smoking substantially increases both the initial risk and the mortality of lung cancer.'''
+            return "The shared research theme is the development and maintenance of computational tools, databases, and bioinformatics resources for the analysis of genomic, transcriptomic, and proteomic data."
+        return '''Smoking is the most important risk factor for lung cancer, accounting for approximately 85% of all lung cancer cases in the U.S. (Doc 26067999). Additionally, among individuals who smoke 15 or more cigarettes per day, reducing smoking by 50% significantly reduces the risk of lung cancer (Doc 16422880).'''
 
 ```
 
@@ -931,14 +970,9 @@ print(answer)
 
 ```
 
-    [DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]
     Generated Answer:
     
-    1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."
-    
-    2. Doc 7639744 provides empirical evidence that "Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer."
-    
-    Conclusion: The retrieved evidence confirms that smoking substantially increases both the initial risk and the mortality of lung cancer.
+    Smoking is the most important risk factor for lung cancer, accounting for approximately 85% of all U.S. lung cancer cases (Doc 26067999). Additionally, continued smoking is associated with an increased risk of recurrence in early stage non-small cell lung cancer (Doc 7639744).
 
 
 > 📖 **Dive Deeper:** To explore relationship edge table schemas, in-memory CSR index compilation in Rust, and multi-hop graph retrieval patterns, see the [Graph RAG & Edge Tables Guide](https://www.benolabsai.com/docs/guides/graph_rag_edge_tables.html).
@@ -965,15 +999,15 @@ for nid in list(largest)[:6]:
     print(f"  {sid}: {title_by_id.get(doc, '')[:78]}")
 ```
 
-    Partitioned 8,075 sections into 1,248 Louvain communities
+    Partitioned 8,075 sections into 1,246 Louvain communities
     
-    Largest community contains 53 sections. Sample titles:
+    Largest community contains 63 sections. Sample titles:
       10029970:ABSTRACT: CDD: conserved domains and protein three-dimensional structure
-      10300888:ABSTRACT: Domestication and Divergence of Saccharomyces cerevisiae Beer Yeasts
+      11244195:ABSTRACT: STAR: ultrafast universal RNA-seq aligner.
+      11244195:RESULTS: STAR: ultrafast universal RNA-seq aligner.
       11253758:ABSTRACT: Update of the FANTOM web resource: high resolution transcriptome of diverse ce
-      1148122:ABSTRACT: Regulatory and metabolic rewiring during laboratory evolution of ethanol toler
-      1256116:ABSTRACT: YEASTRACT: providing a programmatic access to curated transcriptional regulato
-      1283401:ABSTRACT: Fiji: an open-source platform for biological-image analysis
+      11728637:ABSTRACT: Empirical statistical estimates for sequence similarity searches
+      12271486:BACKGROUND: MotifMap: integrative genome-wide maps of regulatory motif sites for model spe
 
 
 We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)):
@@ -999,8 +1033,7 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
     Theme of largest community:
     
-    [DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]
-    Molecular mechanisms and epigenetic regulation of cellular reprogramming to pluripotency and stem cell self-renewal.
+    The shared research theme is the development and application of computational tools, databases, and algorithmic frameworks for the analysis of genomic, transcriptomic, and proteomic data.
 
 
 ## Production Scoping & Verified Benchmarks
@@ -1018,10 +1051,6 @@ Benchmarks published in the project repository ([`benchmarks/results/BENCHMARK_R
 - **Continuous Ingestion:** 10-minute (600s) continuous write, compaction, and vacuum churn runs stabilized between 4.6–5.3 GB peak RSS with zero row loss.
 - **Optimistic Concurrency Control (OCC):** Verified zero lost updates across 16 concurrent writers executing 8,111 commit operations in 60 seconds.
 - **Crash Recovery:** Sub-5ms state restoration to the last consistent atomic snapshot upon process aborts.
-
-> 💡 **Deep Dive into Architecture & Economic Trade-Offs:**  
-> This guide focuses on the practical mechanics of running hybrid retrieval and graph exploration over Iceberg. For an exhaustive architectural, operational, and total-cost-of-ownership (TCO) comparison against multi-cluster stacks (Pinecone + Elasticsearch + Neo4j) and single-node engines (pgvector, LanceDB, DuckDB), see **[Article 2: The Three-System Tax: Why Your AI Stack Needs One Database, Not Three](/blog/three-system-tax)**.
-
 
 ## Architecture Flow
 
@@ -1072,14 +1101,16 @@ flowchart TD
 
 ## The BenoDB Architecture Series
 
-Continue exploring the architecture, economics, and integrations of BenoDB:
+Continue exploring the architecture, systems mechanics, and connectors of BenoDB:
 
-- **Article 2:** *The Three-System Tax: Why Your AI Stack Needs One Database, Not Three* ([Read Article 2](/blog/three-system-tax)) — An economic and architectural breakdown of eliminating Pinecone, Elasticsearch, and Neo4j in favor of unified lakehouse storage.
-- **Article 3:** *Zero to Hybrid Search in 60 Seconds: The BenoDB Quickstart* ([Read Article 3](/blog/quickstart)) — Go from `pip install` to hybrid vector+BM25 search and in-process pgvector ANSI SQL on your laptop with zero servers.
-- **Article 4:** *Bring Your Own Iceberg: Zero-ETL Lakehouse Search over Existing Tables* ([Read Article 4](/blog/bring-your-own-iceberg)) — Layer secondary vector, BM25, and CSR indexes onto existing Iceberg tables in detached overlay mode with zero upstream writes.
+- **Article 1 (Current):** *Building Hybrid Retrieval on Your Existing Iceberg Data* — End-to-end vector, keyword, and graph traversal in a single in-process engine.
+- **Article 2 (Upcoming):** *Bring Your Own Iceberg: Zero-ETL Lakehouse Search over Existing Tables* — Layer secondary vector, BM25, and CSR indexes onto existing Iceberg tables in detached overlay mode with zero upstream writes.
+- **Article 3 (Upcoming):** *Out of Core Scale: Why Codes-First SIMD Streaming Dominates Disk Graphs at 100M* — Systems architecture and verified benchmarks under strict memory limits.
 - **The Connector Series:**
   - *Tier 1: Native Embedded Protocols* — Arrow Flight SQL, Search REST Gateway, Model Context Protocol (MCP), and `dbt-benodb`.
   - *Tier 2: External Enterprise Federation Bridges* — Apache Spark DSv2 and Trino federation bridge for brownfield enterprise lakehouses.
+
+> 📬 **Get Notified:** Article 2 is currently in preparation. To be notified when it drops, subscribe to updates on the [BenoLabs landing page](https://www.benolabsai.com/#contact) or star the repository on [GitHub](https://github.com/benolabsai/benodb).
 
 ---
 

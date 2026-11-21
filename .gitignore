@@ -148,3 +148,6 @@ benchmarks/competitors/results/stale/
 /docs/source/guides/
 /docs/source/integrations/
 /docs/source/tutorials/
+
+# Local notebook scratch data
+notebooks/benolabs_howto/
