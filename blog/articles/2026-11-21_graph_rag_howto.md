@@ -1,4 +1,4 @@
-# RAG Meets Graph Analytics: Building Hybrid Retrieval on Your Existing Iceberg Data
+# RAG Meets Graph Analytics: Building Hybrid Retrieval on Iceberg with BenoDB
 
 *By Rick Albright · Article 1 of the BenoDB Architecture Series · [Documentation](https://www.benolabsai.com/docs/) · [GitHub](https://github.com/benolabsai/benodb)*
 
