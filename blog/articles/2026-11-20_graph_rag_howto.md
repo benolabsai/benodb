@@ -1,6 +1,6 @@
 # RAG Meets Graph Analytics: Building Hybrid Retrieval on Your Existing Iceberg Data
 
-*By Richard Albright · Part 1 of the BenoDB Architecture Series · [Documentation](https://www.benolabsai.com/docs/) · [GitHub](https://github.com/benolabsai/benodb)*
+*By Rick Albright · Part 1 of the BenoDB Architecture Series · [Documentation](https://www.benolabsai.com/docs/) · [GitHub](https://github.com/benolabsai/benodb)*
 
 ---
 
@@ -211,27 +211,13 @@ warnings.filterwarnings("ignore")
 
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 DIM = 1024
-
-# Dual-GPU / Multi-GPU memory management:
-# To pin to a single GPU or isolate VRAM, set CUDA_VISIBLE_DEVICES before importing torch:
-#   os.environ["CUDA_VISIBLE_DEVICES"] = "0"   # uses only GPU 0
-#   os.environ["CUDA_VISIBLE_DEVICES"] = ""    # uses CPU
-DEVICE = os.environ.get("BENOLABS_DEVICE")
-if not DEVICE:
-    if torch.cuda.is_available():
-        try:
-            free_vram = torch.cuda.mem_get_info()[0]
-            if free_vram < 1.5 * 1024**3:
-                print(f"Notice: GPU VRAM limited ({free_vram / 1024**2:.0f} MiB free). Falling back to CPU for embedding.")
-                DEVICE = "cpu"
-            else:
-                DEVICE = "cuda"
-        except Exception:
-            DEVICE = "cuda"
-    elif torch.backends.mps.is_available():
-        DEVICE = "mps"
-    else:
-        DEVICE = "cpu"
+# Hardware acceleration: NVIDIA CUDA (Linux/Windows), Apple Metal MPS (macOS), or CPU
+if torch.cuda.is_available():
+    DEVICE = "cuda:0"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
 
 # Load model locally from cache
 model = SentenceTransformer(MODEL_NAME, device=DEVICE)
@@ -239,7 +225,7 @@ QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 def embed_docs(texts):
-    return model.encode(texts, normalize_embeddings=True, show_progress_bar=True, batch_size=64)
+    return model.encode(texts, normalize_embeddings=True, show_progress_bar=True, batch_size=256)
 
 
 def embed_query(text):
@@ -247,15 +233,7 @@ def embed_query(text):
                         normalize_embeddings=True, show_progress_bar=False)[0]
 
 
-# Locate cached embeddings across possible repository paths
-candidate_caches = [
-    DATA_DIR / "vectors_bge_large.npy",
-    Path.cwd() / "data" / "vectors_bge_large.npy",
-    Path.cwd() / "notebooks" / "data" / "vectors_bge_large.npy",
-    Path.cwd().parent / "notebooks" / "data" / "vectors_bge_large.npy",
-]
-VEC_CACHE = next((c for c in candidate_caches if c.exists()), DATA_DIR / "vectors_bge_large.npy")
-
+VEC_CACHE = DATA_DIR / "vectors_bge_large.npy"
 if VEC_CACHE.exists():
     print(f"Loading cached embeddings from {VEC_CACHE}...")
     vectors = np.load(VEC_CACHE)
@@ -267,15 +245,14 @@ else:
 
 print(f"Model: {MODEL_NAME}  dim={DIM}  device={DEVICE}")
 print(f"Embeddings shape: {vectors.shape}")
-
 ```
 
 
     Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]
 
 
-    Loading cached embeddings from /home/ralbright/projects/benolabs/notebooks/data/vectors_bge_large.npy...
-    Model: BAAI/bge-large-en-v1.5  dim=1024  device=cuda
+    Loading cached embeddings from /home/ralbright/projects/benodb/notebooks/benolabs_howto/data/vectors_bge_large.npy...
+    Model: BAAI/bge-large-en-v1.5  dim=1024  device=cuda:0
     Embeddings shape: (18404, 1024)
 
 
@@ -339,7 +316,7 @@ print(f"Committed {doc_chunks.row_count:,} rows to {TABLE_URI}")
 print("Indexes ready: hnsw(embedding) + bm25(text)")
 ```
 
-    Committed 18,404 rows to file:///home/ralbright/projects/benolabs/notebooks/scifact
+    Committed 18,404 rows to file:///home/ralbright/projects/benodb/notebooks/benolabs_howto/scifact
     Indexes ready: hnsw(embedding) + bm25(text)
 
 
@@ -533,10 +510,11 @@ print(scoped[["doc_id", "section", "chunk_idx", "rrf_score"]].to_string(index=Fa
     Filtered strictly to Results & Conclusions:
     
       doc_id    section  chunk_idx  rrf_score
-     7639744    RESULTS          5   0.062400
-    12145359 CONCLUSION          5   0.059357
-    16422880    RESULTS          5   0.045702
-     4828631   FINDINGS          4   0.015625
+     7639744    RESULTS          5   0.094557
+    12145359 CONCLUSION          5   0.060781
+    16422880    RESULTS          5   0.031545
+     4828631   FINDINGS          4   0.030118
+    17450673    RESULTS          4   0.015385
 
 
 ### Context Window Expansion: Adjacent Chunks in SQL
@@ -679,8 +657,8 @@ if eval_errors > 0:
     Retrieval Strategy     Recall@10       nDCG@10        
     ----------------------------------------------------
     BM25 Only              0.8400          0.6967         
-    Vector Only (BGE)      0.8860          0.8354         
-    Hybrid (RRF)           0.9050          0.7946         
+    Vector Only (BGE)      0.8860          0.8350         
+    Hybrid (RRF)           0.9050          0.8020         
 
 
 ### Interpreting the Results: What the Numbers Actually Mean
@@ -748,7 +726,7 @@ print(f"Pairwise similarity computed with bdb.cdist (device={cdist_device or 'cp
 ```
 
     8,075 section nodes, 40,375 edges (K=5)
-    Pairwise similarity computed with bdb.cdist (device=cuda)
+    Pairwise similarity computed with bdb.cdist (device=cpu)
 
 
 ### Writing the Relationship Edge Table
@@ -856,7 +834,7 @@ print(f"nodes={len(result.nodes)}  edges={len(result.edges)}  paths={len(result.
 ```
 
     mode=local  seeds=[7379, 3947, 7376, 503]
-    nodes=111  edges=510  paths=1
+    nodes=124  edges=510  paths=1
 
 
 
@@ -868,11 +846,10 @@ print(ctx_text[:1200])
     ### Graph RAG Context (Mode: local)
     
     #### Discovered Entities (Ranked by Relevance)
-    - [Section Node 7379 | Doc 7639744 (RESULTS)] (Score: 0.0743): In 9/10 included studies, most patients studied were diagnosed as having an early stage lung tumour.
-    - [Section Node 7379 | Doc 7639744 (RESULTS)] (Score: 0.0743): In limited stage small cell lung cancer, an estimated 29% of continuing smokers would survive for five years compared with 63% of quitters on the basis of the data from this review.
-    - [Section Node 7379 | Doc 7639744 (RESULTS)] (Score: 0.0743): No study contained data on the effect of quitting smoking on cancer specific mortality or on development of a second primary tumour in non-small cell lung cancer. Life table modelling on the basis of these data estimated 33% five year survival in 65 year old patients with early stage non-small ce...
-    - [Section Node 7379 | Doc 7639744 (RESULTS)] (Score: 0.0743): Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer and of all cause mortality (1.86, 1.33 to 2.59), development of a sec...
-    - [Section Node 503 | Doc 26067999 (ABSTRACT)] (Score: 0.0743): Screening may not be appropriate for patients with substanti
+    - [Node 26067999] (Score: 0.0757): A modeling study performed for the USPSTF estimated that 10% to 12% of screen-detected cancer cases are overdiagnosedthat is, they would not have been detected in the patient's lifetime without screening. Radiation harms, including cancer resulting from cumulative exposure to radiation, vary depe...
+    - [Node 26067999] (Score: 0.0757): USPSTF Assessment The USPSTF concludes with moderate certainty that annual screening for lung cancer with LDCT is of moderate net benefit in asymptomatic persons who are at high risk for lung cancer based on age, total cumulative exposure to tobacco smoke, and years since quitting smoking.
+    - [Node 26067999] (Score: 0.0757): The moderate net benefit of screening depends on limiting screening to persons who are at high risk, the accuracy of image interpretation being similar to that found in the NLST (National Lung Screening Trial), and the resolution of most false-positive results without invasive procedures (4). Cli...
+    - [Node 26067999] (Score: 0.0757): The best evidence for the benefit of screening comes from the NLST, which enrolled 
 
 
 ### Generating Verified Answers with Live LLM Citations
@@ -903,8 +880,7 @@ if OPENROUTER_API_KEY == "YOUR_API_KEY_HERE":
 
 ```
 
-    Configured endpoint: https://openrouter.ai/api/v1 (model: openai/gpt-4o-mini)
-    Notice: No OPENROUTER_API_KEY provided — running in deterministic fallback mode.
+    Configured endpoint: https://openrouter.ai/api/v1 (model: qwen/qwen3.8-27b:free)
 
 
 
@@ -955,9 +931,9 @@ print(answer)
 
 ```
 
+    [DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]
     Generated Answer:
     
-    [DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]
     1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."
     
     2. Doc 7639744 provides empirical evidence that "Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer."
@@ -989,15 +965,15 @@ for nid in list(largest)[:6]:
     print(f"  {sid}: {title_by_id.get(doc, '')[:78]}")
 ```
 
-    Partitioned 8,075 sections into 1,231 Louvain communities
+    Partitioned 8,075 sections into 1,248 Louvain communities
     
-    Largest community contains 89 sections. Sample titles:
-      10273147:ABSTRACT: A functionally characterized test set of human induced pluripotent stem cells
-      10786948:ABSTRACT: An efficient nonviral method to generate integration-free human-induced plurip
-      11674288:ABSTRACT: Cell type of origin influences the molecular and functional properties of mous
-      12100854:ABSTRACT: Proteomic and genomic approaches reveal critical functions of H3K9 methylation
-      13002003:ABSTRACT: mTOR supports long-term self-renewal and suppresses mesoderm and endoderm acti
-      13910150:ABSTRACT: The Germ Cell Determinant Blimp1 Is Not Required for Derivation of Pluripotent
+    Largest community contains 53 sections. Sample titles:
+      10029970:ABSTRACT: CDD: conserved domains and protein three-dimensional structure
+      10300888:ABSTRACT: Domestication and Divergence of Saccharomyces cerevisiae Beer Yeasts
+      11253758:ABSTRACT: Update of the FANTOM web resource: high resolution transcriptome of diverse ce
+      1148122:ABSTRACT: Regulatory and metabolic rewiring during laboratory evolution of ethanol toler
+      1256116:ABSTRACT: YEASTRACT: providing a programmatic access to curated transcriptional regulato
+      1283401:ABSTRACT: Fiji: an open-source platform for biological-image analysis
 
 
 We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)):
@@ -1023,9 +999,8 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
     Theme of largest community:
     
-
-
-    The shared research theme is the molecular mechanisms and epigenetic regulation of cellular reprogramming to pluripotency, including the generation, characterization, and functional properties of induced pluripotent stem cells.
+    [DETERMINISTIC FALLBACK DEMONSTRATION — RUNNING WITHOUT API KEY]
+    Molecular mechanisms and epigenetic regulation of cellular reprogramming to pluripotency and stem cell self-renewal.
 
 
 ## Production Scoping & Verified Benchmarks
