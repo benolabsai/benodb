@@ -276,12 +276,14 @@ def embed_query(text):
 VEC_CACHE = DATA_DIR / "vectors_bge_large.npy"
 META_CACHE = DATA_DIR / "vectors_bge_large.meta.json"
 
-# Compute deterministic provenance fingerprint over corpus chunk structure
+# Compute deterministic provenance fingerprint over model, dimension, and corpus chunk text
 corpus_hasher = hashlib.sha256()
+corpus_hasher.update(MODEL_NAME.encode("utf-8"))
+corpus_hasher.update(str(DIM).encode("utf-8"))
 for r in rows:
     corpus_hasher.update(str(r["doc_id"]).encode("utf-8"))
     corpus_hasher.update(str(r["section"]).encode("utf-8"))
-    corpus_hasher.update(str(len(r["text"])).encode("utf-8"))
+    corpus_hasher.update(r["text"].encode("utf-8"))
 corpus_fingerprint = corpus_hasher.hexdigest()[:16]
 
 cache_valid = False
@@ -291,20 +293,16 @@ if VEC_CACHE.exists():
         mmap_vectors = np.load(VEC_CACHE, mmap_mode="r")
         if mmap_vectors.shape != (len(rows), DIM):
             print(f"Cache shape mismatch: {mmap_vectors.shape} vs expected ({len(rows)}, {DIM})")
-        elif META_CACHE.exists():
+        elif not META_CACHE.exists():
+            print("Cache unverified: missing metadata provenance file. Re-embedding corpus...")
+        else:
             with open(META_CACHE, "r") as f:
                 meta = json.load(f)
-            if meta.get("model") != MODEL_NAME or meta.get("fingerprint") != corpus_fingerprint:
-                print(f"Cache provenance mismatch: expected model={MODEL_NAME}, fp={corpus_fingerprint}; found {meta}")
+            if meta.get("model") != MODEL_NAME or meta.get("dim") != DIM or meta.get("fingerprint") != corpus_fingerprint:
+                print(f"Cache provenance mismatch: expected model={MODEL_NAME}, dim={DIM}, fp={corpus_fingerprint}; found {meta}")
             else:
                 cache_valid = True
                 vectors = np.array(mmap_vectors)
-        else:
-            # Bootstrap provenance metadata for existing valid cache
-            cache_valid = True
-            vectors = np.array(mmap_vectors)
-            with open(META_CACHE, "w") as f:
-                json.dump({"model": MODEL_NAME, "dim": DIM, "rows": len(rows), "fingerprint": corpus_fingerprint}, f, indent=2)
     except Exception as e:
         print(f"Cache validation error: {e}")
 
@@ -321,9 +319,10 @@ else:
     print(f"Saved embedding cache and provenance metadata to {VEC_CACHE.name}")
 
 print(f"Embeddings ready: shape={vectors.shape}  dim={DIM}")
+
 ```
 
-    Loaded validated precomputed embeddings from data/vectors_bge_large.npy (shape=(18404, 1024), model=BAAI/bge-large-en-v1.5, fingerprint=d96e02ef3a803834)
+    Loaded validated precomputed embeddings from data/vectors_bge_large.npy (shape=(18404, 1024), model=BAAI/bge-large-en-v1.5, fingerprint=5061368688498a38)
     Embeddings ready: shape=(18404, 1024)  dim=1024
 
 
@@ -559,7 +558,7 @@ for _, r in hits.head(3).iterrows():
 
 Notice what happened when BM25 keyword matching and dense vector scores were fused:
 
-1. **Direct Evidence Promoted to #1:** In pure vector search, the top result was document `7639744` (focused on smoking *cessation after diagnosis*—conceptually related, but an indirect match). Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 (`rrf_score: 0.032266`, fusing rank #3 in dense vector retrieval and rank #1 in BM25 lexical ranking). That chunk contains the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
+1. **Direct Evidence Promoted to #1:** In pure vector search, the top result was document `7639744` (focused on smoking *cessation after diagnosis*—conceptually related, but an indirect match). Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 (`rrf_score: 0.032266`, fusing rank #3 in the dense vector candidate pool—where another related chunk was evaluated between them in the wider search pool—and rank #1 in BM25 lexical ranking: $\frac{1}{60+3} + \frac{1}{60+1} = 0.032266$). That chunk contains the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
 2. **Direct Epidemiological Studies Rescued:** Hybrid search elevated document `16422880` (*"Effect of smoking reduction on lung cancer risk"*) into the top candidates (`rrf_score: 0.029851`), capturing direct study data on lung cancer incidence that dense vector similarity had ranked lower down the candidate list.
 
 ### Scoped Search: SQL Predicate Pushdown
@@ -669,7 +668,7 @@ eval_errors = {
 }
 
 K = 10
-CANDIDATE_POOL = 50  # Retrieve 50 candidate chunks to guarantee up to 10 unique documents
+CANDIDATE_POOL = 50  # Oversample chunks before deduplicating to unique documents
 
 for item in eval_subset:
     q_text = item["claim"]
@@ -774,7 +773,7 @@ In BenoDB, **graph edges are simply another standard Apache Iceberg table** stor
 ### Deriving the Inferred Semantic Similarity Topology
 SciFact research abstracts do not include citation graphs or curated entity-relation ontologies. Instead, we derive a **directed $k$-nearest neighbor semantic similarity topology** ($k=5$):
 - We pool chunk embeddings by section node.
-- We compute batched pairwise cosine distances using BenoDB's batch distance kernel (`bdb.cdist`). BenoDB supports CUDA, Metal, WGPU, and CPU SIMD execution. This notebook run used the CPU backend (`device=cpu`), computing all 65.2 million pairwise cosine distances in process in under one second.
+- We compute batched pairwise cosine distances using BenoDB's batch distance kernel (`bdb.cdist`). BenoDB supports CUDA, Metal, WGPU, and CPU SIMD execution. This notebook run used the CPU backend (`device=cpu`), computing all 65.2 million pairwise cosine distances in process in ~15 seconds (sub-second on GPU acceleration).
 - Each section connects to its top-$K$ most similar sections ($K=5$) using `np.argpartition` to select neighbors in $O(S)$ time per row without sorting the full matrix. Because each node independently selects its nearest neighbors, this produces a directed $k$-NN graph ($8,075 \times 5 = 40,375$ directed edges); an edge from node $A$ to node $B$ does not imply a reciprocal edge from $B$ to $A$.
 
 > **Memory Complexity of Pairwise Similarity ($O(S^2)$):**
@@ -790,6 +789,9 @@ This graph represents **semantic graph exploration**: connecting conceptually re
 
 
 ```python
+import time
+from collections import defaultdict
+
 by_node = defaultdict(list)
 for r, v in zip(rows, vectors):
     by_node[r["section_node"]].append(v)
@@ -801,7 +803,9 @@ node_vecs /= np.linalg.norm(node_vecs, axis=1, keepdims=True)
 K = 5
 # Hardware-accelerated batch distance: CUDA (NVIDIA), MPS (Apple Metal), WGPU (AMD/Intel), or CPU SIMD
 cdist_device = bdb.Device("auto").backend
+t0 = time.perf_counter()
 sims = 1.0 - bdb.cdist(node_vecs, node_vecs, metric="cosine", device=cdist_device)
+cdist_duration = time.perf_counter() - t0
 np.fill_diagonal(sims, -np.inf)
 # np.argpartition selects top-K in O(S) time per row, avoiding a full O(S log S) sort
 nbr = np.argpartition(-sims, K, axis=1)[:, :K]
@@ -812,11 +816,12 @@ for i, nid in enumerate(node_ids):
         edge_src.append(nid); edge_dst.append(node_ids[j]); edge_w.append(float(sims[i, j]))
 
 print(f"{len(node_ids):,} section nodes, {len(edge_src):,} edges (K={K})")
-print(f"Pairwise similarity computed with bdb.cdist (device={cdist_device or 'cpu'})")
+print(f"Pairwise similarity computed with bdb.cdist in {cdist_duration:.2f}s (device={cdist_device or 'cpu'})")
+
 ```
 
     8,075 section nodes, 40,375 edges (K=5)
-    Pairwise similarity computed with bdb.cdist (device=cpu)
+    Pairwise similarity computed with bdb.cdist in 15.04s (device=cpu)
 
 
 ### Writing the Relationship Edge Table
@@ -847,7 +852,7 @@ print(f"Edge table: {links.row_count:,} edges, columns={links.columns}")
 
 ### In-Process Graph Traversals in SQL
 
-Now we can run graph traversals directly over our memory-mapped CSR index with zero network hops:
+Now we can run graph traversals directly over our in-memory CSR graph representation with zero network hops:
 - `graph_neighbors`: Traverses $N$-hop neighbors.
 - `graph_shortest_path`: Computes the shortest connecting path between two concepts.
 
@@ -988,56 +993,57 @@ def generate(prompt, system="Answer only from the provided context.",
              max_tokens=600, temperature=0.1, model=None):
     """
     Executes live text generation via OpenRouter with automatic provider compatibility.
-    Falls back to deterministic demonstration fixtures when running in offline demonstration
-    mode without an active OPENROUTER_API_KEY.
+    When running without an active OPENROUTER_API_KEY, returns deterministic demonstration fixtures.
     """
     use_model = model or LLM_MODEL
     current_key = os.environ.get("OPENROUTER_API_KEY") or OPENROUTER_API_KEY
 
-    try:
-        if not current_key or current_key == "YOUR_API_KEY_HERE":
-            raise ValueError("No active API key provided (set OPENROUTER_API_KEY in environment)")
-
-        # First attempt: standard role separation
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        try:
-            r = llm.chat.completions.create(
-                model=use_model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-        except Exception as api_err:
-            err_str = str(api_err).lower()
-            # If provider rejects the system role (common on Gemma/Mistral endpoints), merge it
-            if "system" in err_str or "role" in err_str or "400" in err_str:
-                combined_prompt = f"{system}\n\n{prompt}" if system else prompt
-                r = llm.chat.completions.create(
-                    model=use_model,
-                    messages=[{"role": "user", "content": combined_prompt}],
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                )
-            else:
-                raise api_err
-
-        content = r.choices[0].message.content
-        if content:
-            print(f"[Execution Source: Live Model ({use_model})]")
-            return content.strip()
-        return "[Empty response from model]"
-
-    except Exception as e:
-        print(f"[Execution Source: Offline Demonstration Fixture — {type(e).__name__}]")
+    # Offline demonstration mode when no API key is configured
+    if not current_key or current_key == "YOUR_API_KEY_HERE":
+        print("[Execution Source: Offline Demonstration Fixture]")
         if "research theme" in prompt.lower():
             return "The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa."
         elif "smoking" in prompt.lower() or "lung cancer" in prompt.lower():
-            return '''Smoking is the most important risk factor for lung cancer, accounting for approximately 85% of all lung cancer cases in the U.S. (Doc 26067999). Additionally, among individuals who smoke 15 or more cigarettes per day, reducing smoking by 50% significantly reduces the risk of lung cancer (Doc 16422880).'''
-        raise RuntimeError(f"Live LLM call failed and no offline demo fixture exists for prompt: {prompt[:80]}...") from e
+            return (
+                '1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."\n\n'
+                '2. Doc 7639744 provides empirical evidence that "Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer."\n\n'
+                'Conclusion: The retrieved evidence confirms that smoking substantially increases both the initial risk and the mortality of lung cancer.'
+            )
+        raise ValueError(f"No offline demo fixture exists for prompt: {prompt[:80]}...")
+
+    # Live generation mode: surface any provider or network errors
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        r = llm.chat.completions.create(
+            model=use_model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except Exception as api_err:
+        err_str = str(api_err).lower()
+        # If provider rejects the system role (common on Gemma/Mistral endpoints), retry with merged prompt
+        if "system" in err_str or "role" in err_str or "400" in err_str:
+            combined_prompt = f"{system}\n\n{prompt}" if system else prompt
+            r = llm.chat.completions.create(
+                model=use_model,
+                messages=[{"role": "user", "content": combined_prompt}],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        else:
+            raise
+
+    content = r.choices[0].message.content
+    if content:
+        print(f"[Execution Source: Live Model ({use_model})]")
+        return content.strip()
+    return "[Empty response from model]" 
+
 ```
 
 
@@ -1068,13 +1074,14 @@ hallucinated_citations = cited_ids - context_doc_ids
 print("\n--- Retrieved-Document Citation Check ---")
 print(f"Cited in Answer:             {sorted(cited_ids)}")
 print(f"Retrieved in Context Window: {sorted(context_doc_ids)}")
-print(f"Faithful Citations:          {len(valid_citations)} / {len(cited_ids)}")
+print(f"Retrieved Document IDs Present: {len(valid_citations)} / {len(cited_ids)}")
 assert len(cited_ids) > 0, "Citation check failed: no document citations were produced in the generated answer."
 assert not hallucinated_citations, f"Hallucinated citations detected: {hallucinated_citations}" 
 print("Retrieved-Document Citation Check: PASS (all cited document IDs appear in the retrieved context).")
+
 ```
 
-    [Execution Source: Offline Demonstration Fixture — ValueError]
+    [Execution Source: Offline Demonstration Fixture]
     Generated Answer:
     
     1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."
@@ -1086,11 +1093,11 @@ print("Retrieved-Document Citation Check: PASS (all cited document IDs appear in
     --- Retrieved-Document Citation Check ---
     Cited in Answer:             [7639744, 26067999]
     Retrieved in Context Window: [4828631, 7639744, 12145359, 16422880, 26067999]
-    Faithful Citations:          2 / 2
+    Retrieved Document IDs Present: 2 / 2
     Retrieved-Document Citation Check: PASS (all cited document IDs appear in the retrieved context).
 
 
-> 📖 **Dive Deeper:** To explore relationship edge table schemas, in-memory CSR index compilation in Rust, and multi-hop graph retrieval patterns, see the [Graph RAG & Edge Tables Guide](https://www.benolabsai.com/docs/guides/graph_rag_edge_tables.html).
+> 📖 **Dive Deeper:** To explore relationship edge table schemas, in-memory CSR compilation in Rust, and multi-hop graph retrieval patterns, see the [Graph RAG & Edge Tables Guide](https://www.benolabsai.com/docs/guides/graph_rag_edge_tables.html).
 
 
 ## Step 8: Global Corpus Understanding: Louvain Community Detection
@@ -1161,7 +1168,7 @@ BenoDB is currently designed as an embedded Python library and standalone Flight
 - **Out of Scope for >= v0.17.1:** Distributed multinode consensus, distributed sharding, and cross-table multi-statement transactions.
 
 ### Reconstructible Index Sidecars
-Primary table data (text, metadata, embeddings) is stored in standard, immutable Parquet files governed by the Apache Iceberg table format. Secondary indexes (HNSW vector graphs, BM25 postings, CSR graph topologies) are stored as advisory sidecar artifacts. If an index sidecar is removed or deleted, the engine gracefully falls back to Parquet scans, and indexes can be reconstructed in-place without data loss.
+Primary table data (text, metadata, embeddings) is stored in standard, immutable Parquet files governed by the Apache Iceberg table format. Secondary retrieval indexes (HNSW vector graphs and BM25 postings) are stored as advisory sidecar artifacts. Graph relationships reside in the independently committed Iceberg edge table (scifact_links), which the engine compiles into an in-memory CSR representation for graph traversals and community detection. If an index sidecar is removed or deleted, the engine gracefully falls back to Parquet scans, and indexes can be reconstructed in-place without data loss.
 
 ### Stress Testing & Multi-Writer OCC
 Benchmarks published in the project repository ([`benchmarks/results/BENCHMARK_REPORT.md`](https://github.com/benolabsai/benodb/blob/main/benchmarks/results/BENCHMARK_REPORT.md)) and the [Benchmarking Guide](https://www.benolabsai.com/docs/guides/benchmarking.html) demonstrate engine stability under high concurrency:
