@@ -4,23 +4,24 @@
 
 ---
 
-Every time I look at a modern Graph Rag architecture diagram, I just shake my head in disgust.
+Most Graph RAG architectures today present a familiar operational challenge.
 
-To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multihop relationship reasoning. This architecture triples infrastructure spend, introduces dual write synchronization drift, adds network latency to every query, and locks data into proprietary storage formats.
+To build an effective retrieval pipeline, engineering teams are typically told to deploy, maintain, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an inverted-index search engine for keyword search and acronym matching, and a graph database for multihop relationship traversals. Operating separate lakehouse, vector search, and graph systems introduces substantial infrastructure overhead, requires continuous dual-write synchronization to prevent data drift, adds network latency across multiple hops, and fragments data across proprietary storage engines.
 
-Why are we operating three database servers for a 50,000-document corpus?
+For many application workloads, operating three independent database clusters introduces unnecessary complexity.
 
-The thesis for AI agents is straightforward: **don't choose between vectors, keywords, and graphs — unify all three.** Dense vectors capture fuzzy conceptual similarity, BM25 provides lexical ranking for exact terms and acronyms that dense models may underweight, and graph topology traces inferred semantic relationships across documents.
+The retrieval thesis for AI agents is straightforward: **unify vectors, keywords, and graph topology in a single storage layer.** Dense vectors capture conceptual similarity, BM25 provides lexical ranking for exact terms and acronyms that dense models may underweight, and graph topology traces inferred semantic relationships across documents.
 
 We built [BenoDB](https://www.benolabsai.com/docs/) to eliminate this sprawl. By embedding Apache DataFusion in Rust directly over open Apache Iceberg tables, BenoDB runs vector ANN search (HNSW), full-text retrieval (BM25), and graph traversal (CSR) in a single in process engine—with PostgreSQL-compatible pgvector distance operators (`<=>`), zero server daemons, and open Parquet lakehouse storage.
 
-In this walkthrough, I take **5,183 research abstracts from the Allen Institute for AI's SciFact benchmark** and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in-process vector SQL to hardware-adaptive graph derivation and cited LLM answers.
+In this walkthrough, I take **5,183 research abstracts from the Allen Institute for AI's SciFact benchmark** and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in process vector SQL to hardware-adaptive graph derivation and cited LLM answers.
 
 > **Developer Preview Scope (>= v0.17.1):** Ready today for evaluation and experimentation: embedded in process execution (Python and Rust), pgvector-compatible distance operators (`<=>`, `<->`, `<#>`) embedded in DataFusion, advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multinode consensus, distributed sharding, and multistatement transactions across tables.
 >
 > **One Canonical Data Store:** Primary records and embeddings reside in standard Parquet files governed by Iceberg. Secondary indexes accelerate retrieval without requiring separate primary-data stores.
 >
 > **Interactive Notebook:** [Download .ipynb](https://raw.githubusercontent.com/benolabsai/benodb/main/notebooks/graph_rag_howto.ipynb) · [View on GitHub](https://github.com/benolabsai/benodb/blob/main/notebooks/graph_rag_howto.ipynb)
+
 
 ## Step 1: Ingesting 5,183 Paper Abstracts (And Why Naive Chunking Destroys RAG)
 
@@ -416,7 +417,7 @@ Instead of inventing a bespoke query language or requiring developers to spin up
 session = bdb.Session()
 session.register("doc_chunks", doc_chunks)
 
-# Inspect table health via in-process DataFusion SQL
+# Inspect table health via in process DataFusion SQL
 df_cnt = session.sql("SELECT count(*) AS chunks FROM doc_chunks").to_pandas()
 print(f"Registered 'doc_chunks' with {df_cnt.iloc[0]['chunks']:,} rows in Apache DataFusion session.")
 
@@ -425,7 +426,7 @@ print(f"Registered 'doc_chunks' with {df_cnt.iloc[0]['chunks']:,} rows in Apache
     Registered 'doc_chunks' with 18,404 rows in Apache DataFusion session.
 
 
-### Querying Vectors: Table API vs. In-Process pgvector SQL
+### Querying Vectors: Table API vs. In Process pgvector SQL
 
 To establish our baseline, let's query the table for a test claim:
 $$\text{"smoking increases the risk of lung cancer"}$$
@@ -461,7 +462,7 @@ sql_hits = session.sql(f"""
     ORDER BY cosine_dist ASC
     LIMIT 3
 """).to_pandas()
-print("\n--- In-Process pgvector SQL Query in DataFusion (<=> Operator) ---")
+print("\n--- In Process pgvector SQL Query in DataFusion (<=> Operator) ---")
 for _, r in sql_hits.iterrows():
     doc = int(r["doc_id"])
     print(f"  [{doc}] ({r['section']} #{r['chunk_idx']}, dist: {r['cosine_dist']:.4f}) {title_by_id.get(doc, '')[:65]}")
@@ -475,7 +476,7 @@ for _, r in sql_hits.iterrows():
       [26067999] (ABSTRACT #4, dist: 0.5847) Screening for Lung Cancer: Systematic Review to Update the U.S. 
       [16422880] (OBJECTIVE #1, dist: 0.6094) Effect of smoking reduction on lung cancer risk.
     
-    --- In-Process pgvector SQL Query in DataFusion (<=> Operator) ---
+    --- In Process pgvector SQL Query in DataFusion (<=> Operator) ---
       [7639744] (RESULTS #5, dist: 0.1693) Prognosis of patients with non-small cell or small cell lung can
       [26067999] (ABSTRACT #4, dist: 0.1709) Screening for Lung Cancer: Systematic Review to Update the U.S. 
       [16422880] (OBJECTIVE #1, dist: 0.1857) Effect of smoking reduction on lung cancer risk.
@@ -558,12 +559,15 @@ for _, r in hits.head(3).iterrows():
 
 Notice what happened when BM25 keyword matching and dense vector scores were fused:
 
-1. **Direct Evidence Promoted to #1:** In pure vector search, the top result was document `7639744` (focused on smoking *cessation after diagnosis*—conceptually related, but an indirect match). Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 (`rrf_score: 0.032266`, fusing rank #3 in the dense vector candidate pool—where another related chunk was evaluated between them in the wider search pool—and rank #1 in BM25 lexical ranking: $\frac{1}{60+3} + \frac{1}{60+1} = 0.032266$). That chunk contains the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
+1. **Direct Evidence Promoted to #1:** The hybrid search ranks document `26067999 Chunk #4` first, with an `rrf_score` of `0.032266`. That score corresponds to dense rank 3 and BM25 rank 1 within the candidate lists retrieved for fusion:
+   $$\text{RRF} = \frac{1}{60 + 3} + \frac{1}{60 + 1} = 0.015873 + 0.016393 = \mathbf{0.032266}$$
+   In contrast to standalone vector retrieval (where document `7639744` focused on smoking *cessation after diagnosis* ranked higher), BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), elevating the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
 2. **Direct Epidemiological Studies Rescued:** Hybrid search elevated document `16422880` (*"Effect of smoking reduction on lung cancer risk"*) into the top candidates (`rrf_score: 0.029851`), capturing direct study data on lung cancer incidence that dense vector similarity had ranked lower down the candidate list.
 
 ### Scoped Search: SQL Predicate Pushdown
 
 When an agent needs evidence for a claim, searching `METHODS` or `BACKGROUND` is often unhelpful. You want results strictly from `RESULTS` or `CONCLUSIONS`. BenoDB pushes SQL `filter` expressions directly into the storage engine before scoring, pruning index evaluation:
+
 
 
 ```python
@@ -627,9 +631,9 @@ for _, r in win.iterrows():
 
 ## Step 5: 50-Claim SciFact Retrieval Experiment (Illustrative Evaluation)
 
-Now for the empirical test. Anyone can cherry-pick a single query that looks good in a demo. But how does hybrid retrieval actually perform when evaluated systematically against ground truth?
+A single example demonstrates the mechanics, but evaluating across a multi-query sample provides a more useful check of retrieval behavior against ground truth.
 
-To find out, we evaluate an illustrative **50-claim evaluation subset** from the Allen Institute for AI's [SciFact](https://github.com/allenai/scifact) benchmark (`claims_dev.jsonl`). Each claim has expert-annotated ground-truth evidence citations (`cited_doc_ids`). Note that expert evidence annotations belong to the claims evaluation set; they are not annotations attached to every corpus abstract.
+To evaluate retrieval behavior systematically, we examine an illustrative **50-claim evaluation subset** from the Allen Institute for AI's [SciFact](https://github.com/allenai/scifact) benchmark (`claims_dev.jsonl`). Each claim has expert-annotated ground-truth evidence citations (`cited_doc_ids`). Note that expert evidence annotations belong to the claims evaluation set; they are not annotations attached to every corpus abstract. This evaluation provides a structured diagnostic check of relative strategy behavior on a sample workload, rather than a claim of definitive benchmark superiority.
 
 We evaluate the first 50 eligible claims with ground-truth evidence citations (`eval_subset = eval_claims[:50]`) across three retrieval strategies targeting $K=10$ unique documents:
 1. **BM25 Only:** Lexical ranking over the inverted index.
@@ -640,6 +644,7 @@ We compute macro-averaged mean per-query metrics: **document-level Recall@10** (
 
 > **Methodological Note on Chunk Deduplication & Candidate Depth:**
 > Because the underlying index evaluates passage chunks while the SciFact benchmark evaluates document citations (`doc_id`), the evaluation retrieves a candidate pool of 50 chunks (`CANDIDATE_POOL = 50`) and deduplicates returned chunks by `doc_id` to assemble the top-10 unique documents per query. If a document contributes multiple chunks, deduplication ensures only the highest-ranked chunk determines the document's rank position.
+
 
 
 ```python
@@ -773,7 +778,7 @@ In BenoDB, **graph edges are simply another standard Apache Iceberg table** stor
 ### Deriving the Inferred Semantic Similarity Topology
 SciFact research abstracts do not include citation graphs or curated entity-relation ontologies. Instead, we derive a **directed $k$-nearest neighbor semantic similarity topology** ($k=5$):
 - We pool chunk embeddings by section node.
-- We compute batched pairwise cosine distances using BenoDB's batch distance kernel (`bdb.cdist`). BenoDB supports CUDA, Metal, WGPU, and CPU SIMD execution. This notebook run used the CPU backend (`device=cpu`), computing all 65.2 million pairwise cosine distances in process in ~15 seconds (sub-second on GPU acceleration).
+- We compute batched pairwise cosine distances using BenoDB's batch distance kernel (`bdb.cdist`). BenoDB supports CUDA, Metal, WGPU, and CPU SIMD execution. This notebook run used the CPU backend (`device=cpu`), computing all 65.2 million pairwise cosine distances in process in ~15 seconds. GPU backends are supported and can accelerate this operation; performance depends on the hardware and workload.
 - Each section connects to its top-$K$ most similar sections ($K=5$) using `np.argpartition` to select neighbors in $O(S)$ time per row without sorting the full matrix. Because each node independently selects its nearest neighbors, this produces a directed $k$-NN graph ($8,075 \times 5 = 40,375$ directed edges); an edge from node $A$ to node $B$ does not imply a reciprocal edge from $B$ to $A$.
 
 > **Memory Complexity of Pairwise Similarity ($O(S^2)$):**
@@ -850,7 +855,7 @@ print(f"Edge table: {links.row_count:,} edges, columns={links.columns}")
     Edge table: 40,375 edges, columns=['source', 'target', 'relation', 'weight']
 
 
-### In-Process Graph Traversals in SQL
+### In Process Graph Traversals in SQL
 
 Now we can run graph traversals directly over our in-memory CSR graph representation with zero network hops:
 - `graph_neighbors`: Traverses $N$-hop neighbors.
@@ -1164,7 +1169,7 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
 ### Developer Preview Scope (>= v0.17.1)
 BenoDB is currently designed as an embedded Python library and standalone Flight SQL query service for single-node execution over local and cloud lakehouse storage.
-- **In Scope for >= v0.17.1:** In-process vector ANN search (HNSW), full-text retrieval (BM25), CSR graph traversals, pgvector-compatible operators in DataFusion SQL (`<=>`, `<->`, `<#>`), and GPU acceleration (Apple Metal, NVIDIA CUDA, Intel/AMD WGPU).
+- **In Scope for >= v0.17.1:** In process vector ANN search (HNSW), full-text retrieval (BM25), CSR graph traversals, pgvector-compatible operators in DataFusion SQL (`<=>`, `<->`, `<#>`), and GPU acceleration (Apple Metal, NVIDIA CUDA, Intel/AMD WGPU).
 - **Out of Scope for >= v0.17.1:** Distributed multinode consensus, distributed sharding, and cross-table multi-statement transactions.
 
 ### Reconstructible Index Sidecars
@@ -1210,7 +1215,7 @@ flowchart TD
     subgraph Retrieval ["3. Hybrid Retrieval & Subgraph Expansion"]
         H["Agent Query"]:::agent --> F1
         H --> F2
-        F1 --> I["In-Process Hybrid RRF Fusion"]:::compute
+        F1 --> I["In Process Hybrid RRF Fusion"]:::compute
         F2 --> I
         I --> J["Top-K Candidate Seeds"]:::compute
         J --> K["Local Subgraph Expansion<br/>(Relevance Ranking)"]:::compute
