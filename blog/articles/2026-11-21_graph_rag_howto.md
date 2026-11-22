@@ -4,7 +4,7 @@
 
 ---
 
-Every time I look at a modern AI architecture diagram, I think to myself, there has to be a better way.
+Every time I look at a modern Graph Rag architecture diagram, I just shake my head in disgust.
 
 To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multihop relationship reasoning. This architecture triples infrastructure spend, introduces dual write synchronization drift, adds network latency to every query, and locks data into proprietary storage formats.
 
@@ -16,7 +16,7 @@ We built [BenoDB](https://www.benolabsai.com/docs/) to eliminate this sprawl. By
 
 In this walkthrough, I take **5,183 peer-reviewed research papers** from the BEIR SciFact benchmark and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in process pgvector SQL to GPU graph derivation and cited LLM answers.
 
-> **Developer Preview Scope (>= v0.17.0):** Ready today for evaluation and experimentation: embedded in process execution (Python and Rust), native pgvector ANSI SQL (`<=>`, `<->`, `<#>`), advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multinode consensus, distributed sharding, and multistatement transactions across tables.
+> **Developer Preview Scope (>= v0.17.1):** Ready today for evaluation and experimentation: embedded in process execution (Python and Rust), native pgvector ANSI SQL (`<=>`, `<->`, `<#>`), advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multinode consensus, distributed sharding, and multistatement transactions across tables.
 >
 > **Open Storage Standards:** Primary tables are stored in standard Apache Iceberg Parquet files. Secondary index sidecars (HNSW, BM25, CSR) are reconstructible advisory files that can be rebuilt or removed without corrupting the underlying data.
 >
@@ -1078,10 +1078,10 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
 ## Production Scoping & Verified Benchmarks
 
-### Developer Preview Scope (>= v0.17.0)
+### Developer Preview Scope (>= v0.17.1)
 BenoDB is currently designed as an embedded Python library and standalone Flight SQL query service for single-node execution over local and cloud lakehouse storage.
-- **In Scope for >= v0.17.0:** In-process vector ANN search (HNSW), full-text retrieval (BM25), CSR graph traversals, native pgvector ANSI SQL syntax (`<=>`, `<->`, `<#>`), and GPU acceleration (Apple Metal, NVIDIA CUDA, Intel/AMD WGPU).
-- **Out of Scope for >= v0.17.0:** Distributed multinode consensus, distributed sharding, and cross-table multi-statement transactions.
+- **In Scope for >= v0.17.1:** In-process vector ANN search (HNSW), full-text retrieval (BM25), CSR graph traversals, native pgvector ANSI SQL syntax (`<=>`, `<->`, `<#>`), and GPU acceleration (Apple Metal, NVIDIA CUDA, Intel/AMD WGPU).
+- **Out of Scope for >= v0.17.1:** Distributed multinode consensus, distributed sharding, and cross-table multi-statement transactions.
 
 ### Reconstructible Index Sidecars
 Primary table data (text, metadata, embeddings) is stored in standard, immutable Parquet files governed by the Apache Iceberg table format. Secondary indexes (HNSW vector graphs, BM25 postings, CSR graph topologies) are stored as advisory sidecar artifacts. If an index sidecar is removed or deleted, the engine gracefully falls back to Parquet scans, and indexes can be reconstructed in-place without data loss.

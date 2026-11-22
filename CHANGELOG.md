@@ -1,3 +1,10 @@
+## [0.17.1] - 2026-11-21
+
+### Fixed
+- **Native In-Engine RRF Hybrid Search**: Exposed `Table.hybrid_search` directly through PyO3 FFI to delegate to `Table::hybrid_search_batches_filtered` in Rust core.
+- **Schema-Agnostic Physical Row Identity**: Eliminated all hardcoded column assumptions in Python; rank fusion operates natively over physical `(segment_id, row_id)` identities with exact theoretical RRF bounds (<= 2 / (k + 1)).
+- **Safe Extraction**: Added archive path validation against CVE-2007-4559 with Python 3.12+ `filter='data'` support in tutorial examples.
+
 ## [0.17.0] - 2026-11-19
 
 ### Highlights

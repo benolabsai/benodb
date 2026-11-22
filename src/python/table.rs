@@ -1055,6 +1055,43 @@ impl PyTable {
         self.search(py, column, query, k, filter, device)
     }
 
+    /// Hybrid search combining vector search and BM25 keyword search using Reciprocal Rank Fusion (RRF).
+    #[pyo3(signature = (text_column, query_text, vector_column, query_vector, k=10, rrf_k=60.0, filter=None))]
+    fn hybrid_search(
+        &self,
+        py: Python<'_>,
+        text_column: String,
+        query_text: String,
+        vector_column: String,
+        query_vector: Vec<f32>,
+        k: usize,
+        rrf_k: f32,
+        filter: Option<String>,
+    ) -> PyResult<Py<PyAny>> {
+        let batches = py
+            .allow_threads(|| {
+                TOKIO_RUNTIME.block_on(self.table.hybrid_search_batches_filtered(
+                    &text_column,
+                    &query_text,
+                    &vector_column,
+                    query_vector,
+                    k,
+                    rrf_k,
+                    filter.as_deref(),
+                ))
+            })
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        if batches.is_empty() {
+            let df = py.import("pandas")?.call_method0("DataFrame")?.unbind();
+            return Ok(df);
+        }
+
+        let schema = batches[0].schema();
+        let pyarrow_table = crate::python::helpers::arrow_batches_to_pyarrow(py, batches, schema)?;
+        pyarrow_table.call_method0(py, "to_pandas")
+    }
+
     /// Vector search returning only `(segment_id, row_id, score)`.
     ///
     /// This reads nothing but the HNSW/BM25 index — no Parquet I/O at all. Use

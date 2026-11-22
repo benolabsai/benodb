@@ -28,6 +28,7 @@ def test_vector_search_with_string_columns_no_offset_corruption():
         ]
         table.write(records)
         table.commit()
+        table.wait_for_background_tasks()
 
         # 1. Vector Search with Top-3
         results = table.vector_search("vec", [0.10, 0.50, 0.85], k=3)

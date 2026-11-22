@@ -1228,7 +1228,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "benodb"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "benodb-flight"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "arrow",
  "arrow-flight",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "benodb-mcp"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "benodb-search"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "arrow",

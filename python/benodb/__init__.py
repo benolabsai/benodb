@@ -2856,19 +2856,15 @@ class Table:
         vector_column: str,
         query_vector: List[float],
         k: int = 10,
-        rrf_k: int = 60,
+        rrf_k: float = 60.0,
         filter: Optional[str] = None,
         columns: Optional[List[str]] = None,
         device: Optional[Any] = None,
-        id_column: Optional[Union[str, List[str]]] = None,
     ) -> Any:
         """
         Perform hybrid search combining vector similarity and BM25 keyword search using Reciprocal Rank Fusion (RRF).
         
-        Formula:
-            RRF(d) = sum_{m in {dense, bm25}} 1.0 / (rrf_k + rank_m(d))
-            
-        Where rank_m(d) is 1-based (rank=1 adds 1.0 / (rrf_k + 1)).
+        Executes in-engine using physical row identity and native RRF fusion.
         
         Args:
             text_column: Text column for BM25 keyword search.
@@ -2876,121 +2872,29 @@ class Table:
             vector_column: Embedding column for dense vector search.
             query_vector: Dense float vector.
             k: Number of fused top results to return.
-            rrf_k: RRF smoothing constant (default: 60).
+            rrf_k: RRF smoothing constant (default: 60.0).
             filter: Optional SQL filter expression.
             columns: Optional list of columns to return.
             device: Optional compute device.
-            id_column: Optional column name or list of column names uniquely identifying each row/chunk.
-                       When omitted, composite chunk keys (['doc_id', 'chunk_idx']) or table primary keys are auto-detected.
             
         Returns:
             pandas.DataFrame of top results sorted by `rrf_score` descending.
         """
-        import pandas as pd
-
-        try:
-            vec_res = self.vector_search(
-                column=vector_column,
-                query=query_vector,
-                k=k * 2,
-                filter=filter,
-                columns=columns,
-                device=device,
-            )
-            vec_df = vec_res if isinstance(vec_res, pd.DataFrame) else (vec_res.to_pandas() if hasattr(vec_res, "to_pandas") else pd.DataFrame(vec_res))
-        except Exception:
-            vec_df = pd.DataFrame()
-
-        try:
-            text_res = self.vector_search(
-                column=text_column,
-                query=query_text,
-                k=k * 2,
-                filter=filter,
-                columns=columns,
-                device=device,
-            )
-            text_df = text_res if isinstance(text_res, pd.DataFrame) else (text_res.to_pandas() if hasattr(text_res, "to_pandas") else pd.DataFrame(text_res))
-        except Exception:
-            # Fallback to SQL text matching if inverted index is not built on column
-            keywords = [w.strip() for w in query_text.split() if len(w.strip()) > 0]
-            if keywords:
-                like_clauses = ["LOWER(" + text_column + ") LIKE '%" + w.lower().replace("'", "''") + "%'" for w in keywords]
-                where_clause = " OR ".join(like_clauses)
-                if filter:
-                    where_clause = f"({filter}) AND ({where_clause})"
-                try:
-                    sql_res = self.execute_sql(f"SELECT * FROM t WHERE {where_clause}")
-                    text_df = sql_res if isinstance(sql_res, pd.DataFrame) else (sql_res.to_pandas() if hasattr(sql_res, "to_pandas") else pd.DataFrame(sql_res))
-                except Exception:
-                    text_df = pd.DataFrame()
-            else:
-                text_df = pd.DataFrame()
-
-        # Determine identity columns for row-unique deduplication and rank fusion
-        all_cols = list(vec_df.columns) if not vec_df.empty else (list(text_df.columns) if not text_df.empty else [])
-        if id_column:
-            id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
-        elif self.primary_key:
-            if isinstance(self.primary_key, (list, tuple)):
-                id_cols = list(self.primary_key)
-            else:
-                id_cols = [self.primary_key]
-        elif "doc_id" in all_cols and "chunk_idx" in all_cols:
-            id_cols = ["doc_id", "chunk_idx"]
-        elif "chunk_id" in all_cols:
-            id_cols = ["chunk_id"]
-        elif "id" in all_cols:
-            id_cols = ["id"]
-        elif "node_id" in all_cols:
-            id_cols = ["node_id"]
-        elif "key" in all_cols:
-            id_cols = ["key"]
-        elif "uuid" in all_cols:
-            id_cols = ["uuid"]
-        elif "doc_id" in all_cols:
-            id_cols = ["doc_id"]
-        else:
-            id_cols = [all_cols[0]] if all_cols else ["id"]
-
-        def _make_key(row_dict):
-            if len(id_cols) == 1:
-                return row_dict.get(id_cols[0])
-            return tuple(row_dict.get(c) for c in id_cols)
-
-        scores = {}
-        rows_by_id = {}
-
-        if not vec_df.empty and all(c in vec_df.columns for c in id_cols):
-            seen_vec = set()
-            for rank, row in enumerate(vec_df.to_dict("records")):
-                key = _make_key(row)
-                if key in seen_vec:
-                    continue
-                seen_vec.add(key)
-                scores[key] = scores.get(key, 0.0) + (1.0 / (rrf_k + rank + 1.0))
-                rows_by_id[key] = row
-
-        if not text_df.empty and all(c in text_df.columns for c in id_cols):
-            seen_text = set()
-            for rank, row in enumerate(text_df.to_dict("records")):
-                key = _make_key(row)
-                if key in seen_text:
-                    continue
-                seen_text.add(key)
-                scores[key] = scores.get(key, 0.0) + (1.0 / (rrf_k + rank + 1.0))
-                if key not in rows_by_id:
-                    rows_by_id[key] = row
-
-        sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:k]
-
-        fused_rows = []
-        for key, score in sorted_items:
-            r = dict(rows_by_id[key])
-            r["rrf_score"] = score
-            fused_rows.append(r)
-
-        return pd.DataFrame(fused_rows)
+        df = self._inner.hybrid_search(
+            text_column,
+            query_text,
+            vector_column,
+            query_vector,
+            k,
+            float(rrf_k),
+            filter,
+        )
+        if columns is not None and not df.empty:
+            target_cols = [c for c in columns if c in df.columns]
+            if "rrf_score" in df.columns and "rrf_score" not in target_cols:
+                target_cols.append("rrf_score")
+            return df[target_cols]
+        return df
 
     def is_edge_table(self) -> bool:
         """Check whether this table is declared (or conforms) as an edge table.

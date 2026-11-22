@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Database",
 ]
 dependencies = [
-    "benodb>=0.17.0",
+    "benodb>=0.17.1",
 ]
 
 [tool.maturin]
