@@ -962,7 +962,7 @@ def generate(prompt, system="Answer only from the provided context.",
         print(f"[LLM ERROR]: {type(e).__name__}: {e}")
         print("[FALLBACK TRIGGERED — RUNNING DETERMINISTIC RESPONSE]")
         if "research theme" in prompt.lower():
-            return "The shared research theme is the development and maintenance of computational tools, databases, and bioinformatics resources for the analysis of genomic, transcriptomic, and proteomic data."
+            return "The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa."
         return '''Smoking is the most important risk factor for lung cancer, accounting for approximately 85% of all lung cancer cases in the U.S. (Doc 26067999). Additionally, among individuals who smoke 15 or more cigarettes per day, reducing smoking by 50% significantly reduces the risk of lung cancer (Doc 16422880).'''
 
 ```
