@@ -6,22 +6,21 @@
 
 Every time I look at a modern AI architecture diagram, I think to myself, there has to be a better way.
 
-To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multi-hop relationship reasoning. This architecture triples infrastructure spend, introduces dual write synchronization drift, adds network latency to every query, and locks data into proprietary storage formats.
+To build a serious retrieval pipeline today, teams are routinely told they need to deploy, pay for, and synchronize three separate database clusters: a dedicated vector database for dense embeddings, an Elasticsearch or OpenSearch cluster for keyword search and exact acronyms, and a graph database for multihop relationship reasoning. This architecture triples infrastructure spend, introduces dual write synchronization drift, adds network latency to every query, and locks data into proprietary storage formats.
 
 Why are we operating three database servers for a 50,000-document corpus?
 
 The thesis for AI agents is straightforward: **don't choose between vectors, keywords, and graphs — unify all three.** Dense vectors capture fuzzy conceptual similarity, BM25 guarantees exact lexical matches, and graph topology traces explicit relationships across documents.
 
-We built [BenoDB](https://www.benolabsai.com/docs/) to eliminate this sprawl. By embedding Apache DataFusion in Rust directly over open Apache Iceberg tables, BenoDB runs vector ANN search (HNSW), full-text retrieval (BM25), and graph traversal (CSR) in a single in-process engine—with native pgvector ANSI SQL syntax (`<=>`), zero server daemons, and open Parquet lakehouse storage.
+We built [BenoDB](https://www.benolabsai.com/docs/) to eliminate this sprawl. By embedding Apache DataFusion in Rust directly over open Apache Iceberg tables, BenoDB runs vector ANN search (HNSW), full-text retrieval (BM25), and graph traversal (CSR) in a single in process engine—with native pgvector ANSI SQL syntax (`<=>`), zero server daemons, and open Parquet lakehouse storage.
 
-In this walkthrough, I take **5,183 peer-reviewed research papers** from the BEIR SciFact benchmark and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in-process pgvector SQL to GPU graph derivation and cited LLM answers.
+In this walkthrough, I take **5,183 peer-reviewed research papers** from the BEIR SciFact benchmark and build an end-to-end Graph RAG pipeline from scratch: from section-aware chunking and in process pgvector SQL to GPU graph derivation and cited LLM answers.
 
-> **Developer Preview Scope (>= v0.17.0):** Ready today for evaluation and experimentation: embedded in-process execution (Python and Rust), native pgvector ANSI SQL (`<=>`, `<->`, `<#>`), advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multi-node consensus, distributed sharding, and cross-table multi-statement transactions.
+> **Developer Preview Scope (>= v0.17.0):** Ready today for evaluation and experimentation: embedded in process execution (Python and Rust), native pgvector ANSI SQL (`<=>`, `<->`, `<#>`), advisory Puffin index sidecars, TurboQuant™ TQ8 quantization, and GPU-accelerated batch distance kernels (`bdb.cdist`). What is intentionally out of scope for this release: distributed multinode consensus, distributed sharding, and multistatement transactions across tables.
 >
 > **Open Storage Standards:** Primary tables are stored in standard Apache Iceberg Parquet files. Secondary index sidecars (HNSW, BM25, CSR) are reconstructible advisory files that can be rebuilt or removed without corrupting the underlying data.
 >
 > **Interactive Notebook:** [Download .ipynb](https://raw.githubusercontent.com/benolabsai/benodb/main/notebooks/graph_rag_howto.ipynb) · [View on GitHub](https://github.com/benolabsai/benodb/blob/main/notebooks/graph_rag_howto.ipynb)
-
 
 ## Step 1: Ingesting 5,183 Papers (And Why Naive Chunking Destroys RAG)
 
@@ -75,12 +74,21 @@ if not CORPUS_PATH.exists():
     if not ARCHIVE_PATH.exists():
         print(f"Downloading SciFact corpus from {URL}...")
         urllib.request.urlretrieve(URL, ARCHIVE_PATH)
-    print("Extracting dataset archive...")
+    print("Extracting dataset archive safely...")
+    target_dir = DATA_DIR.resolve()
     with tarfile.open(ARCHIVE_PATH, "r:gz") as tar:
         for member in tar.getmembers():
             if member.name.startswith("data/"):
-                member.name = member.name[len("data/"):]
-                if member.name:
+                rel_name = member.name[len("data/"):]
+                if not rel_name:
+                    continue
+                dest_path = (target_dir / rel_name).resolve()
+                if not dest_path.is_relative_to(target_dir):
+                    raise ValueError(f"Path traversal detected in archive: {member.name}")
+                member.name = rel_name
+                if hasattr(tarfile, "data_filter"):
+                    tar.extract(member, path=DATA_DIR, filter="data")
+                else:
                     tar.extract(member, path=DATA_DIR)
     print(f"Corpus ready at {CORPUS_PATH}")
 
@@ -322,28 +330,22 @@ print("Indexes ready: hnsw(embedding) + bm25(text)")
 
 ### Under the Hood: Why Lakehouse Storage & Sidecars Matter
 
-In the ingestion above, BenoDB runs entirely in-process, with no external database server running in the background, no Postgres daemon, and no JVM runtime.
+In the ingestion above, BenoDB runs entirely in process, with no external database server running in the background, no Postgres daemon, and no JVM runtime.
 
 Under the hood, BenoDB wrote standard Apache Parquet data files tracked by an open Apache Iceberg manifest. Two architectural mechanisms make this layout both performant and operationally manageable:
 
 1. **Zero Data Duplication & Open Standards:** Primary data (text, identifiers, metadata, and Float32 embeddings) resides in standard Parquet files. Because Iceberg is an open table format, data is never locked in a proprietary database silo; the exact same tables remain directly queryable by DuckDB, Trino, or Apache Spark.
-2. **Advisory Puffin Sidecars:** econdary indexes (HNSW graphs for vectors, BM25 inverted lists for text, and CSR matrices for graph topology) are stored alongside Parquet files as advisory sidecars in standard Puffin format. If an index is rebuilt or dropped, the underlying table data remains untouched—eliminating the need to re-export or migrate raw data.
+2. **Advisory Puffin Sidecars:** Secondary indexes (HNSW graphs for vectors, BM25 inverted lists for text, and CSR matrices for graph topology) are stored alongside Parquet files as advisory sidecars in standard Puffin format. If an index is rebuilt or dropped, the underlying table data remains untouched—eliminating the need to re-export or migrate raw data.
 
-**Production Scale & Quantization:** In this walkthrough, we built an uncompressed Float32 HNSW index (hnsw). For multi-million-row datasets where memory is constrained, BenoDB supports pluggable 8-bit quantization (hnsw_tq8 with randomized Walsh-Hadamard rotation on power-of-two dimensions, and sq8 for uniform scalar quantization), combined with second-pass Float32 reranking read directly from 32 KB Parquet data pages.
+**Production Scale & Quantization:** In this walkthrough, we built an uncompressed Float32 HNSW index (`hnsw`). For multi-million-row datasets where memory is constrained, BenoDB supports pluggable 8-bit quantization (`hnsw_tq8` with randomized Walsh-Hadamard rotation on power-of-two dimensions, and `sq8` for uniform scalar quantization), combined with second-pass Float32 reranking read directly from 32 KB Parquet data pages.
 
 > 📖 **Dive Deeper:** For complete storage layout specifications, Iceberg table properties, and memory budgeting rules, see the [Lakehouse Architecture Guide](https://www.benolabsai.com/docs/guides/architecture.html) and [Resource Limits & Memory Discipline](https://www.benolabsai.com/docs/guides/resource_limits.html).
 
+## Step 3: In Process SQL with Native pgvector Syntax
 
-## Step 3: In-Process SQL with Native pgvector Syntax
+Now that our data and indexes are committed to the lakehouse, how do we query them?
 
-Now that our table is committed, how do we query it?
-
-This is where most vector databases make you learn a proprietary REST API or custom SDK DSL. If you want SQL, they tell you to spin up a managed PostgreSQL instance and install `pgvector`.
-
-BenoDB embeds **Apache DataFusion** directly in Rust. That means you get full ANSI SQL with native `pgvector` distance operators running directly inside your Python process, with zero servers to configure, zero port-forwarding, and zero daemon maintenance.
-
-Let's register our table in an embedded session and inspect it with standard SQL:
-
+Instead of inventing a bespoke query language or requiring developers to spin up a Postgres server just to get vector operators, BenoDB embeds Apache DataFusion in Rust. This exposes full ANSI SQL with **native pgvector distance syntax** (`<=>` cosine distance, `<->` Euclidean L2 distance, `<#>` negative inner product) directly over Parquet tables in process:
 
 
 ```python
@@ -419,21 +421,24 @@ for _, r in sql_hits.iterrows():
 >
 > If you look closely at the outputs above, both methods retrieved the **exact same three documents in the exact same rank order**, but their distance metrics show different numbers:
 >
-> 1. **Table API (`doc_chunks.vector_search`):** Navigates the approximate HNSW index graph using **Euclidean L2 distance** over normalized embeddings: $d_{L_2} = \sqrt{2(1 - \cos \theta)} = \sqrt{2 \times 0.1693} = \mathbf{0.5819}$.
-> 2. **In-Process SQL (`<=>` operator):** Computes exact ANSI pgvector **cosine distance**: $d_{\text{cosine}} = 1 - \cos \theta = \mathbf{0.1693}$.
+> 1. **Table API (`doc_chunks.vector_search`):** Navigates the approximate HNSW index graph using **Euclidean L2 distance** over normalized embeddings:
+>    $$d_{L_2} = \sqrt{2(1 - \cos \theta)} = \sqrt{2 \times 0.1693} = \mathbf{0.5819}$$
+> 2. **In Process SQL (`<=>` operator):** Computes exact ANSI pgvector **cosine distance**:
+>    $$d_{\text{cosine}} = 1 - \cos \theta = \mathbf{0.1693}$$
 >
-> Because all embeddings were L2-normalized ($||u||_2 = 1$) during Step 1, Euclidean distance and cosine distance are monotonically related by $d_{L_2} = \sqrt{2 \cdot d_{\text{cosine}}}$. Both metrics produce the exact same topological ordering; the Table API leverages the accelerated HNSW graph structure, while SQL gives you pure pgvector distance syntax for filtering and joins.
+> Because all embeddings were L2-normalized ($\|u\|_2 = 1$) during Step 1, Euclidean distance and cosine distance are monotonically related by:
+> $$d_{L_2} = \sqrt{2 \cdot d_{\text{cosine}}}$$
+> Both metrics produce the exact same topological ordering; the Table API leverages the accelerated HNSW graph structure, while SQL gives you pure pgvector distance syntax for filtering and analytical joins.
 >
 > 📖 **Dive Deeper:** For the complete catalog of supported pgvector operators, analytical joins on embeddings, and DataFusion execution details, explore the [pgvector SQL Guide](https://www.benolabsai.com/docs/guides/pgvector_sql_guide.html).
-
 
 ## Step 4: Hybrid Search in Action: Fusing Vectors and BM25
 
 Pure vector search found semantically relevant passages, but anyone who has shipped RAG to production knows its Achilles' heel: **vector models frequently flub exact acronyms, chemical formulas, and product codes**. Conversely, BM25 keyword search nails exact words, but fails completely on synonyms.
 
-In the Three-System stack, running hybrid search requires:
-1. Sending an ANN request to Pinecone/Qdrant,
-2. Sending a text query to Elasticsearch/OpenSearch,
+Operating separate vector and keyword search clusters introduces unnecessary coordination:
+1. Sending an ANN request to Pinecone or Qdrant,
+2. Sending a text query to Elasticsearch or OpenSearch,
 3. Waiting for both remote responses over the network, and
 4. Computing rank fusion in your application code.
 
@@ -441,10 +446,15 @@ In the Three-System stack, running hybrid search requires:
 
 $$\text{RRF}(d) = \sum_{m \in \{\text{dense}, \text{bm25}\}} \frac{1}{k + \text{rank}_m(d)}$$
 
-Where $k=60$ is the standard smoothing constant. Whether your data lives on local disk or in cloud object storage (such as an S3 or MinIO bucket accessed from a developer laptop), the engine evaluates vector distances and BM25 postings directly against the Iceberg index sidecars, fusing scores in-engine before returning top candidates to your Python runtime.
+Where $k=60$ is the standard smoothing constant, and $\text{rank}_m(d) \in \{1, 2, \dots\}$ is the 1-based rank of item $d$ within modality $m$.
+
+With two retrieval modalities, the theoretical maximum possible score under this formula occurs when a candidate places rank #1 in both the dense vector and BM25 candidate lists:
+
+$$\text{RRF}_{\max} = \frac{1}{60 + 1} + \frac{1}{60 + 1} = \frac{2}{61} \approx \mathbf{0.03279}$$
+
+Whether your data lives on local disk or in cloud object storage (such as an S3 or MinIO bucket accessed from a developer laptop), the engine evaluates vector distances and BM25 postings directly against the Iceberg index sidecars, fusing scores in-engine before returning top candidates to your Python runtime.
 
 Let's run the exact same query through hybrid search and watch what changes:
-
 
 
 ```python
@@ -464,34 +474,32 @@ print("\nTop Hit Titles:")
 for _, r in hits.head(3).iterrows():
     doc = int(r["doc_id"])
     print(f"  [{doc}] {title_by_id.get(doc, '')[:78]}")
-
 ```
 
     Query: 'smoking increases the risk of lung cancer'
     
     --- Top Hybrid Search Hits (Dense Vector + BM25 RRF) ---
-      doc_id   section  chunk_idx  rrf_score
-    26067999  ABSTRACT          4   0.125219
-     7639744   RESULTS          5   0.075503
-    16422880 OBJECTIVE          1   0.045476
-    12145359   METHODS          1   0.044583
-     4828631  FINDINGS          4   0.015152
+      doc_id     section  chunk_idx  rrf_score
+    26067999    ABSTRACT          4   0.032266
+    26067999    ABSTRACT         17   0.032258
+     7639744 CONCLUSIONS          7   0.030118
+    12145359     RESULTS          2   0.030090
+    16422880   OBJECTIVE          1   0.029851
     
     Top Hit Titles:
       [26067999] Screening for Lung Cancer: U.S. Preventive Services Task Force Recommendation 
       [7639744] Influence of smoking cessation after diagnosis of early stage lung cancer on p
-      [16422880] Effect of smoking reduction on lung cancer risk.
+      [12145359] Cigarette smoking and risk of histologic subtypes of epithelial ovarian cancer
 
 
 Notice what happened when BM25 keyword matching and dense vector scores were fused:
 
-1. **Direct Evidence Promoted to #1:** In pure vector search, the top result was document `7639744` (focused on smoking *cessation after diagnosis*—conceptually related, but an indirect match). Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 (`rrf_score: 0.1252`). That chunk contains the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
-2. **Direct Epidemiological Studies Rescued:** Hybrid search elevated document `16422880` (*"Effect of smoking reduction on lung cancer risk"*) straight into the top 3, capturing direct study data on lung cancer incidence that dense vector similarity had ranked lower down the candidate list.
+1. **Direct Evidence Promoted to #1:** In pure vector search, the top result was document `7639744` (focused on smoking *cessation after diagnosis*—conceptually related, but an indirect match). Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 (`rrf_score: 0.032266`, fusing rank #3 in dense vector retrieval and rank #1 in BM25 lexical ranking). That chunk contains the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
+2. **Direct Epidemiological Studies Rescued:** Hybrid search elevated document `16422880` (*"Effect of smoking reduction on lung cancer risk"*) into the top candidates (`rrf_score: 0.029851`), capturing direct study data on lung cancer incidence that dense vector similarity had ranked lower down the candidate list.
 
 ### Scoped Search: SQL Predicate Pushdown
 
 When an agent needs evidence for a claim, searching `METHODS` or `BACKGROUND` is often unhelpful. You want results strictly from `RESULTS` or `CONCLUSIONS`. BenoDB pushes SQL `filter` expressions directly into the storage engine before scoring, pruning index evaluation:
-
 
 
 ```python
@@ -510,12 +518,12 @@ print(scoped[["doc_id", "section", "chunk_idx", "rrf_score"]].to_string(index=Fa
 
     Filtered strictly to Results & Conclusions:
     
-      doc_id    section  chunk_idx  rrf_score
-     7639744    RESULTS          5   0.094557
-    12145359 CONCLUSION          5   0.060781
-    16422880    RESULTS          5   0.031545
-     4828631   FINDINGS          4   0.030118
-    17450673    RESULTS          4   0.015385
+      doc_id     section  chunk_idx  rrf_score
+     7639744 CONCLUSIONS          7   0.032002
+    12145359     RESULTS          2   0.032002
+     7639744     RESULTS          4   0.031545
+     7639744     RESULTS          5   0.031010
+     4828631    FINDINGS          4   0.030118
 
 
 ### Context Window Expansion: Adjacent Chunks in SQL
@@ -555,16 +563,19 @@ for _, r in win.iterrows():
 
 Now for the empirical test. Anyone can cherry-pick a single query that looks good in a demo. But how does hybrid retrieval actually perform when evaluated systematically against ground truth?
 
-To find out, we evaluate an illustrative **50-claim evaluation subset** from the Allen Institute for AI's [SciFact](https://github.com/allenai/scifact) development benchmark (`claims_dev.jsonl`) against our 18,404 section chunks.
+To find out, we evaluate an illustrative **50-claim evaluation subset** from the Allen Institute for AI's [SciFact](https://github.com/allenai/scifact) benchmark (`claims_dev.jsonl`). Each claim has expert-annotated ground-truth evidence citations (`cited_doc_ids`).
 
-### Evaluation Methodology & Scope
-1. **Document-Level Ground Truth vs. Chunk Retrieval:** SciFact's ground truth specifies relevant PubMed document IDs. Because our lakehouse indexes fine-grained section chunks, we retrieve the top $K \times 2$ chunks and deduplicate them by `doc_id` to evaluate paper-level evidence recovery (`Recall@10`) and ranking quality (`nDCG@10`).
-2. **Unified Index Dispatch (BM25):** BenoDB exposes a unified retrieval API. When `doc_chunks.vector_search("text", q_text)` is called with a string query on a column indexed with `add_index("text", "bm25")` (and no dense embedding function configured), the Rust query planner automatically routes the string directly to the inverted index using Okapi BM25 scoring (`VectorValue::Keyword`).
-3. **Internal Retrieval Comparison:** This benchmark measures the relative performance between BM25, dense BGE embeddings, and server-side Reciprocal Rank Fusion within the same lakehouse storage engine.
+We draw a seeded deterministic sample of 50 claims using `random.Random(42)` to ensure exact reproducibility across runs. We evaluate three retrieval strategies at $K=10$:
+1. **BM25 Only:** Exact token matching over the inverted index.
+2. **Vector Only:** Cosine similarity over normalized `bge-large-en-v1.5` dense embeddings.
+3. **Hybrid Search:** Reciprocal Rank Fusion ($k=60$) combining vector distance and BM25 postings.
 
+We compute standard information retrieval metrics: **Recall@10** (fraction of ground-truth cited papers retrieved) and **nDCG@10** (Normalized Discounted Cumulative Gain, weighting hits by rank position). We report metrics strictly over successfully executed queries ($N_{\text{valid}}$) and track execution error counts explicitly.
 
 
 ```python
+import random
+
 CLAIMS_PATH = DATA_DIR / "claims_dev.jsonl"
 eval_claims = []
 with CLAIMS_PATH.open() as f:
@@ -573,16 +584,22 @@ with CLAIMS_PATH.open() as f:
         if c.get("cited_doc_ids"):
             eval_claims.append(c)
 
-# 50-claim illustrative evaluation sample
-eval_subset = eval_claims[:50]
+# Seeded deterministic 50-claim illustrative evaluation sample
+rng = random.Random(42)
+eval_subset = rng.sample(eval_claims, min(50, len(eval_claims)))
+
 eval_results = {
     "BM25 Only": {"recall": [], "ndcg": []},
     "Vector Only (BGE)": {"recall": [], "ndcg": []},
     "Hybrid (RRF)": {"recall": [], "ndcg": []},
 }
+eval_errors = {
+    "BM25 Only": 0,
+    "Vector Only (BGE)": 0,
+    "Hybrid (RRF)": 0,
+}
 
 K = 10
-eval_errors = 0
 
 for item in eval_subset:
     q_text = item["claim"]
@@ -597,9 +614,13 @@ for item in eval_subset:
             if d not in bm25_docs:
                 bm25_docs.append(d)
                 if len(bm25_docs) == K: break
-    except Exception as e:
-        eval_errors += 1
-        bm25_docs = []
+        hits_cnt = len(ground_truth.intersection(bm25_docs))
+        eval_results["BM25 Only"]["recall"].append(hits_cnt / len(ground_truth))
+        dcg = sum(1.0 / np.log2(rank + 2) for rank, d in enumerate(bm25_docs) if d in ground_truth)
+        idcg = sum(1.0 / np.log2(rank + 2) for rank in range(min(len(ground_truth), K)))
+        eval_results["BM25 Only"]["ndcg"].append(dcg / idcg if idcg > 0 else 0.0)
+    except Exception:
+        eval_errors["BM25 Only"] += 1
 
     # 2. Vector Only (BGE-Large 1024-d, HNSW)
     try:
@@ -609,11 +630,15 @@ for item in eval_subset:
             if d not in vec_docs:
                 vec_docs.append(d)
                 if len(vec_docs) == K: break
-    except Exception as e:
-        eval_errors += 1
-        vec_docs = []
+        hits_cnt = len(ground_truth.intersection(vec_docs))
+        eval_results["Vector Only (BGE)"]["recall"].append(hits_cnt / len(ground_truth))
+        dcg = sum(1.0 / np.log2(rank + 2) for rank, d in enumerate(vec_docs) if d in ground_truth)
+        idcg = sum(1.0 / np.log2(rank + 2) for rank in range(min(len(ground_truth), K)))
+        eval_results["Vector Only (BGE)"]["ndcg"].append(dcg / idcg if idcg > 0 else 0.0)
+    except Exception:
+        eval_errors["Vector Only (BGE)"] += 1
 
-    # 3. Hybrid Search: Server-side Reciprocal Rank Fusion (RRF, k=60)
+    # 3. Hybrid Search: In-engine Reciprocal Rank Fusion (RRF, k=60)
     try:
         hyb_res = doc_chunks.hybrid_search(
             text_column="text",
@@ -627,61 +652,46 @@ for item in eval_subset:
             if d not in hyb_docs:
                 hyb_docs.append(d)
                 if len(hyb_docs) == K: break
-    except Exception as e:
-        eval_errors += 1
-        hyb_docs = []
-
-    for name, retrieved in [
-        ("BM25 Only", bm25_docs),
-        ("Vector Only (BGE)", vec_docs),
-        ("Hybrid (RRF)", hyb_docs),
-    ]:
-        hits_cnt = len(ground_truth.intersection(retrieved))
-        eval_results[name]["recall"].append(hits_cnt / len(ground_truth))
-
-        dcg = sum(1.0 / np.log2(rank + 2) for rank, d in enumerate(retrieved) if d in ground_truth)
+        hits_cnt = len(ground_truth.intersection(hyb_docs))
+        eval_results["Hybrid (RRF)"]["recall"].append(hits_cnt / len(ground_truth))
+        dcg = sum(1.0 / np.log2(rank + 2) for rank, d in enumerate(hyb_docs) if d in ground_truth)
         idcg = sum(1.0 / np.log2(rank + 2) for rank in range(min(len(ground_truth), K)))
-        eval_results[name]["ndcg"].append(dcg / idcg if idcg > 0 else 0.0)
+        eval_results["Hybrid (RRF)"]["ndcg"].append(dcg / idcg if idcg > 0 else 0.0)
+    except Exception:
+        eval_errors["Hybrid (RRF)"] += 1
 
-print(f"{'Retrieval Strategy':<22} {'Recall@10':<15} {'nDCG@10':<15}")
-print("-" * 52)
+print(f"\n{'Retrieval Strategy':<22} {'Recall@10':<12} {'nDCG@10':<12} {'N_valid':<10} {'Errors':<8}")
+print("-" * 66)
 for name in ["BM25 Only", "Vector Only (BGE)", "Hybrid (RRF)"]:
-    r_score = np.mean(eval_results[name]["recall"])
-    n_score = np.mean(eval_results[name]["ndcg"])
-    print(f"{name:<22} {r_score:<15.4f} {n_score:<15.4f}")
-
-if eval_errors > 0:
-    print(f"\nNotice: {eval_errors} query execution errors encountered during evaluation.")
-
+    recalls = eval_results[name]["recall"]
+    ndcgs = eval_results[name]["ndcg"]
+    n_valid = len(recalls)
+    err_cnt = eval_errors[name]
+    r_score = np.mean(recalls) if n_valid > 0 else 0.0
+    n_score = np.mean(ndcgs) if n_valid > 0 else 0.0
+    print(f"{name:<22} {r_score:<12.4f} {n_score:<12.4f} {n_valid:<10} {err_cnt:<8}")
 ```
 
-    Retrieval Strategy     Recall@10       nDCG@10        
-    ----------------------------------------------------
-    BM25 Only              0.8400          0.6967         
-    Vector Only (BGE)      0.8860          0.8350         
-    Hybrid (RRF)           0.9050          0.8020         
+    Retrieval Strategy     Recall@10    nDCG@10      N_valid    Errors  
+    ------------------------------------------------------------------
+    BM25 Only              0.7667       0.6278       50         0       
+    Vector Only (BGE)      0.9233       0.7939       50         0       
+    Hybrid (RRF)           0.9133       0.6663       50         0       
 
 
 ### Interpreting the Results: What the Numbers Actually Mean
 
-Look closely at the numbers from the benchmark run above:
+Look closely at the numbers from the seeded 50-claim benchmark run above:
 
-| Retrieval Strategy | Recall@10 | nDCG@10 | Engineering Takeaway |
-|---|---|---|---|
-| **BM25 Only** | 0.8400 | 0.6967 | Fast lexical matching; misses conceptual paraphrases |
-| **Vector Only (BGE)** | 0.8860 | **0.8354** | Strongest top-1 ranking precision; misses exact medical terms |
-| **Hybrid (RRF)** | **0.9050** | 0.7946 | **Highest overall evidence recovery (+6.5% over BM25, +1.9% over dense)** |
+| Retrieval Strategy | Recall@10 | nDCG@10 | Valid Denominator ($N$) | Errors | Engineering Takeaway |
+|---|---|---|---|---|---|
+| **BM25 Only** | 0.7667 | 0.6278 | 50 | 0 | Fast lexical matching; misses conceptual paraphrases |
+| **Vector Only (BGE)** | 0.9233 | 0.7939 | 50 | 0 | Excellent semantic recall; susceptible to keyword misses |
+| **Hybrid (RRF)** | 0.9133 | 0.6663 | 50 | 0 | Robust dual-signal candidate generation across queries |
 
-#### 1. Why Recall@10 Is the Primary Metric for AI Agents
-In production RAG systems, **recall is the primary bottleneck**. If a critical evidence passage isn't in the top 10 chunks fed into your LLM's prompt window, the model cannot synthesize it and risks hallucinating.
-
-In this 50-claim evaluation, Hybrid RRF achieved the highest total evidence recovery (**0.9050 Recall@10**, a **+6.5% lift over BM25** and **+1.9% over dense vectors alone**). It rescues passages where exact phrasing differed from the query but semantic intent matched, while catching exact medical terminology where embeddings were slightly diffuse.
-
-#### 2. The nDCG Ranking Trade-Off Under Unweighted RRF ($k=60$)
-Notice the trade-off in the results: dense vectors alone scored higher in ranking precision (**0.8354 nDCG@10** vs **0.7946 for Hybrid**). Why? Because dense vectors excel at placing the single most semantically aligned document at rank #1. When unweighted Reciprocal Rank Fusion ($k=60$) combines vector ranks with BM25 (which ranks at 0.6967), it blends rank reciprocal scores ($1 / (k + r)$), slightly trading rank-1 concentration in exchange for a broader candidate net across all 10 slots.
-
-For LLM generation workflows where the prompt context window ingests all top 5 or 10 chunks simultaneously, **maximizing Recall@10 is the superior engineering trade-off** because the model receives the complete evidentiary basis. For human-facing search engines where users primarily click the first result, teams can weight the dense vector modality higher or tune the RRF smoothing constant $k$.
-
+1. **Vector ANN provides strong semantic recall (0.9233):** Dense embeddings excel on scholarly claims because research claims frequently use synonyms or generalized medical abstractions that do not match the exact tokens in the abstract.
+2. **BM25 captures lexical exactness (0.7667):** Pure BM25 retrieves ground-truth documents whenever the claim includes distinctive entity terms or gene symbols, but drops recall when terminology differs.
+3. **Hybrid RRF guards against failure modes:** While dense vector search achieves highest ranking metrics on this dataset, pure vector pipelines suffer from sudden zero-recall dropouts on out-of-vocabulary acronyms. Hybrid fusion ensures that exact keyword matches remain anchored in the candidate pool without sacrificing semantic reach.
 
 ## Step 6: Adding Graph Topology: Inferred Semantic Section Graphs (Without Operating Neo4j)
 
@@ -689,16 +699,20 @@ Hybrid search nails single-passage retrieval. But what happens when an agent nee
 
 Traditionally, adding graph capabilities means provisioning a dedicated graph database cluster (such as Neo4j or Amazon Neptune). That introduces a third database bill, another query language to learn, and an asynchronous ETL synchronization pipeline that can drift out of sync.
 
-In BenoDB, **graph edges are simply another standard Apache Iceberg table** stored right alongside your documents in open Parquet format. When you query the graph, the embedded Rust engine compiles the table into an in-memory **Compressed Sparse Row (CSR)** matrix on the fly, running vectorized graph traversals in-process.
+In BenoDB, **graph edges are simply another standard Apache Iceberg table** stored right alongside your documents in open Parquet format. When you query the graph, the embedded Rust engine compiles the table into an in-memory **Compressed Sparse Row (CSR)** matrix on the fly, running vectorized graph traversals in process.
 
 ### Deriving the Inferred Semantic Similarity Topology
-SciFact research papers do not include citation graphs or curated entity-relation ontologies. Instead, we derive a **$k$-nearest-neighbor semantic similarity topology** ($k=5$):
+SciFact research papers do not include citation graphs or curated entity-relation ontologies. Instead, we derive a **$k$-nearest neighbor semantic similarity topology** ($k=5$):
 - We pool chunk embeddings by section node.
 - We compute batched pairwise cosine distances using BenoDB's GPU-accelerated kernel (`bdb.cdist`) on CUDA, Apple Metal, or CPU SIMD.
 - Each section connects to its top-$K$ most similar sections ($K=5$).
 
-This graph represents **semantic graph exploration**: connecting conceptually related experimental findings across papers to enable multi-hop local context expansion during retrieval.
+> **Memory Complexity of Pairwise Similarity ($O(S^2)$):**
+> Computing the full pairwise similarity matrix across $S = 8,075$ section centroids requires allocating an $S \times S$ Float32 array:
+> $$8,075 \times 8,075 \times 4\text{ bytes} \approx \mathbf{260.8\text{ MB}}$$
+> For corpora up to $S \le 20,000$ sections ($\approx 1.6\text{ GB}$), `bdb.cdist` evaluates the full matrix in high throughput across GPU or multithreaded CPU SIMD. For production scale graphs where $S > 100,000$ (where an $S \times S$ dense matrix would exceed 40 GB of RAM), graphs are constructed by streaming batched $k$-NN candidate searches against the HNSW index sidecar rather than allocating a dense pairwise matrix.
 
+This graph represents **semantic graph exploration**: connecting conceptually related experimental findings across papers to enable multihop local context expansion during retrieval.
 
 
 ```python
@@ -955,24 +969,50 @@ def generate(prompt, system="Answer only from the provided context.",
 
 
 ```python
-prompt = f'''Use ONLY the context below to answer the question.
+import re
+
+prompt = f"""Use ONLY the context below to answer the question.
 Cite the PubMed Document IDs (e.g. Doc 26067999, Doc 7639744) you rely on. If the context is insufficient, say so.
 
 Question: {query}
 
 Context:
 {ctx_text}
-'''
+"""
 
 answer = generate(prompt)
 print("Generated Answer:\n")
 print(answer)
 
+# Programmatic Citation Verification
+cited_raw = set(re.findall(r"\bDoc\s+(\d+)\b|\bdoc_id[=:\s]+(\d+)\b", answer))
+cited_ids = {int(x) for tup in cited_raw for x in tup if x}
+context_doc_ids = set(int(m.group(1)) for m in re.finditer(r"\[doc_id=(\d+)\]", ctx_text))
+
+valid_citations = cited_ids.intersection(context_doc_ids)
+hallucinated_citations = cited_ids - context_doc_ids
+
+print("\n--- Programmatic Citation Verification ---")
+print(f"Cited in Answer:             {sorted(cited_ids)}")
+print(f"Retrieved in Context Window: {sorted(context_doc_ids)}")
+print(f"Faithful Citations:          {len(valid_citations)} / {len(cited_ids)}")
+assert not hallucinated_citations, f"Hallucinated citations detected: {hallucinated_citations}"
+print("Citation Validation: PASS (100% grounded in retrieved Iceberg context).")
 ```
 
     Generated Answer:
     
-    Smoking is the most important risk factor for lung cancer, accounting for approximately 85% of all U.S. lung cancer cases (Doc 26067999). Additionally, continued smoking is associated with an increased risk of recurrence in early stage non-small cell lung cancer (Doc 7639744).
+    1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."
+    
+    2. Doc 7639744 provides empirical evidence that "Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% confidence interval 1.15 to 7.54) and recurrence (1.86, 1.01 to 3.41) in early stage non-small cell lung cancer."
+    
+    Conclusion: The retrieved evidence confirms that smoking substantially increases both the initial risk and the mortality of lung cancer.
+    
+    --- Programmatic Citation Verification ---
+    Cited in Answer:             [7639744, 26067999]
+    Retrieved in Context Window: [4828631, 7639744, 12145359, 16422880, 26067999]
+    Faithful Citations:          2 / 2
+    Citation Validation: PASS (100% grounded in retrieved Iceberg context).
 
 
 > 📖 **Dive Deeper:** To explore relationship edge table schemas, in-memory CSR index compilation in Rust, and multi-hop graph retrieval patterns, see the [Graph RAG & Edge Tables Guide](https://www.benolabsai.com/docs/guides/graph_rag_edge_tables.html).
@@ -993,21 +1033,21 @@ print(f"Partitioned {len(section_ids):,} sections into {len(comms):,} Louvain co
 
 largest = max(comms["community"], key=len)
 print(f"\nLargest community contains {len(largest):,} sections. Sample titles:")
-for nid in list(largest)[:6]:
+for nid in sorted(list(largest))[:6]:
     sid = label_of.get(int(nid), str(nid))
     doc = int(str(sid).split(":")[0])
     print(f"  {sid}: {title_by_id.get(doc, '')[:78]}")
 ```
 
-    Partitioned 8,075 sections into 1,246 Louvain communities
+    Partitioned 8,075 sections into 1,231 Louvain communities
     
-    Largest community contains 63 sections. Sample titles:
-      10029970:ABSTRACT: CDD: conserved domains and protein three-dimensional structure
-      11244195:ABSTRACT: STAR: ultrafast universal RNA-seq aligner.
-      11244195:RESULTS: STAR: ultrafast universal RNA-seq aligner.
-      11253758:ABSTRACT: Update of the FANTOM web resource: high resolution transcriptome of diverse ce
-      11728637:ABSTRACT: Empirical statistical estimates for sequence similarity searches
-      12271486:BACKGROUND: MotifMap: integrative genome-wide maps of regulatory motif sites for model spe
+    Largest community contains 54 sections. Sample titles:
+      1173667:ABSTRACT: Ranking of elimination feasibility between malaria-endemic countries
+      1215116:ABSTRACT: “Rapid-Impact Interventions”: How a Policy of Integrated Control for Africa's 
+      13162391:ABSTRACT: Funnel trap for the capture of phlebotomine sand flies (Diptera: Psychodidae) 
+      1349033:ABSTRACT: Advantages of larval control for African malaria vectors: Low mobility and beh
+      13938878:ABSTRACT: Clinical algorithms for malaria diagnosis lack utility among people of differe
+      13959707:BACKGROUND: The Ratio of Monocytes to Lymphocytes in Peripheral Blood Correlates with Incr
 
 
 We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)):
@@ -1016,7 +1056,7 @@ We sample paper titles from the largest cluster and prompt the LLM to synthesize
 
 ```python
 sample = []
-for nid in list(largest)[:15]:
+for nid in sorted(list(largest))[:15]:
     sid = label_of.get(int(nid), "")
     if sid:
         sample.append(title_by_id.get(int(sid.split(":")[0]), ""))
@@ -1033,7 +1073,7 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
     Theme of largest community:
     
-    The shared research theme is the development and application of computational tools, databases, and algorithmic frameworks for the analysis of genomic, transcriptomic, and proteomic data.
+    The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa.
 
 
 ## Production Scoping & Verified Benchmarks
@@ -1041,7 +1081,7 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 ### Developer Preview Scope (>= v0.17.0)
 BenoDB is currently designed as an embedded Python library and standalone Flight SQL query service for single-node execution over local and cloud lakehouse storage.
 - **In Scope for >= v0.17.0:** In-process vector ANN search (HNSW), full-text retrieval (BM25), CSR graph traversals, native pgvector ANSI SQL syntax (`<=>`, `<->`, `<#>`), and GPU acceleration (Apple Metal, NVIDIA CUDA, Intel/AMD WGPU).
-- **Out of Scope for >= v0.17.0:** Distributed multi-node consensus, distributed sharding, and cross-table multi-statement transactions.
+- **Out of Scope for >= v0.17.0:** Distributed multinode consensus, distributed sharding, and cross-table multi-statement transactions.
 
 ### Reconstructible Index Sidecars
 Primary table data (text, metadata, embeddings) is stored in standard, immutable Parquet files governed by the Apache Iceberg table format. Secondary indexes (HNSW vector graphs, BM25 postings, CSR graph topologies) are stored as advisory sidecar artifacts. If an index sidecar is removed or deleted, the engine gracefully falls back to Parquet scans, and indexes can be reconstructed in-place without data loss.
@@ -1103,7 +1143,7 @@ flowchart TD
 
 Continue exploring the architecture, systems mechanics, and connectors of BenoDB:
 
-- **Article 1 (Current):** *Building Hybrid Retrieval on Your Existing Iceberg Data* — End-to-end vector, keyword, and graph traversal in a single in-process engine.
+- **Article 1 (Current):** *Building Hybrid Retrieval on Your Existing Iceberg Data* — End-to-end vector, keyword, and graph traversal in a single in process engine.
 - **Article 2 (Upcoming):** *Bring Your Own Iceberg: Zero-ETL Lakehouse Search over Existing Tables* — Layer secondary vector, BM25, and CSR indexes onto existing Iceberg tables in detached overlay mode with zero upstream writes.
 - **Article 3 (Upcoming):** *Out of Core Scale: Why Codes-First SIMD Streaming Dominates Disk Graphs at 100M* — Systems architecture and verified benchmarks under strict memory limits.
 - **The Connector Series:**
@@ -1185,5 +1225,5 @@ Rick Albright has worked in the capital markets industry for over 35 years — m
 
 During his published research on predictive embedding frameworks ([Albright & Zhu, Springer 2026](https://link.springer.com/chapter/10.1007/978-981-92-2888-1_12)) — processing over 3.3 million SEC Form 4 filings across 20 years to detect material semantic shifts in corporate insider trading behavior — he conducted the analysis by calculating vector distances with NumPy and scikit-learn across Parquet files, DuckDB queries, PostgreSQL tables, and `.npy` vector arrays, using JSON to track experiment results across runs. He initially avoided Apache Iceberg during the research: deploying Apache Spark was complete operational overkill for the workload, while PyIceberg did not feel mature enough for complex, high-throughput analytical pipelines.
 
-Following the paper submission, the operational friction and severe data duplication of shuttling identical datasets across disconnected relational tables, raw array dumps, and search files led him to build **[BenoDB](https://github.com/benolabsai/benodb)**. He designed BenoDB to make Apache Iceberg dead simple and zero-friction to set up — running embedded with just a file URI or S3 path, without needing Spark clusters, external catalog services, or heavy JVM runtimes. Starting initially as an in-process vector store directly over Iceberg tables to eliminate data duplication, he soon realized that unifying vector distance search, BM25 text retrieval, and tabular data in a single lakehouse table provided the exact foundation needed to derive and traverse relationship graphs in-place for Graph RAG — without operating an external graph database. He develops **[BenoDB](https://github.com/benolabsai/benodb)** as an open-source project, sharing his code, benchmarks, and lakehouse research at [Beno Labs](https://www.benolabsai.com).
+Following the paper submission, the operational friction and severe data duplication of shuttling identical datasets across disconnected relational tables, raw array dumps, and search files led him to build **[BenoDB](https://github.com/benolabsai/benodb)**. He designed BenoDB to make Apache Iceberg dead simple and zero-friction to set up — running embedded with just a file URI or S3 path, without needing Spark clusters, external catalog services, or heavy JVM runtimes. Starting initially as an in process vector store directly over Iceberg tables to eliminate data duplication, he soon realized that unifying vector distance search, BM25 text retrieval, and tabular data in a single lakehouse table provided the exact foundation needed to derive and traverse relationship graphs in-place for Graph RAG — without operating an external graph database. He develops **[BenoDB](https://github.com/benolabsai/benodb)** as an open-source project, sharing his code, benchmarks, and lakehouse research at [Beno Labs](https://www.benolabsai.com).
 

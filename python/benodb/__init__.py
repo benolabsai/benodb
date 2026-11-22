@@ -2860,11 +2860,15 @@ class Table:
         filter: Optional[str] = None,
         columns: Optional[List[str]] = None,
         device: Optional[Any] = None,
+        id_column: Optional[Union[str, List[str]]] = None,
     ) -> Any:
         """
         Perform hybrid search combining vector similarity and BM25 keyword search using Reciprocal Rank Fusion (RRF).
         
-        RRF Score: score = sum(1.0 / (rrf_k + rank + 1.0))
+        Formula:
+            RRF(d) = sum_{m in {dense, bm25}} 1.0 / (rrf_k + rank_m(d))
+            
+        Where rank_m(d) is 1-based (rank=1 adds 1.0 / (rrf_k + 1)).
         
         Args:
             text_column: Text column for BM25 keyword search.
@@ -2876,6 +2880,8 @@ class Table:
             filter: Optional SQL filter expression.
             columns: Optional list of columns to return.
             device: Optional compute device.
+            id_column: Optional column name or list of column names uniquely identifying each row/chunk.
+                       When omitted, composite chunk keys (['doc_id', 'chunk_idx']) or table primary keys are auto-detected.
             
         Returns:
             pandas.DataFrame of top results sorted by `rrf_score` descending.
@@ -2921,31 +2927,57 @@ class Table:
             else:
                 text_df = pd.DataFrame()
 
-        # Identity column
-        id_col = self.primary_key
-        if id_col and isinstance(id_col, (list, tuple)) and len(id_col) == 1:
-            id_col = id_col[0]
-        if not id_col or (not vec_df.empty and id_col not in vec_df.columns):
-            for cand in ["id", "doc_id", "node_id", "key", "uuid"]:
-                if (not vec_df.empty and cand in vec_df.columns) or (not text_df.empty and cand in text_df.columns):
-                    id_col = cand
-                    break
-            if not id_col:
-                cols = vec_df.columns if not vec_df.empty else text_df.columns
-                id_col = cols[0] if len(cols) > 0 else "id"
+        # Determine identity columns for row-unique deduplication and rank fusion
+        all_cols = list(vec_df.columns) if not vec_df.empty else (list(text_df.columns) if not text_df.empty else [])
+        if id_column:
+            id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
+        elif self.primary_key:
+            if isinstance(self.primary_key, (list, tuple)):
+                id_cols = list(self.primary_key)
+            else:
+                id_cols = [self.primary_key]
+        elif "doc_id" in all_cols and "chunk_idx" in all_cols:
+            id_cols = ["doc_id", "chunk_idx"]
+        elif "chunk_id" in all_cols:
+            id_cols = ["chunk_id"]
+        elif "id" in all_cols:
+            id_cols = ["id"]
+        elif "node_id" in all_cols:
+            id_cols = ["node_id"]
+        elif "key" in all_cols:
+            id_cols = ["key"]
+        elif "uuid" in all_cols:
+            id_cols = ["uuid"]
+        elif "doc_id" in all_cols:
+            id_cols = ["doc_id"]
+        else:
+            id_cols = [all_cols[0]] if all_cols else ["id"]
+
+        def _make_key(row_dict):
+            if len(id_cols) == 1:
+                return row_dict.get(id_cols[0])
+            return tuple(row_dict.get(c) for c in id_cols)
 
         scores = {}
         rows_by_id = {}
 
-        if not vec_df.empty and id_col in vec_df.columns:
+        if not vec_df.empty and all(c in vec_df.columns for c in id_cols):
+            seen_vec = set()
             for rank, row in enumerate(vec_df.to_dict("records")):
-                key = row[id_col]
+                key = _make_key(row)
+                if key in seen_vec:
+                    continue
+                seen_vec.add(key)
                 scores[key] = scores.get(key, 0.0) + (1.0 / (rrf_k + rank + 1.0))
                 rows_by_id[key] = row
 
-        if not text_df.empty and id_col in text_df.columns:
+        if not text_df.empty and all(c in text_df.columns for c in id_cols):
+            seen_text = set()
             for rank, row in enumerate(text_df.to_dict("records")):
-                key = row[id_col]
+                key = _make_key(row)
+                if key in seen_text:
+                    continue
+                seen_text.add(key)
                 scores[key] = scores.get(key, 0.0) + (1.0 / (rrf_k + rank + 1.0))
                 if key not in rows_by_id:
                     rows_by_id[key] = row
