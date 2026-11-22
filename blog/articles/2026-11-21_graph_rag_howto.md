@@ -659,8 +659,6 @@ We compute macro-averaged mean per-query metrics: **document-level Recall@10** (
 
 
 ```python
-import random
-
 CLAIMS_PATH = DATA_DIR / "claims_dev.jsonl"
 eval_claims = []
 with CLAIMS_PATH.open() as f:
@@ -772,13 +770,13 @@ Look closely at the macro-averaged mean per-query numbers from the 50-claim eval
 | Retrieval Strategy | Document Recall@10 | Document nDCG@10 | Valid Denominator ($N$) | Errors | Engineering Takeaway |
 |---|---|---|---|---|---|
 | **BM25 Only** | 0.8400 | 0.6967 | 50 | 0 | Fast lexical matching; misses conceptual paraphrases |
-| **Vector Only (BGE)** | 0.8860 | 0.8350 | 50 | 0 | High ranking precision; susceptible to keyword misses |
+| **Vector Only (BGE)** | 0.8860 | 0.8350 | 50 | 0 | High ranking quality; susceptible to keyword misses |
 | **Hybrid (RRF)** | 0.9010 | 0.8096 | 50 | 0 | Highest aggregate recall; robust dual-signal candidate generation |
 
-1. **Hybrid Retrieval Recovers Highest Aggregate Recall (0.9010 Recall@10, 0.8096 nDCG@10):** By fusing BM25 lexical postings with dense vector ranking, Hybrid RRF recovered 90.1% of ground-truth evidence citations—outperforming pure dense retrieval (88.6%) and pure BM25 (84.0%). The dual-signal candidate pool ensures that claims with exact biomedical nomenclature (e.g. specific genes, drugs, or numerical thresholds) are rescued by BM25 when dense vectors underweight exact keyword matches.
-2. **Dense Vector Ranking Precision (0.8860 Recall@10, 0.8350 nDCG@10):** Dense embeddings achieved the highest ranking quality (0.8350 nDCG@10), placing relevant documents near the top of the result list when semantic context was strong. Research claims often use generalized abstractions or medical synonyms that do not share exact tokens with abstract text, allowing semantic representations to excel.
+1. **Hybrid Retrieval Recovers Highest Aggregate Recall (0.9010 Recall@10, 0.8096 nDCG@10):** By fusing BM25 lexical postings with dense vector ranking, Hybrid RRF achieved a macro-averaged per-query Recall@10 of 0.9010—outperforming pure dense retrieval (0.8860) and pure BM25 (0.8400). The dual-signal candidate pool allows lexical retrieval to help recover exact terminology and nomenclature (e.g. specific genes, drugs, or numerical thresholds) that dense retrieval underweights.
+2. **Dense Vector Ranking Quality (0.8860 Recall@10, 0.8350 nDCG@10):** Dense embeddings achieved the highest ranking quality (0.8350 nDCG@10), placing relevant documents near the top of the result list when semantic context was strong. Research claims often use generalized abstractions or medical synonyms that do not share exact tokens with abstract text, allowing semantic representations to excel.
 3. **BM25 Lexical Ranking (0.8400 Recall@10, 0.6967 nDCG@10):** BM25 provides fast lexical term matching, successfully recovering ground-truth documents when claims contain distinctive acronyms or gene symbols, but dropping recall when terminology diverges.
-4. **Engineering Takeaway:** Combining both modalities into a single in process engine with Reciprocal Rank Fusion ($k=60$) balances precision and recall without requiring separate search infrastructure or asynchronous replication pipelines.
+4. **Engineering Takeaway:** Combining both modalities into a single in process engine with Reciprocal Rank Fusion ($k=60$) balances ranking quality and recall without requiring separate search infrastructure or asynchronous replication pipelines.
 
 
 ## Step 6: Adding Graph Topology: Inferred Directed Semantic Similarity Graph (Without Operating Neo4j)
@@ -1130,7 +1128,7 @@ print("Retrieved-Document Citation Check: PASS (all cited document IDs appear in
 Local Graph RAG answers specific questions like *"does X cause Y?"* But what if an executive or lead researcher asks a high-level exploratory question:
 $$\text{"What are the major research themes across our entire dataset?"}$$
 
-Top-$K$ search is useless for this—it only looks at local neighbors. Instead, we run an analogous global community analysis workflow using **Louvain community detection** over our in-memory CSR graph representation compiled from `scifact_links` to partition the corpus into modular clusters:
+Top-$K$ retrieval alone is insufficient for this—it only looks at local neighbors. Instead, we run an analogous global community analysis workflow using **Louvain community detection** over our in-memory CSR graph representation compiled from `scifact_links` to partition the corpus into modular clusters:
 
 > **Note on Community Granularity:** Because the inferred similarity graph is constructed using top-5 nearest neighbors across section centroids, Louvain partitions the graph into many fine-grained, localized modular clusters (the largest community here contains 58 sections out of 8,075 (community partitions vary slightly across runs due to Louvain's stochastic node traversal order)). This step illustrates how global community aggregation queries operate over the compiled CSR topology, rather than presenting a curated corpus-wide topic ontology.
 
@@ -1158,7 +1156,7 @@ for nid in sorted(list(largest))[:6]:
       13959707:BACKGROUND: The Ratio of Monocytes to Lymphocytes in Peripheral Blood Correlates with Incr
 
 
-We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)).
+We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—a lightweight workflow inspired by global community analysis in systems like Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)).
 
 *(Note: When running without an external LLM API key, `generate()` returns an explicitly labeled deterministic demonstration fixture.)*
 
@@ -1233,20 +1231,26 @@ flowchart TD
         E3 --> G["In-Memory CSR Graph Representation<br/>(Vectorized Adjacency)"]:::compute
     end
     
-    subgraph Retrieval ["3. Hybrid Retrieval & Subgraph Expansion"]
+    subgraph Retrieval ["3. Dual Retrieval Workflows"]
         H["Agent Query"]:::agent --> F1
         H --> F2
+        
+        %% Branch A: Hybrid Passage Retrieval
         F1 --> I["In Process Hybrid RRF Fusion"]:::compute
         F2 --> I
-        I --> J["Top-K Candidate Seeds"]:::compute
-        J --> K["Local Subgraph Expansion<br/>(Relevance Ranking)"]:::compute
-        G --> K
+        I --> J["Top-K Passage Hits<br/>(Lexical + Vector)"]:::compute
+        
+        %% Branch B: Vector-Seeded Graph RAG
+        F1 --> K1["Dense Vector Seed Discovery<br/>(doc_chunks.graph_rag_search)"]:::compute
+        K1 --> K2["Local Subgraph Expansion & PPR<br/>(alpha=0.85, 2 hops)"]:::compute
+        G --> K2
     end
     
-    K --> L["LLM Context Assembly"]:::compute
+    K2 --> L["LLM Context Assembly"]:::compute
     L --> M["Cited Response Generation"]:::agent
 ```
 </details>
+
 
 ## The BenoDB Architecture Series
 
