@@ -26,6 +26,7 @@ RUN apt-get update \
 WORKDIR /opt/bench
 COPY benchmarks/run_neurips_bigann.py /opt/bench/run_neurips_bigann.py
 COPY benchmarks/run_neurips_docker.sh /opt/bench/run_neurips_docker.sh
+COPY benchmarks/profiles/ /opt/bench/profiles/
 RUN chmod +x /opt/bench/run_neurips_docker.sh
 
 # Dataset (read-only), wheel (read-only), scratch (writable).
