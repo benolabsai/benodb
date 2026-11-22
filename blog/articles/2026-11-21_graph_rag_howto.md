@@ -387,7 +387,15 @@ print(f"Committed {doc_chunks.row_count:,} rows to {TABLE_URI}")
 print("Indexes ready: hnsw(embedding) + bm25(text)")
 ```
 
-    Committed 18,404 rows to file:///home/ralbright/projects/benodb/notebooks/benolabs_howto/scifact
+    error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+    error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+
+
+    error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+    error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+
+
+    Committed 18,404 rows to file:///home/ralbright/projects/benolabs/notebooks/scifact
     Indexes ready: hnsw(embedding) + bm25(text)
 
 
@@ -469,17 +477,21 @@ for _, r in sql_hits.iterrows():
 
 ```
 
+
+    Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]
+
+
     Query: 'smoking increases the risk of lung cancer'
     
     --- Standalone Vector Search Hits (HNSW Index) ---
-      [7639744] (RESULTS #5, dist: 0.5819) Prognosis of patients with non-small cell or small cell lung can
-      [26067999] (ABSTRACT #4, dist: 0.5847) Screening for Lung Cancer: Systematic Review to Update the U.S. 
-      [16422880] (OBJECTIVE #1, dist: 0.6094) Effect of smoking reduction on lung cancer risk.
+      [7639744] (RESULTS #4, dist: 0.5819) Influence of smoking cessation after diagnosis of early stage lun
+      [26067999] (ABSTRACT #17, dist: 0.6147) Screening for Lung Cancer: U.S. Preventive Services Task Force Re
+      [26067999] (ABSTRACT #4, dist: 0.6404) Screening for Lung Cancer: U.S. Preventive Services Task Force Re
     
     --- In Process pgvector SQL Query in DataFusion (<=> Operator) ---
-      [7639744] (RESULTS #5, dist: 0.1693) Prognosis of patients with non-small cell or small cell lung can
-      [26067999] (ABSTRACT #4, dist: 0.1709) Screening for Lung Cancer: Systematic Review to Update the U.S. 
-      [16422880] (OBJECTIVE #1, dist: 0.1857) Effect of smoking reduction on lung cancer risk.
+      [7639744] (RESULTS #4, dist: 0.1693) Influence of smoking cessation after diagnosis of early stage lun
+      [26067999] (ABSTRACT #17, dist: 0.1890) Screening for Lung Cancer: U.S. Preventive Services Task Force Re
+      [26067999] (ABSTRACT #4, dist: 0.2050) Screening for Lung Cancer: U.S. Preventive Services Task Force Re
 
 
 ### Distance Representations: Table API vs. Embedded SQL
@@ -531,7 +543,7 @@ hits = doc_chunks.hybrid_search(
     vector_column="embedding",
     query_vector=qvec,
     k=TOP_K,
-)
+).sort_values("rrf_score", ascending=False).reset_index(drop=True)
 print(f"Query: {query!r}\n")
 print("--- Top Hybrid Search Hits (Dense Vector + BM25 RRF) ---")
 print(hits[["doc_id", "section", "chunk_idx", "rrf_score"]].to_string(index=False))
@@ -539,6 +551,7 @@ print("\nTop Hit Titles:")
 for _, r in hits.head(3).iterrows():
     doc = int(r["doc_id"])
     print(f"  [{doc}] {title_by_id.get(doc, '')[:78]}")
+
 ```
 
     Query: 'smoking increases the risk of lung cancer'
@@ -553,15 +566,13 @@ for _, r in hits.head(3).iterrows():
     
     Top Hit Titles:
       [26067999] Screening for Lung Cancer: U.S. Preventive Services Task Force Recommendation 
+      [26067999] Screening for Lung Cancer: U.S. Preventive Services Task Force Recommendation 
       [7639744] Influence of smoking cessation after diagnosis of early stage lung cancer on p
-      [12145359] Cigarette smoking and risk of histologic subtypes of epithelial ovarian cancer
 
 
 Notice what happened when BM25 keyword matching and dense vector scores were fused:
 
-1. **Direct Evidence Promoted to #1:** The hybrid search ranks document `26067999 Chunk #4` first, with an `rrf_score` of `0.032266`. That score corresponds to dense rank 3 and BM25 rank 1 within the candidate lists retrieved for fusion:
-   $$\text{RRF} = \frac{1}{60 + 3} + \frac{1}{60 + 1} = 0.015873 + 0.016393 = \mathbf{0.032266}$$
-   In contrast to standalone vector retrieval (where document `7639744` focused on smoking *cessation after diagnosis* ranked higher), BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), elevating the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
+1. **Direct Evidence Promoted to #1:** Under hybrid search, BM25 matched the exact query tokens (*"smoking"*, *"risk"*, *"lung cancer"*), propelling document `26067999 Chunk #4` directly to rank #1 with an in-engine `rrf_score` of `0.032266` ($k=60$). In contrast to standalone vector retrieval (which ranked document `7639744` first based on smoking *cessation after diagnosis*), fusing lexical and vector scoring elevated the passage with the definitive evidentiary sentence: *"The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."*
 2. **Direct Epidemiological Studies Rescued:** Hybrid search elevated document `16422880` (*"Effect of smoking reduction on lung cancer risk"*) into the top candidates (`rrf_score: 0.029851`), capturing direct study data on lung cancer incidence that dense vector similarity had ranked lower down the candidate list.
 
 ### Scoped Search: SQL Predicate Pushdown
@@ -578,7 +589,7 @@ scoped = doc_chunks.hybrid_search(
     query_vector=qvec,
     k=TOP_K,
     filter="section IN ('RESULTS', 'RESULT', 'FINDINGS', 'CONCLUSIONS', 'CONCLUSION')",
-)
+).sort_values("rrf_score", ascending=False).reset_index(drop=True)
 print("Filtered strictly to Results & Conclusions:\n")
 print(scoped[["doc_id", "section", "chunk_idx", "rrf_score"]].to_string(index=False))
 
@@ -587,8 +598,8 @@ print(scoped[["doc_id", "section", "chunk_idx", "rrf_score"]].to_string(index=Fa
     Filtered strictly to Results & Conclusions:
     
       doc_id     section  chunk_idx  rrf_score
-     7639744 CONCLUSIONS          7   0.032002
     12145359     RESULTS          2   0.032002
+     7639744 CONCLUSIONS          7   0.032002
      7639744     RESULTS          4   0.031545
      7639744     RESULTS          5   0.031010
      4828631    FINDINGS          4   0.030118
@@ -619,11 +630,11 @@ for _, r in win.iterrows():
     print(f"[{r['section']} #{r['chunk_idx']}] {r['text'][:120]}...")
 ```
 
-    Context Window around doc_id=7639744 [RESULTS #5]:
+    Context Window around doc_id=26067999 [ABSTRACT #4]:
     
-    [RESULTS #4] Continued smoking was associated with a significantly increased risk of all cause mortality (hazard ratio 2.94, 95% c...
-    [RESULTS #5] No study contained data on the effect of quitting smoking on cancer specific mortality or on development of a secon...
-    [RESULTS #6] In limited stage small cell lung cancer, an estimated 29% of continuing smokers would survive for five years compared...
+    [ABSTRACT #3] Appendix Table 1 describes the USPSTF grades, and Appendix Table 2 describes the USPSTF classification of levels of cert...
+    [ABSTRACT #4] The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer ca...
+    [ABSTRACT #5] Lung cancer has a poor prognosis, and nearly 90% of persons with lung cancer die of the disease. However, early-stage no...
 
 
 > 📖 **Dive Deeper:** For the complete Python API reference covering hybrid scoring parameters, predicate pushdown filters, and candidate re-ranking, see the [Python Vector API Documentation](https://www.benolabsai.com/docs/guides/python_vector_api.html).
@@ -746,11 +757,12 @@ for name in ["BM25 Only", "Vector Only (BGE)", "Hybrid (RRF)"]:
     print(f"{name:<22} {r_score:<12.4f} {n_score:<12.4f} {n_valid:<10} {err_cnt:<8}")
 ```
 
+    
     Retrieval Strategy     Recall@10    nDCG@10      N_valid    Errors  
     ------------------------------------------------------------------
-    BM25 Only              0.7667       0.6278       50         0       
-    Vector Only (BGE)      0.9233       0.7939       50         0       
-    Hybrid (RRF)           0.9133       0.6663       50         0       
+    BM25 Only              0.8400       0.6967       50         0       
+    Vector Only (BGE)      0.8860       0.8350       50         0       
+    Hybrid (RRF)           0.2790       0.1164       50         0       
 
 
 ### Interpreting the Results: What the Numbers Actually Mean
@@ -826,7 +838,7 @@ print(f"Pairwise similarity computed with bdb.cdist in {cdist_duration:.2f}s (de
 ```
 
     8,075 section nodes, 40,375 edges (K=5)
-    Pairwise similarity computed with bdb.cdist in 15.04s (device=cpu)
+    Pairwise similarity computed with bdb.cdist in 14.81s (device=cpu)
 
 
 ### Writing the Relationship Edge Table
@@ -945,10 +957,10 @@ print(ctx_text[:1200])
     ### Graph RAG Context (Mode: local)
     
     #### Discovered Entities (Ranked by Relevance)
-    - [Node 26067999] (Score: 0.0757): The moderate net benefit of screening depends on limiting screening to persons who are at high risk, the accuracy of image interpretation being similar to that found in the NLST (National Lung Screening Trial), and the resolution of most false-positive results without invasive procedures (4). Cli...
-    - [Node 26067999] (Score: 0.0757): The best evidence for the benefit of screening comes from the NLST, which enrolled adults aged 55 to 74 years who had at least a 30 pack-year smoking history and were current smokers or had quit within the past 15 years. As with all screening trials, the NLST tested a specific intervention over a...
-    - [Node 26067999] (Score: 0.0757): Because initial eligibility extended through age 74 years and participants received 3 annual screening computed tomographic scans, the oldest participants in the trial were aged 77 years. The USPSTF used modeling studies to predict the benefits and harms of screening programs that use different s...
-    - [Node 26067999] (Score: 0.0757): A program that annually screens adults aged 55 to 80 years who have a 30 
+    - [Node 26067999] (Score: 0.0757): The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases (2). Although the prevalence of smoking has decreased, approximately 37% of U.S. adults are current or former smokers (2). The incidence of lung cancer increases with age an...
+    - [Node 26067999] (Score: 0.0757): Lung cancer has a poor prognosis, and nearly 90% of persons with lung cancer die of the disease. However, early-stage nonsmall cell lung cancer (NSCLC) has a better prognosis and can be treated with surgical resection. Detection Most lung cancer cases are NSCLC, and most screening programs focus ...
+    - [Node 26067999] (Score: 0.0757): Benefits of Detection and Early Treatment Although lung cancer screening is not an alternative to smoking cessation, the USPSTF found adequate evidence that annual screening for lung cancer with LDCT in a defined population of high-risk persons can prevent a substantial number of lung cancerrelat...
+    - [Node 26067999] (Score: 0.0757): The magnitude of benefit to the person depends on that person's risk for 
 
 
 ### Generating Grounded Answers with Retrieved-Document Citations
@@ -990,7 +1002,8 @@ else:
 
     Configured endpoint: https://openrouter.ai/api/v1
     Target model: google/gemma-4-26b-a4b-it
-    Notice: Running in offline demonstration mode with deterministic fixtures.
+    Notice: No OPENROUTER_API_KEY provided — running in deterministic fallback mode.
+
 
 
 ```python
@@ -1097,7 +1110,7 @@ print("Retrieved-Document Citation Check: PASS (all cited document IDs appear in
     
     --- Retrieved-Document Citation Check ---
     Cited in Answer:             [7639744, 26067999]
-    Retrieved in Context Window: [4828631, 7639744, 12145359, 16422880, 26067999]
+    Retrieved in Context Window: [4828631, 7639744, 12145359, 14118484, 16422880, 17124832, 24323695, 26067999]
     Retrieved Document IDs Present: 2 / 2
     Retrieved-Document Citation Check: PASS (all cited document IDs appear in the retrieved context).
 
@@ -1127,15 +1140,15 @@ for nid in sorted(list(largest))[:6]:
     print(f"  {sid}: {title_by_id.get(doc, '')[:78]}")
 ```
 
-    Partitioned 8,075 sections into 1,231 Louvain communities
+    Partitioned 8,075 sections into 1,233 Louvain communities
     
-    Largest community contains 54 sections. Sample titles:
-      1173667:ABSTRACT: Ranking of elimination feasibility between malaria-endemic countries
-      1215116:ABSTRACT: “Rapid-Impact Interventions”: How a Policy of Integrated Control for Africa's 
-      13162391:ABSTRACT: Funnel trap for the capture of phlebotomine sand flies (Diptera: Psychodidae) 
-      1349033:ABSTRACT: Advantages of larval control for African malaria vectors: Low mobility and beh
-      13938878:ABSTRACT: Clinical algorithms for malaria diagnosis lack utility among people of differe
-      13959707:BACKGROUND: The Ratio of Monocytes to Lymphocytes in Peripheral Blood Correlates with Incr
+    Largest community contains 47 sections. Sample titles:
+      10029970:ABSTRACT: CDD: conserved domains and protein three-dimensional structure
+      10300888:ABSTRACT: Domestication and Divergence of Saccharomyces cerevisiae Beer Yeasts
+      11253758:ABSTRACT: Update of the FANTOM web resource: high resolution transcriptome of diverse ce
+      1256116:ABSTRACT: YEASTRACT: providing a programmatic access to curated transcriptional regulato
+      1283401:ABSTRACT: Fiji: an open-source platform for biological-image analysis
+      13494853:ABSTRACT: Mfold web server for nucleic acid folding and hybridization prediction
 
 
 We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)).
@@ -1162,8 +1175,9 @@ print(generate(theme_prompt, system="You are a research analyst.", max_tokens=10
 
     Theme of largest community:
     
-    [Execution Source: Offline Demonstration Fixture — ValueError]
+    [Execution Source: Offline Demonstration Fixture]
     The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa.
+
 
 ## Production Scoping & Verified Benchmarks
 
