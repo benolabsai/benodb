@@ -209,7 +209,7 @@ print(f"section nodes: {len(section_ids):,}")
 
 From 5,183 research abstracts, we now have **18,404 clean, self-contained chunks** across 8,075 section nodes. Every passage knows its parent document, its section type, and its sequence position.
 
-Now we encode each passage into a 1024-dimensional dense vector using `BAAI/bge-large-en-v1.5`, a production-grade embedding model. We L2-normalize the vectors upfront so that computing cosine similarity reduces to a fast dot product:
+Now we encode each passage into a 1024-dimensional dense vector using `BAAI/bge-large-en-v1.5`. We L2-normalize the vectors upfront so that computing cosine similarity reduces to a fast dot product:
 
 
 
@@ -731,7 +731,7 @@ for item in eval_subset:
             vector_column="embedding",
             query_vector=q_vec,
             k=CANDIDATE_POOL,
-        )
+        ).sort_values("rrf_score", ascending=False).reset_index(drop=True)
         hyb_docs = []
         for d in hyb_res["doc_id"]:
             if d not in hyb_docs:
@@ -762,7 +762,7 @@ for name in ["BM25 Only", "Vector Only (BGE)", "Hybrid (RRF)"]:
     ------------------------------------------------------------------
     BM25 Only              0.8400       0.6967       50         0       
     Vector Only (BGE)      0.8860       0.8350       50         0       
-    Hybrid (RRF)           0.2790       0.1164       50         0       
+    Hybrid (RRF)           0.9010       0.8096       50         0       
 
 
 ### Interpreting the Results: What the Numbers Actually Mean
@@ -771,13 +771,15 @@ Look closely at the macro-averaged mean per-query numbers from the 50-claim eval
 
 | Retrieval Strategy | Document Recall@10 | Document nDCG@10 | Valid Denominator ($N$) | Errors | Engineering Takeaway |
 |---|---|---|---|---|---|
-| **BM25 Only** | 0.7667 | 0.6278 | 50 | 0 | Fast lexical matching; misses conceptual paraphrases |
-| **Vector Only (BGE)** | 0.9233 | 0.7939 | 50 | 0 | Excellent semantic recall; susceptible to keyword misses |
-| **Hybrid (RRF)** | 0.9133 | 0.6663 | 50 | 0 | Robust dual-signal candidate generation across queries |
+| **BM25 Only** | 0.8400 | 0.6967 | 50 | 0 | Fast lexical matching; misses conceptual paraphrases |
+| **Vector Only (BGE)** | 0.8860 | 0.8350 | 50 | 0 | High ranking precision; susceptible to keyword misses |
+| **Hybrid (RRF)** | 0.9010 | 0.8096 | 50 | 0 | Highest aggregate recall; robust dual-signal candidate generation |
 
-1. **Dense Retrieval Dominates on this Sample (0.9233 Recall@10, 0.7939 nDCG@10):** Dense embeddings achieved the strongest overall recall and ranking quality on this benchmark subset. Research claims frequently use generalized abstractions or medical synonyms (e.g. "incidence" vs "risk") that do not share exact tokens with the abstracts, allowing dense semantic representations to capture relevance where lexical matching misses.
-2. **BM25 Lexical Ranking (0.7667 Recall@10, 0.6278 nDCG@10):** Note that 0.6278 is BM25's nDCG@10, not an unnormalized BM25 ranking score. BM25 ranks documents using lexical term matching, successfully recovering ground-truth documents when claims contain distinctive acronyms or gene symbols, but dropping recall when terminology diverges.
-3. **Hybrid RRF combines complementary retrieval signals:** RRF brings lexical and semantic candidate rankings together in one query path. In this sample, dense retrieval achieved the strongest aggregate recall and ranking quality. Hybrid retrieval provides complementary lexical coverage, although this experiment does not demonstrate an aggregate ranking improvement over dense retrieval. In production systems, hybrid fusion parameters should be empirically calibrated on target enterprise corpora rather than assumed to outperform individual retrieval modalities.
+1. **Hybrid Retrieval Recovers Highest Aggregate Recall (0.9010 Recall@10, 0.8096 nDCG@10):** By fusing BM25 lexical postings with dense vector ranking, Hybrid RRF recovered 90.1% of ground-truth evidence citations—outperforming pure dense retrieval (88.6%) and pure BM25 (84.0%). The dual-signal candidate pool ensures that claims with exact biomedical nomenclature (e.g. specific genes, drugs, or numerical thresholds) are rescued by BM25 when dense vectors underweight exact keyword matches.
+2. **Dense Vector Ranking Precision (0.8860 Recall@10, 0.8350 nDCG@10):** Dense embeddings achieved the highest ranking quality (0.8350 nDCG@10), placing relevant documents near the top of the result list when semantic context was strong. Research claims often use generalized abstractions or medical synonyms that do not share exact tokens with abstract text, allowing semantic representations to excel.
+3. **BM25 Lexical Ranking (0.8400 Recall@10, 0.6967 nDCG@10):** BM25 provides fast lexical term matching, successfully recovering ground-truth documents when claims contain distinctive acronyms or gene symbols, but dropping recall when terminology diverges.
+4. **Engineering Takeaway:** Combining both modalities into a single in process engine with Reciprocal Rank Fusion ($k=60$) balances precision and recall without requiring separate search infrastructure or asynchronous replication pipelines.
+
 
 ## Step 6: Adding Graph Topology: Inferred Directed Semantic Similarity Graph (Without Operating Neo4j)
 
@@ -838,7 +840,7 @@ print(f"Pairwise similarity computed with bdb.cdist in {cdist_duration:.2f}s (de
 ```
 
     8,075 section nodes, 40,375 edges (K=5)
-    Pairwise similarity computed with bdb.cdist in 14.81s (device=cpu)
+    Pairwise similarity computed with bdb.cdist in 14.19s (device=cpu)
 
 
 ### Writing the Relationship Edge Table
@@ -957,10 +959,10 @@ print(ctx_text[:1200])
     ### Graph RAG Context (Mode: local)
     
     #### Discovered Entities (Ranked by Relevance)
-    - [Node 26067999] (Score: 0.0757): The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases (2). Although the prevalence of smoking has decreased, approximately 37% of U.S. adults are current or former smokers (2). The incidence of lung cancer increases with age an...
-    - [Node 26067999] (Score: 0.0757): Lung cancer has a poor prognosis, and nearly 90% of persons with lung cancer die of the disease. However, early-stage nonsmall cell lung cancer (NSCLC) has a better prognosis and can be treated with surgical resection. Detection Most lung cancer cases are NSCLC, and most screening programs focus ...
+    - [Node 26067999] (Score: 0.0757): Other risk factors include specific occupational exposures, radon exposure, family history, and history of pulmonary fibrosis or chronic obstructive lung disease. The incidence of lung cancer is relatively low in persons younger than 50 years but increases with age, especially after age 60 years....
+    - [Node 26067999] (Score: 0.0757): Annual LDCT screening may not be useful for patients with life-limiting comorbid conditions or poor functional status who may not be candidates for surgery. Other Approaches to Prevention Smoking cessation is the most important intervention to prevent NSCLC. Advising smokers to stop smoking and p...
     - [Node 26067999] (Score: 0.0757): Benefits of Detection and Early Treatment Although lung cancer screening is not an alternative to smoking cessation, the USPSTF found adequate evidence that annual screening for lung cancer with LDCT in a defined population of high-risk persons can prevent a substantial number of lung cancerrelat...
-    - [Node 26067999] (Score: 0.0757): The magnitude of benefit to the person depends on that person's risk for 
+    - [Node 26067999] (Score: 0.0757): Lung cancer has a poor prognosis, and nearly 90% of persons with lung can
 
 
 ### Generating Grounded Answers with Retrieved-Document Citations
@@ -1020,7 +1022,12 @@ def generate(prompt, system="Answer only from the provided context.",
     if not current_key or current_key == "YOUR_API_KEY_HERE":
         print("[Execution Source: Offline Demonstration Fixture]")
         if "research theme" in prompt.lower():
-            return "The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa."
+            if "malaria" in prompt.lower() or "africa" in prompt.lower() or "phlebotomine" in prompt.lower():
+                return "The shared research theme is the epidemiology, diagnosis, vector biology, and integrated control strategies for malaria and parasitic diseases in Africa."
+            elif "cdd" in prompt.lower() or "yeast" in prompt.lower() or "fantom" in prompt.lower():
+                return "The shared research theme is open-source bioinformatics tools, curated genomic databases, and computational platforms for molecular and cellular biology research."
+            else:
+                return "The shared research theme is biological and biomedical experimental methodologies, with topics spanning molecular diagnostics, epidemiological surveillance, and genomic resources."
         elif "smoking" in prompt.lower() or "lung cancer" in prompt.lower():
             return (
                 '1. Doc 26067999 states: "The most important risk factor for lung cancer is smoking, which results in approximately 85% of all U.S. lung cancer cases."\n\n'
@@ -1125,7 +1132,7 @@ $$\text{"What are the major research themes across our entire dataset?"}$$
 
 Top-$K$ search is useless for this—it only looks at local neighbors. Instead, we run an analogous global community analysis workflow using **Louvain community detection** over our in-memory CSR graph representation compiled from `scifact_links` to partition the corpus into modular clusters:
 
-> **Note on Community Granularity:** Because the inferred similarity graph is constructed using top-5 nearest neighbors across section centroids, Louvain partitions the graph into many fine-grained, localized modular clusters (the largest community here contains 54 sections out of 8,075). This step illustrates how global community aggregation queries operate over the compiled CSR topology, rather than presenting a curated corpus-wide topic ontology.
+> **Note on Community Granularity:** Because the inferred similarity graph is constructed using top-5 nearest neighbors across section centroids, Louvain partitions the graph into many fine-grained, localized modular clusters (the largest community here contains 58 sections out of 8,075 (community partitions vary slightly across runs due to Louvain's stochastic node traversal order)). This step illustrates how global community aggregation queries operate over the compiled CSR topology, rather than presenting a curated corpus-wide topic ontology.
 
 
 ```python
@@ -1140,15 +1147,15 @@ for nid in sorted(list(largest))[:6]:
     print(f"  {sid}: {title_by_id.get(doc, '')[:78]}")
 ```
 
-    Partitioned 8,075 sections into 1,233 Louvain communities
+    Partitioned 8,075 sections into 1,256 Louvain communities
     
-    Largest community contains 47 sections. Sample titles:
-      10029970:ABSTRACT: CDD: conserved domains and protein three-dimensional structure
-      10300888:ABSTRACT: Domestication and Divergence of Saccharomyces cerevisiae Beer Yeasts
-      11253758:ABSTRACT: Update of the FANTOM web resource: high resolution transcriptome of diverse ce
-      1256116:ABSTRACT: YEASTRACT: providing a programmatic access to curated transcriptional regulato
-      1283401:ABSTRACT: Fiji: an open-source platform for biological-image analysis
-      13494853:ABSTRACT: Mfold web server for nucleic acid folding and hybridization prediction
+    Largest community contains 58 sections. Sample titles:
+      1173667:ABSTRACT: Ranking of elimination feasibility between malaria-endemic countries
+      1215116:ABSTRACT: “Rapid-Impact Interventions”: How a Policy of Integrated Control for Africa's 
+      13162391:ABSTRACT: Funnel trap for the capture of phlebotomine sand flies (Diptera: Psychodidae) 
+      1349033:ABSTRACT: Advantages of larval control for African malaria vectors: Low mobility and beh
+      13938878:ABSTRACT: Clinical algorithms for malaria diagnosis lack utility among people of differe
+      13959707:BACKGROUND: The Ratio of Monocytes to Lymphocytes in Peripheral Blood Correlates with Incr
 
 
 We sample paper titles from the largest cluster and prompt the LLM to synthesize the shared research theme—the global search pattern from Microsoft's GraphRAG ([Edge et al., 2024](https://arxiv.org/abs/2404.16130)).
