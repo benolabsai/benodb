@@ -1022,49 +1022,38 @@ mod early_exit_tests {
     }
 
     #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[should_panic(expected = "Vector lengths must match in l2_distance_squared_avx2")]
     fn simd_distance_dimension_mismatch_panics() {
         let a = vec![1.0f32; 64];
         let b = vec![1.0f32; 32];
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-                let _ = unsafe { l2_distance_squared_avx2(&a, &b) };
-            } else {
-                panic!("Vector lengths must match in l2_distance_squared_avx2");
-            }
-        }
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-        {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            let _ = unsafe { l2_distance_squared_avx2(&a, &b) };
+        } else {
             panic!("Vector lengths must match in l2_distance_squared_avx2");
         }
     }
 
     #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn simd_distance_matching_lengths() {
         let a = vec![1.0f32; 64];
         let b = vec![1.0f32; 64];
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-                let d2 = unsafe { l2_distance_squared_avx2(&a, &b) };
-                assert_eq!(d2, 0.0);
-                let dot = unsafe { dot_product_avx2(&a, &b) };
-                assert_eq!(dot, 64.0);
-            }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            let d2 = unsafe { l2_distance_squared_avx2(&a, &b) };
+            assert_eq!(d2, 0.0);
+            let dot = unsafe { dot_product_avx2(&a, &b) };
+            assert_eq!(dot, 64.0);
         }
         let au8 = vec![5u8; 64];
         let bu8 = vec![5u8; 64];
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if is_x86_feature_detected!("avx2") {
-                let d2_u8 = unsafe { l2_distance_u8_avx2(&au8, &bu8) };
-                assert_eq!(d2_u8, 0.0);
-            }
-            if is_x86_feature_detected!("popcnt") {
-                let h = unsafe { hamming_distance_packed_popcnt(&au8, &bu8) };
-                assert_eq!(h, 0);
-            }
+        if is_x86_feature_detected!("avx2") {
+            let d2_u8 = unsafe { l2_distance_u8_avx2(&au8, &bu8) };
+            assert_eq!(d2_u8, 0.0);
+        }
+        if is_x86_feature_detected!("popcnt") {
+            let h = unsafe { hamming_distance_packed_popcnt(&au8, &bu8) };
+            assert_eq!(h, 0);
         }
     }
 }

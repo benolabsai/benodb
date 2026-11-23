@@ -360,7 +360,7 @@ impl Table {
             return Ok(());
         }
 
-        let batches = batches;
+        let mut batches = batches;
 
         let mut is_empty_schema = false;
         if let Some(first_batch) = batches.first() {
@@ -371,6 +371,7 @@ impl Table {
                 let table_pattern = self.label_pattern;
 
                 let mut fields = Vec::with_capacity(incoming_schema.fields().len());
+                let mut renamed = false;
                 for (i, field) in incoming_schema.fields().iter().enumerate() {
                     let mut new_name = (*field).name().clone();
 
@@ -384,14 +385,30 @@ impl Table {
                             crate::core::table::LabelPattern::Polars => format!("column_{}", i + 1),
                             crate::core::table::LabelPattern::Pandas => i.to_string(),
                         };
+                        if new_name != *field.name() {
+                            renamed = true;
+                        }
                     }
 
                     let new_field = (**field).clone().with_name(new_name);
                     fields.push(new_field);
                 }
-                *lock = Arc::new(arrow::datatypes::Schema::new(fields));
+                let auto_schema = Arc::new(arrow::datatypes::Schema::new(fields));
+                *lock = auto_schema.clone();
+                drop(lock);
+
+                if renamed {
+                    batches = batches
+                        .into_iter()
+                        .map(|b| {
+                            RecordBatch::try_new(auto_schema.clone(), b.columns().to_vec())
+                                .map_err(|e| anyhow::anyhow!(e))
+                        })
+                        .collect::<Result<Vec<RecordBatch>>>()?;
+                }
+            } else {
+                drop(lock);
             }
-            drop(lock);
         }
 
         // 2. Primary Key Uniqueness Validation

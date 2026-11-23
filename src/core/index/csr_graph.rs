@@ -70,12 +70,15 @@ fn bytes_to_u64_vec(bytes: &[u8]) -> Vec<u64> {
 }
 
 fn bytes_to_edges_vec(bytes: &[u8]) -> Vec<CsrEdge> {
-    let edge_size = std::mem::size_of::<CsrEdge>();
     bytes
-        .chunks_exact(edge_size)
+        .as_chunks::<12>()
+        .0
+        .iter()
         .map(|chunk| {
-            let dst_id = u64::from_le_bytes(chunk[0..8].try_into().unwrap());
-            let row_id = u32::from_le_bytes(chunk[8..12].try_into().unwrap());
+            let dst_id = u64::from_le_bytes([
+                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+            ]);
+            let row_id = u32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
             CsrEdge { dst_id, row_id }
         })
         .collect()
@@ -185,15 +188,6 @@ impl MmapCsrGraph {
         })
     }
 
-    pub fn from_mmaps(
-        offsets_mmap: Arc<Mmap>,
-        edges_mmap: Arc<Mmap>,
-        dict_mmap: Arc<Mmap>,
-    ) -> Self {
-        Self::try_from_mmaps(offsets_mmap, edges_mmap, dict_mmap)
-            .expect("corrupted or malformed CSR mmap sidecar")
-    }
-
     /// Build a CSR graph from owned byte buffers (Puffin blob payloads).
     pub fn try_from_bytes(offsets: Vec<u8>, edges: Vec<u8>, dict: Vec<u8>) -> Result<Self> {
         if offsets.len() < std::mem::size_of::<u64>() {
@@ -235,11 +229,6 @@ impl MmapCsrGraph {
             num_nodes,
             num_edges,
         })
-    }
-
-    /// Build a CSR graph from owned byte buffers (Puffin blob payloads).
-    pub fn from_bytes(offsets: Vec<u8>, edges: Vec<u8>, dict: Vec<u8>) -> Self {
-        Self::try_from_bytes(offsets, edges, dict).expect("corrupted or malformed CSR byte buffer")
     }
 
     /// Total resident bytes of the three CSR arrays (offsets + edges + dict).

@@ -72,28 +72,23 @@ impl LockGuard {
                             ..Default::default()
                         };
 
-                        match store
-                            .put_opts(
-                                &path,
-                                serde_json::to_vec(&released_payload).unwrap().into(),
-                                update_opts,
-                            )
-                            .await
-                        {
-                            Ok(_) => {
-                                // Successfully updated while still holding valid ownership/version.
-                                let _ = store.delete(&path).await;
-                            }
-                            Err(object_store::Error::NotImplemented)
-                            | Err(object_store::Error::NotSupported { .. }) => {
-                                // Fallback for stores lacking conditional update (e.g. local FS).
-                                let _ = store.delete(&path).await;
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Conditional lock release aborted (lock stolen by another process): {}",
-                                    e
-                                );
+                        if let Ok(bytes) = serde_json::to_vec(&released_payload) {
+                            match store.put_opts(&path, bytes.into(), update_opts).await {
+                                Ok(_) => {
+                                    // Successfully updated while still holding valid ownership/version.
+                                    let _ = store.delete(&path).await;
+                                }
+                                Err(object_store::Error::NotImplemented)
+                                | Err(object_store::Error::NotSupported { .. }) => {
+                                    // Fallback for stores lacking conditional update (e.g. local FS).
+                                    let _ = store.delete(&path).await;
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Conditional lock release aborted (lock stolen by another process): {}",
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
