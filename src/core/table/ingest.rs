@@ -421,6 +421,7 @@ impl Table {
             let builds = futures::future::join_all(leases.iter().map(|lease| {
                 let table = self.clone();
                 let unit = lease.unit.clone();
+                let attempt_slug = format!("{}_{}", unit.slug(), lease.attempt_id);
                 let base_path = base_path.clone();
                 let index_cols = index_cols.clone();
                 let index_configs = index_configs.clone();
@@ -438,7 +439,7 @@ impl Table {
                             &index_configs,
                             default_device.as_deref(),
                             &pk,
-                            Some(&unit.slug()),
+                            Some(&attempt_slug),
                         )
                         .await?;
                     Ok::<_, anyhow::Error>((unit, entries, rows))
@@ -453,6 +454,10 @@ impl Table {
                 let (unit, entries, rows) = build?;
                 let paths: Vec<String> = entries.iter().map(|e| e.file_path.clone()).collect();
                 if !entries.is_empty() {
+                    // Check lease fencing: verify that our lease is still validly held
+                    // and has not expired or been stolen by another worker.
+                    coordinator.verify_lease(&lease).await?;
+
                     // Check if another worker completed this unit while we were building
                     if coordinator.is_completed(&unit).await? {
                         tracing::warn!(

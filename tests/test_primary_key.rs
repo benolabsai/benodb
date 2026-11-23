@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-use arrow::array::Int32Array;
+use arrow::array::{Int32Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use benodb::core::table::Table;
@@ -298,6 +298,154 @@ async fn test_concurrent_primary_key_writes_serialized() -> anyhow::Result<()> {
     assert_eq!(successes, 1, "Exactly one concurrent write must succeed");
     assert_eq!(failures.len(), 1);
     assert!(failures[0]
+        .to_string()
+        .contains("Duplicate primary key error"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_composite_pk_multi_row_single_batch() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("tenant_id", DataType::Int32, false),
+        Field::new("doc_id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key(vec!["tenant_id".to_string(), "doc_id".to_string()]);
+
+    // Batch with repeated tenant_id (10), but distinct tuples (10, 100) and (10, 101)
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10, 10])),
+            Arc::new(Int32Array::from(vec![100, 101])),
+            Arc::new(StringArray::from(vec!["doc1", "doc2"])),
+        ],
+    )?;
+
+    // Must SUCCEED: distinct composite keys in the same batch
+    table.write_async(vec![batch]).await?;
+    table.commit_async().await?;
+
+    // Batch with duplicate tuple (10, 100)
+    let dup_batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![100])),
+            Arc::new(StringArray::from(vec!["doc1_dup"])),
+        ],
+    )?;
+
+    let res = table.write_async(vec![dup_batch]).await;
+    assert!(res.is_err(), "Duplicate composite key must be rejected");
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate primary key error"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_composite_pk_disambiguated_delimiter_values() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("part_a", DataType::Utf8, false),
+        Field::new("part_b", DataType::Utf8, false),
+        Field::new("val", DataType::Int32, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key(vec!["part_a".to_string(), "part_b".to_string()]);
+
+    // Distinct tuples that would collide under naive U+001F joining:
+    // ("x\u{1f}y", "z") vs ("x", "y\u{1f}z")
+    let batch1 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(StringArray::from(vec!["x\u{1f}y"])),
+            Arc::new(StringArray::from(vec!["z"])),
+            Arc::new(Int32Array::from(vec![1])),
+        ],
+    )?;
+
+    let batch2 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(StringArray::from(vec!["x"])),
+            Arc::new(StringArray::from(vec!["y\u{1f}z"])),
+            Arc::new(Int32Array::from(vec![2])),
+        ],
+    )?;
+
+    table.write_async(vec![batch1]).await?;
+    table.commit_async().await?;
+
+    // Second batch must SUCCEED because length-prefixed encoding distinguishes them
+    table.write_async(vec![batch2]).await?;
+    table.commit_async().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_staged_writes_enforce_pk_uniqueness_at_commit_boundary() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key(vec!["id".to_string()]);
+
+    let batch_task1 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![99])),
+            Arc::new(StringArray::from(vec!["from_task1"])),
+        ],
+    )?;
+
+    let batch_task2 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![99])),
+            Arc::new(StringArray::from(vec!["from_task2"])),
+        ],
+    )?;
+
+    // Both tasks stage concurrently against the same initial empty snapshot
+    let staged1 = table.stage_data_files_async(vec![batch_task1]).await?;
+    let staged2 = table.stage_data_files_async(vec![batch_task2]).await?;
+
+    assert!(!staged1.is_empty());
+    assert!(!staged2.is_empty());
+
+    // Task 1 commits first
+    table.commit_staged_entries_async(staged1).await?;
+
+    // Task 2 attempts to commit the colliding key: MUST be rejected at commit boundary
+    let res = table.commit_staged_entries_async(staged2).await;
+    assert!(
+        res.is_err(),
+        "Task 2 must be rejected at commit boundary due to duplicate PK committed by Task 1"
+    );
+    assert!(res
+        .unwrap_err()
         .to_string()
         .contains("Duplicate primary key error"));
 

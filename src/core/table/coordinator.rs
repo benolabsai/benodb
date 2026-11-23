@@ -81,7 +81,24 @@ impl WorkUnit {
 pub struct Lease {
     /// The claimed unit.
     pub unit: WorkUnit,
+    pub generation: u64,
+    pub attempt_id: String,
     guard: LockGuard,
+}
+
+impl Lease {
+    pub fn new(unit: WorkUnit, guard: LockGuard) -> Self {
+        let generation = guard.generation();
+        let owner = guard.owner();
+        let suffix = &owner[..8.min(owner.len())];
+        let attempt_id = format!("gen{generation}_{suffix}");
+        Self {
+            unit,
+            generation,
+            attempt_id,
+            guard,
+        }
+    }
 }
 
 /// Lease-based work coordination across machines.
@@ -93,6 +110,9 @@ pub trait WorkCoordinator: Send + Sync {
     /// Claim the next unleased, incomplete unit. `None` means the queue is
     /// drained (every unit is either complete or currently leased elsewhere).
     async fn claim(&self, completed: &HashSet<String>) -> Result<Option<Lease>>;
+
+    /// Verify that the lease is still validly held and has not expired or been fenced out.
+    async fn verify_lease(&self, lease: &Lease) -> Result<()>;
 
     /// Mark a unit complete and release its lease.
     async fn complete(&self, lease: Lease) -> Result<()>;
@@ -160,8 +180,9 @@ impl WorkCoordinator for ObjectStoreCoordinator {
             if completed.contains(&unit.key()) {
                 continue;
             }
-            // Check if another worker marked this unit complete in shared storage
-            if self.is_completed(unit).await.unwrap_or(false) {
+            // Check if another worker marked this unit complete in shared storage.
+            // Propagate errors instead of treating transient storage errors as uncompleted.
+            if self.is_completed(unit).await? {
                 continue;
             }
             // Clamp to a 1-second minimum: a 0-second TTL would make the
@@ -174,17 +195,18 @@ impl WorkCoordinator for ObjectStoreCoordinator {
             .with_clock_skew(self.clock_skew_ms);
             if let Some(guard) = lock.try_acquire().await? {
                 // Double-check the completion marker under the acquired lease
-                if self.is_completed(unit).await.unwrap_or(false) {
+                if self.is_completed(unit).await? {
                     drop(guard);
                     continue;
                 }
-                return Ok(Some(Lease {
-                    unit: unit.clone(),
-                    guard,
-                }));
+                return Ok(Some(Lease::new(unit.clone(), guard)));
             }
         }
         Ok(None)
+    }
+
+    async fn verify_lease(&self, lease: &Lease) -> Result<()> {
+        lease.guard.verify_valid().await
     }
 
     async fn complete(&self, lease: Lease) -> Result<()> {
@@ -237,6 +259,7 @@ impl WorkCoordinator for ObjectStoreCoordinator {
 mod tests {
     use super::*;
     use object_store::memory::InMemory;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn units() -> Vec<WorkUnit> {
         vec![
@@ -347,6 +370,7 @@ mod tests {
         let expired = crate::core::lock::LockPayload {
             owner: "dead-node".to_string(),
             expires_at: 0,
+            generation: 1,
         };
         s.put(
             &c.lease_path(&unit0),
@@ -362,6 +386,43 @@ mod tests {
             unit0.key(),
             "expired lease should be stolen"
         );
+    }
+
+    #[tokio::test]
+    async fn stolen_lease_is_fenced_out() {
+        let s = store();
+        let unit = units()[0].clone();
+        let c1 =
+            ObjectStoreCoordinator::new(s.clone(), vec![unit.clone()], Duration::from_secs(60))
+                .with_clock_skew(0);
+        let done = HashSet::new();
+        let l1 = c1.claim(&done).await.unwrap().unwrap();
+        assert_eq!(l1.generation, 1);
+
+        // Simulate lease theft by another worker in shared storage
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let stolen = crate::core::lock::LockPayload {
+            owner: "other-worker".to_string(),
+            expires_at: now + 60,
+            generation: 2,
+        };
+        s.put(
+            &c1.lease_path(&unit),
+            serde_json::to_vec(&stolen).unwrap().into(),
+        )
+        .await
+        .unwrap();
+
+        // c1's stale lease must be rejected by verify_lease!
+        let verify_res = c1.verify_lease(&l1).await;
+        assert!(verify_res.is_err(), "stale lease holder must be fenced out");
+        assert!(verify_res
+            .unwrap_err()
+            .to_string()
+            .contains("Lease fencing violation"));
     }
 
     #[tokio::test]

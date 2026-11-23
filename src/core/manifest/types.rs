@@ -414,6 +414,30 @@ impl From<&ManifestValue> for Value {
     }
 }
 
+/// Encode a composite primary key tuple into an unambiguous representation.
+/// For single-column keys, returns the value directly for backward compatibility.
+/// For multi-column keys, encodes each element with length-prefixing to avoid delimiter collision.
+pub fn encode_composite_key<'a, I>(parts: I) -> String
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let v: Vec<&'a str> = parts.into_iter().collect();
+    if v.len() == 1 {
+        v[0].to_string()
+    } else {
+        let mut out = String::new();
+        for (i, part) in v.iter().enumerate() {
+            if i > 0 {
+                out.push('\u{1f}');
+            }
+            out.push_str(&part.len().to_string());
+            out.push(':');
+            out.push_str(part);
+        }
+        out
+    }
+}
+
 impl std::fmt::Display for ManifestValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1888,5 +1912,20 @@ mod sort_order_spec_spelling_tests {
         let legacy_first: NullOrder =
             serde_json::from_str(r#""nullsfirst""#).expect("parse legacy null order");
         assert_eq!(legacy_first, NullOrder::NullsFirst);
+    }
+
+    #[test]
+    fn test_encode_composite_key_disambiguation() {
+        let single = encode_composite_key(["bob-1"]);
+        assert_eq!(single, "bob-1");
+
+        let tuple1 = encode_composite_key(["a\u{1f}b", "c"]);
+        let tuple2 = encode_composite_key(["a", "b\u{1f}c"]);
+        assert_ne!(
+            tuple1, tuple2,
+            "Disambiguated length prefixing must prevent delimiter collisions"
+        );
+        assert_eq!(tuple1, "3:a\u{1f}b\u{1f}1:c");
+        assert_eq!(tuple2, "1:a\u{1f}3:b\u{1f}c");
     }
 }

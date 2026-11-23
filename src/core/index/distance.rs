@@ -22,7 +22,7 @@ pub fn l2_distance(a: &[f32], b: &[f32]) -> f32 {
 /// `Some`; `None` means "strictly worse than the threshold".
 #[inline]
 pub fn l2_distance_squared_early_exit(a: &[f32], b: &[f32], threshold: f32) -> Option<f32> {
-    debug_assert_eq!(
+    assert_eq!(
         a.len(),
         b.len(),
         "Vector lengths must match in l2_distance_squared_early_exit"
@@ -43,7 +43,7 @@ pub fn l2_distance_squared_early_exit(a: &[f32], b: &[f32], threshold: f32) -> O
 
 #[inline(always)]
 pub fn l2_distance_squared(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(
+    assert_eq!(
         a.len(),
         b.len(),
         "Vector lengths must match in l2_distance_squared"
@@ -234,7 +234,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[inline(always)]
 pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(a.len(), b.len(), "Vector lengths must match in dot_product");
+    assert_eq!(a.len(), b.len(), "Vector lengths must match in dot_product");
     #[cfg(target_arch = "aarch64")]
     {
         // SAFETY: NEON is mandatory baseline on aarch64.

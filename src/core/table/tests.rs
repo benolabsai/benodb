@@ -472,7 +472,7 @@ async fn write_rejects_embedding_dimension_mismatch() -> Result<()> {
     // MCP checks. String/list vectors are only row-scanned in strict mode.
     let dir = tempdir()?;
     let uri = format!("file://{}", dir.path().to_str().unwrap());
-    let table = Table::new_async(uri).await?;
+    let table = Table::new_async(uri.clone()).await?;
 
     table.set_property_async(EMBEDDING_DIM_PROP, "3").await?;
 
@@ -512,6 +512,15 @@ async fn write_rejects_embedding_dimension_mismatch() -> Result<()> {
         .expect_err("mismatched vector must be rejected");
     assert!(err.to_string().contains("dimension mismatch"), "{err}");
 
+    // Verify WAL does not recover the rejected write on reopen
+    let reopened = TableBuilder::new(uri).build_async().await?;
+    let batches = reopened.read_async(None, None, None).await?;
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(
+        total_rows, 1,
+        "Rejected write must not appear after WAL replay"
+    );
+
     Ok(())
 }
 
@@ -519,7 +528,7 @@ async fn write_rejects_embedding_dimension_mismatch() -> Result<()> {
 async fn embedding_properties_are_immutable_once_data_exists() -> Result<()> {
     let dir = tempdir()?;
     let uri = format!("file://{}", dir.path().to_str().unwrap());
-    let table = Table::new_async(uri).await?;
+    let table = Table::new_async(uri.clone()).await?;
 
     let schema = Schema::new(vec![Field::new("id", DataType::Int32, false)]);
     let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(Int32Array::from(vec![1]))])?;

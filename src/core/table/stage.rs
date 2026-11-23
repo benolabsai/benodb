@@ -28,6 +28,7 @@ use anyhow::{Context, Result};
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::Table;
 use crate::core::manifest::{IndexFile, ManifestEntry, ManifestManager, ManifestValue};
@@ -238,6 +239,11 @@ impl Table {
             );
             latest_manifest
         } else {
+            let pk_columns = self.primary_key.read().clone();
+            if !pk_columns.is_empty() {
+                self.validate_staged_entries_primary_keys(&pending_entries, &pk_columns)
+                    .await?;
+            }
             manifest_manager
                 .commit(
                     &pending_entries,
@@ -327,11 +333,9 @@ impl Table {
                     }
                     val_strings.push(value.to_string());
                 }
-                let key = if val_strings.len() == 1 {
-                    val_strings[0].clone()
-                } else {
-                    val_strings.join("\u{1f}")
-                };
+                let key = crate::core::manifest::encode_composite_key(
+                    val_strings.iter().map(|s| s.as_str()),
+                );
                 if !seen.insert(key.clone()) {
                     return Err(anyhow::Error::from(
                         crate::core::error::BenoStreamError::PrimaryKeyViolation { key },
@@ -356,11 +360,9 @@ impl Table {
                     val_strings.push(value.to_string());
                     jsons.push(serde_json::to_value(&value)?);
                 }
-                let key_str = if val_strings.len() == 1 {
-                    val_strings[0].clone()
-                } else {
-                    val_strings.join("\u{1f}")
-                };
+                let key_str = crate::core::manifest::encode_composite_key(
+                    val_strings.iter().map(|s| s.as_str()),
+                );
                 if self
                     ._check_composite_pk_in_storage_async(&pk_columns, &jsons)
                     .await?
@@ -368,6 +370,76 @@ impl Table {
                     return Err(anyhow::Error::from(
                         crate::core::error::BenoStreamError::PrimaryKeyViolation { key: key_str },
                     ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Enforce primary-key uniqueness across staged entries and against committed
+    /// storage at the commit boundary (under commit_lock).
+    async fn validate_staged_entries_primary_keys(
+        &self,
+        entries: &[ManifestEntry],
+        pk_columns: &[String],
+    ) -> Result<()> {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let table_schema = self.arrow_schema();
+        let mut pk_fields = Vec::with_capacity(pk_columns.len());
+        for name in pk_columns {
+            if let Ok(field) = table_schema.field_with_name(name) {
+                pk_fields.push(field.clone());
+            }
+        }
+        if pk_fields.len() != pk_columns.len() {
+            return Ok(());
+        }
+        let proj_schema = Arc::new(arrow::datatypes::Schema::new(pk_fields));
+
+        use futures::StreamExt;
+        for entry in entries {
+            let reader = self.segment_reader(entry)?;
+            let mut stream = reader.stream_all(Some(proj_schema.clone())).await?;
+            while let Some(batch_res) = stream.next().await {
+                let batch = batch_res?;
+                let key_columns: Vec<_> = pk_columns
+                    .iter()
+                    .filter_map(|name| batch.column_by_name(name).cloned())
+                    .collect();
+                if key_columns.len() != pk_columns.len() {
+                    continue;
+                }
+                for row in 0..batch.num_rows() {
+                    let mut val_strings = Vec::with_capacity(pk_columns.len());
+                    let mut jsons = Vec::with_capacity(pk_columns.len());
+                    for (col_idx, column) in key_columns.iter().enumerate() {
+                        let value = ManifestValue::from_array(column, row);
+                        if matches!(value, ManifestValue::Null) {
+                            return Err(anyhow::Error::from(
+                                crate::core::error::BenoStreamError::NullConstraintViolation {
+                                    column: pk_columns[col_idx].clone(),
+                                },
+                            ));
+                        }
+                        val_strings.push(value.to_string());
+                        jsons.push(serde_json::to_value(&value)?);
+                    }
+                    let key = crate::core::manifest::encode_composite_key(
+                        val_strings.iter().map(|s| s.as_str()),
+                    );
+                    if !seen.insert(key.clone()) {
+                        return Err(anyhow::Error::from(
+                            crate::core::error::BenoStreamError::PrimaryKeyViolation { key },
+                        ));
+                    }
+                    if self
+                        ._check_composite_pk_in_storage_async(pk_columns, &jsons)
+                        .await?
+                    {
+                        return Err(anyhow::Error::from(
+                            crate::core::error::BenoStreamError::PrimaryKeyViolation { key },
+                        ));
+                    }
                 }
             }
         }

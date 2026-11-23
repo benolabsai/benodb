@@ -443,16 +443,15 @@ impl Table {
                                 crate::core::manifest::ManifestValue::from_array(key_cols[0], j)
                                     .to_string()
                             } else {
-                                let mut s = String::new();
-                                for (idx, col) in key_cols.iter().enumerate() {
-                                    if idx > 0 {
-                                        s.push('\u{1f}');
-                                    }
+                                let mut parts = Vec::with_capacity(key_cols.len());
+                                for col in &key_cols {
                                     let val =
                                         crate::core::manifest::ManifestValue::from_array(col, j);
-                                    s.push_str(&val.to_string());
+                                    parts.push(val.to_string());
                                 }
-                                s
+                                crate::core::manifest::encode_composite_key(
+                                    parts.iter().map(|s| s.as_str()),
+                                )
                             };
                             seen_keys.insert(tuple_key);
                         }
@@ -489,11 +488,9 @@ impl Table {
                         tuple_values.push(val_json);
                     }
 
-                    let tuple_key = if val_strings.len() == 1 {
-                        val_strings[0].clone()
-                    } else {
-                        val_strings.join("\u{1f}")
-                    };
+                    let tuple_key = crate::core::manifest::encode_composite_key(
+                        val_strings.iter().map(|s| s.as_str()),
+                    );
 
                     if seen_keys.contains(&tuple_key) {
                         return Err(anyhow::Error::from(BenoStreamError::PrimaryKeyViolation {
@@ -715,29 +712,42 @@ impl Table {
             }
         }
 
-        // 0. Primary Key Uniqueness Check (if defined)
-        let primary_keys = self.get_primary_key();
-        if !primary_keys.is_empty() {
-            for batch in &batches {
-                for pk in &primary_keys {
-                    if let Some(col) = batch.column_by_name(pk) {
-                        let mut seen = std::collections::HashSet::with_capacity(batch.num_rows());
-                        for i in 0..batch.num_rows() {
-                            let val_str = crate::core::manifest::ManifestValue::from_array(col, i)
-                                .to_string();
-                            if !seen.insert(val_str.clone()) {
-                                return Err(anyhow::Error::from(
-                                    BenoStreamError::PrimaryKeyViolation { key: val_str },
-                                ));
-                            }
-                        }
-                    }
-                }
-                // Bypassed for ingestion performance optimization
-                // self.check_primary_key_uniqueness_async(batch, &primary_keys).await?;
+        // 1. Vector extraction task — validated and prepared BEFORE appending to the WAL
+        // to guarantee that no write failing in-memory index preparation enters the WAL.
+        let t_idx_task = std::time::Instant::now();
+        let mut prepared_vectors: Option<crate::core::index::memory::PreparedVectors> = None;
+        if let Some(ref col_name) = target_col {
+            let is_time_col = batches
+                .first()
+                .and_then(|b| b.column_by_name(col_name))
+                .is_some_and(|col| {
+                    matches!(
+                        col.data_type(),
+                        arrow::datatypes::DataType::Time32(_)
+                            | arrow::datatypes::DataType::Time64(_)
+                    )
+                });
+            if is_time_col {
+                // Time datatypes are not vectorizable; safely skip in-memory vector indexing.
+                tracing::debug!(
+                    "Skipping in-memory vector index for Time datatype column '{}'",
+                    col_name
+                );
+            } else {
+                let existing_dim = memory_index.read().as_ref().map(|idx| idx.dim());
+                let inferred_dim = batches
+                    .iter()
+                    .find_map(|b| InMemoryVectorIndex::infer_column_dim(b, col_name));
+                // Prefer the batch's own vector dimension so dim mismatches fail
+                // cleanly in append_prepared instead of mis-slicing FixedSizeList values.
+                let target_dim = inferred_dim.or(existing_dim);
+                prepared_vectors =
+                    InMemoryVectorIndex::extract_prepared(&batches, col_name, target_dim)?;
             }
         }
+        let idx_task_ms = t_idx_task.elapsed().as_millis();
 
+        // 2. WAL Append Task — appends according to durability configuration (Sync waits for disk sync, Async batches)
         let tx_id = uuid::Uuid::new_v4();
         let batches_for_wal: Vec<RecordBatch> = batches
             .iter()
@@ -747,87 +757,36 @@ impl Table {
                     .unwrap_or_else(|_| b.clone())
             })
             .collect();
-        let batches_for_idx = batches.clone();
 
-        let (wal_res, idx_res) = tokio::join!(
-            // WAL Task — appends according to durability configuration (Sync waits for disk sync, Async batches)
-            async move {
-                let t_wal_task = std::time::Instant::now();
-                let wal_lock = wal.lock().await;
-                let t_wal_lock = t_wal_task.elapsed().as_millis();
-                // WS2 crash boundary: process dies after the batch is handed to
-                // the WAL but before it is fsynced.
-                crate::core::fault_injection::check(
-                    crate::core::fault_injection::CrashPoint::WalAppend,
-                )?;
-                for batch in batches_for_wal {
-                    match durability {
-                        crate::core::table::WalDurability::Sync => {
-                            wal_lock.append_sync(batch).await?;
-                        }
-                        crate::core::table::WalDurability::Async => {
-                            wal_lock.append_fire_and_forget(batch).await?;
-                        }
-                    }
+        let t_wal_task = std::time::Instant::now();
+        let wal_lock = wal.lock().await;
+        let t_wal_lock = t_wal_task.elapsed().as_millis();
+        // WS2 crash boundary: process dies after the batch is handed to
+        // the WAL but before it is fsynced.
+        crate::core::fault_injection::check(crate::core::fault_injection::CrashPoint::WalAppend)?;
+        for batch in batches_for_wal {
+            match durability {
+                crate::core::table::WalDurability::Sync => {
+                    wal_lock.append_sync(batch).await?;
                 }
-                wal_lock.should_compact()?;
-                let t_wal_total = t_wal_task.elapsed().as_millis();
-                tracing::debug!(
-                    wal_lock_ms = t_wal_lock,
-                    wal_total_ms = t_wal_total,
-                    "wal_task timing"
-                );
-                Ok::<(), anyhow::Error>(())
-            },
-            // Lock-free vector extraction task — merged into memory_index atomically with pending_writes
-            async move {
-                let t_idx_task = std::time::Instant::now();
-                let mut prepared: Option<crate::core::index::memory::PreparedVectors> = None;
-                if let Some(col_name) = target_col {
-                    let is_time_col = batches_for_idx
-                        .first()
-                        .and_then(|b| b.column_by_name(&col_name))
-                        .is_some_and(|col| {
-                            matches!(
-                                col.data_type(),
-                                arrow::datatypes::DataType::Time32(_)
-                                    | arrow::datatypes::DataType::Time64(_)
-                            )
-                        });
-                    if is_time_col {
-                        // Time datatypes are not vectorizable; safely skip in-memory vector indexing.
-                        tracing::debug!(
-                            "Skipping in-memory vector index for Time datatype column '{}'",
-                            col_name
-                        );
-                    } else {
-                        let existing_dim = memory_index.read().as_ref().map(|idx| idx.dim());
-                        let inferred_dim = batches_for_idx
-                            .iter()
-                            .find_map(|b| InMemoryVectorIndex::infer_column_dim(b, &col_name));
-                        // Prefer the batch's own vector dimension so dim mismatches fail
-                        // cleanly in append_prepared instead of mis-slicing FixedSizeList values.
-                        let target_dim = inferred_dim.or(existing_dim);
-                        prepared = InMemoryVectorIndex::extract_prepared(
-                            &batches_for_idx,
-                            &col_name,
-                            target_dim,
-                        )?;
-                    }
+                crate::core::table::WalDurability::Async => {
+                    wal_lock.append_fire_and_forget(batch).await?;
                 }
-                tracing::debug!(
-                    idx_task_ms = t_idx_task.elapsed().as_millis(),
-                    "idx_task timing"
-                );
-                Ok::<Option<crate::core::index::memory::PreparedVectors>, anyhow::Error>(prepared)
             }
+        }
+        wal_lock.should_compact()?;
+        drop(wal_lock);
+        let t_wal_total = t_wal_task.elapsed().as_millis();
+        tracing::debug!(
+            wal_lock_ms = t_wal_lock,
+            wal_total_ms = t_wal_total,
+            idx_task_ms,
+            "wal_task and idx timing"
         );
 
-        wal_res?;
         // WS2 crash boundary: WAL is durable, but the manifest has not been
         // committed yet. On reopen the WAL replay must recover these rows.
         crate::core::fault_injection::check(crate::core::fault_injection::CrashPoint::WalFlush)?;
-        let prepared_vectors = idx_res?;
         let wal_idx_ms = t_wal.elapsed().as_millis();
         // -----------------------------
         tracing::debug!(

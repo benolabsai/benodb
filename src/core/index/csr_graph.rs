@@ -116,7 +116,51 @@ fn validate_csr_slices(offsets: &[u64], edges: &[CsrEdge]) -> Result<(usize, usi
         }
     }
 
+    if offsets[num_nodes] as usize != num_edges {
+        anyhow::bail!(
+            "CSR offsets[{}] = {} does not equal total edges count {}",
+            num_nodes,
+            offsets[num_nodes],
+            num_edges
+        );
+    }
+
+    if num_nodes > 0 {
+        for (edge_idx, edge) in edges.iter().enumerate() {
+            if edge.dst_id as usize >= num_nodes {
+                anyhow::bail!(
+                    "CSR edge[{}] destination node id {} exceeds num_nodes {}",
+                    edge_idx,
+                    edge.dst_id,
+                    num_nodes
+                );
+            }
+        }
+    }
+
     Ok((num_nodes, num_edges))
+}
+
+fn validate_csr_dict(dict: &[u64], num_nodes: usize) -> Result<()> {
+    if !dict.is_empty() {
+        if dict.len() != num_nodes {
+            anyhow::bail!(
+                "CSR dict length {} does not match num_nodes {}",
+                dict.len(),
+                num_nodes
+            );
+        }
+        for window in dict.windows(2) {
+            if window[0] >= window[1] {
+                anyhow::bail!(
+                    "CSR dict is not strictly sorted: found {} followed by {}",
+                    window[0],
+                    window[1]
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 impl MmapCsrGraph {
@@ -174,10 +218,11 @@ impl MmapCsrGraph {
             .map_err(|e| anyhow::anyhow!("CSR offsets mmap alignment error: {}", e))?;
         let edges_slice = bytemuck::try_cast_slice::<u8, CsrEdge>(edges_mmap.as_ref())
             .map_err(|e| anyhow::anyhow!("CSR edges mmap alignment error: {}", e))?;
-        let _dict_slice = bytemuck::try_cast_slice::<u8, u64>(dict_mmap.as_ref())
+        let dict_slice = bytemuck::try_cast_slice::<u8, u64>(dict_mmap.as_ref())
             .map_err(|e| anyhow::anyhow!("CSR dict mmap alignment error: {}", e))?;
 
         let (num_nodes, num_edges) = validate_csr_slices(offsets_slice, edges_slice)?;
+        validate_csr_dict(dict_slice, num_nodes)?;
 
         Ok(Self {
             offsets: GraphStorage::Mmap(offsets_mmap),
@@ -221,6 +266,7 @@ impl MmapCsrGraph {
         let dict_vec = bytes_to_u64_vec(&dict);
 
         let (num_nodes, num_edges) = validate_csr_slices(&offsets_vec, &edges_vec)?;
+        validate_csr_dict(&dict_vec, num_nodes)?;
 
         Ok(Self {
             offsets: GraphStorage::Owned(Arc::new(offsets_vec)),
@@ -548,11 +594,11 @@ mod tests {
         let offsets = bytemuck::cast_slice(&[0u64, 1u64, 2u64]).to_vec();
         let edges = bytemuck::cast_slice(&[
             CsrEdge {
-                dst_id: 10,
+                dst_id: 0,
                 row_id: 0,
             },
             CsrEdge {
-                dst_id: 20,
+                dst_id: 1,
                 row_id: 1,
             },
         ])
@@ -564,5 +610,95 @@ mod tests {
         assert_eq!(graph.to_original(0), 100);
         assert_eq!(graph.to_original(1), 200);
         assert_eq!(graph.to_original(999), 0); // Out of bounds does not panic
+    }
+
+    #[test]
+    fn csr_offsets_last_not_equal_edges_rejected() {
+        let offsets = bytemuck::cast_slice(&[0u64, 1u64, 1u64]).to_vec();
+        let edges = bytemuck::cast_slice(&[
+            CsrEdge {
+                dst_id: 0,
+                row_id: 0,
+            },
+            CsrEdge {
+                dst_id: 1,
+                row_id: 1,
+            },
+        ])
+        .to_vec();
+        let res = MmapCsrGraph::try_from_bytes(offsets, edges, vec![]);
+        assert!(res.is_err());
+        assert!(res
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("does not equal total edges count"));
+    }
+
+    #[test]
+    fn csr_edge_dst_exceeds_num_nodes_rejected() {
+        let offsets = bytemuck::cast_slice(&[0u64, 1u64, 2u64]).to_vec();
+        let edges = bytemuck::cast_slice(&[
+            CsrEdge {
+                dst_id: 0,
+                row_id: 0,
+            },
+            CsrEdge {
+                dst_id: 5, // Exceeds num_nodes (2)
+                row_id: 1,
+            },
+        ])
+        .to_vec();
+        let res = MmapCsrGraph::try_from_bytes(offsets, edges, vec![]);
+        assert!(res.is_err());
+        assert!(res.err().unwrap().to_string().contains("exceeds num_nodes"));
+    }
+
+    #[test]
+    fn csr_dict_len_mismatch_rejected() {
+        let offsets = bytemuck::cast_slice(&[0u64, 1u64, 2u64]).to_vec();
+        let edges = bytemuck::cast_slice(&[
+            CsrEdge {
+                dst_id: 0,
+                row_id: 0,
+            },
+            CsrEdge {
+                dst_id: 1,
+                row_id: 1,
+            },
+        ])
+        .to_vec();
+        let dict = bytemuck::cast_slice(&[100u64]).to_vec(); // Length 1 != num_nodes (2)
+        let res = MmapCsrGraph::try_from_bytes(offsets, edges, dict);
+        assert!(res.is_err());
+        assert!(res
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("does not match num_nodes"));
+    }
+
+    #[test]
+    fn csr_dict_not_sorted_rejected() {
+        let offsets = bytemuck::cast_slice(&[0u64, 1u64, 2u64]).to_vec();
+        let edges = bytemuck::cast_slice(&[
+            CsrEdge {
+                dst_id: 0,
+                row_id: 0,
+            },
+            CsrEdge {
+                dst_id: 1,
+                row_id: 1,
+            },
+        ])
+        .to_vec();
+        let dict = bytemuck::cast_slice(&[200u64, 100u64]).to_vec(); // Not strictly sorted
+        let res = MmapCsrGraph::try_from_bytes(offsets, edges, dict);
+        assert!(res.is_err());
+        assert!(res
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("not strictly sorted"));
     }
 }
