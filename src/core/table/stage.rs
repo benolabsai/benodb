@@ -315,7 +315,7 @@ impl Table {
                 continue;
             }
             for row in 0..batch.num_rows() {
-                let mut key = String::new();
+                let mut val_strings = Vec::with_capacity(pk_columns.len());
                 for (col_idx, column) in key_columns.iter().enumerate() {
                     let value = ManifestValue::from_array(column, row);
                     if matches!(value, ManifestValue::Null) {
@@ -325,9 +325,13 @@ impl Table {
                             },
                         ));
                     }
-                    key.push_str(&value.to_string());
-                    key.push('\u{1f}');
+                    val_strings.push(value.to_string());
                 }
+                let key = if val_strings.len() == 1 {
+                    val_strings[0].clone()
+                } else {
+                    val_strings.join("\u{1f}")
+                };
                 if !seen.insert(key.clone()) {
                     return Err(anyhow::Error::from(
                         crate::core::error::BenoStreamError::PrimaryKeyViolation { key },
@@ -345,14 +349,18 @@ impl Table {
                 continue;
             }
             for row in 0..batch.num_rows() {
-                let mut key_str = String::new();
+                let mut val_strings = Vec::with_capacity(pk_columns.len());
                 let mut jsons = Vec::with_capacity(pk_columns.len());
                 for column in &key_columns {
                     let value = ManifestValue::from_array(column, row);
-                    key_str.push_str(&value.to_string());
-                    key_str.push('\u{1f}');
+                    val_strings.push(value.to_string());
                     jsons.push(serde_json::to_value(&value)?);
                 }
+                let key_str = if val_strings.len() == 1 {
+                    val_strings[0].clone()
+                } else {
+                    val_strings.join("\u{1f}")
+                };
                 if self
                     ._check_composite_pk_in_storage_async(&pk_columns, &jsons)
                     .await?

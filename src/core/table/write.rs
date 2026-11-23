@@ -439,12 +439,21 @@ impl Table {
                         .collect();
                     if key_cols.len() == pk_cols.len() {
                         for j in 0..b_batch.num_rows() {
-                            let mut tuple_key = String::new();
-                            for col in &key_cols {
-                                let val = crate::core::manifest::ManifestValue::from_array(col, j);
-                                tuple_key.push_str(&val.to_string());
-                                tuple_key.push('\u{1f}');
-                            }
+                            let tuple_key = if key_cols.len() == 1 {
+                                crate::core::manifest::ManifestValue::from_array(key_cols[0], j)
+                                    .to_string()
+                            } else {
+                                let mut s = String::new();
+                                for (idx, col) in key_cols.iter().enumerate() {
+                                    if idx > 0 {
+                                        s.push('\u{1f}');
+                                    }
+                                    let val =
+                                        crate::core::manifest::ManifestValue::from_array(col, j);
+                                    s.push_str(&val.to_string());
+                                }
+                                s
+                            };
                             seen_keys.insert(tuple_key);
                         }
                     }
@@ -462,8 +471,8 @@ impl Table {
                 }
 
                 for i in 0..batch.num_rows() {
-                    let mut tuple_key = String::new();
                     let mut tuple_values = Vec::with_capacity(pk_cols.len());
+                    let mut val_strings = Vec::with_capacity(pk_cols.len());
 
                     for (col_idx, col) in key_cols.iter().enumerate() {
                         let m_val = crate::core::manifest::ManifestValue::from_array(col, i);
@@ -474,12 +483,17 @@ impl Table {
                                 },
                             ));
                         }
-                        tuple_key.push_str(&m_val.to_string());
-                        tuple_key.push('\u{1f}');
+                        val_strings.push(m_val.to_string());
                         let val_json =
                             serde_json::to_value(&m_val).unwrap_or(serde_json::Value::Null);
                         tuple_values.push(val_json);
                     }
+
+                    let tuple_key = if val_strings.len() == 1 {
+                        val_strings[0].clone()
+                    } else {
+                        val_strings.join("\u{1f}")
+                    };
 
                     if seen_keys.contains(&tuple_key) {
                         return Err(anyhow::Error::from(BenoStreamError::PrimaryKeyViolation {
