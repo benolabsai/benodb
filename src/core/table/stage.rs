@@ -203,14 +203,31 @@ impl Table {
         let _maintenance_guard = self.maintenance_lock.read().await;
         let _commit_guard = self.commit_lock.lock().await;
 
-        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
-        let (latest_manifest, latest_ver) = manifest_manager.load_latest_direct().await?;
-        let existing_entries = if latest_ver > 0 {
-            manifest_manager.load_all_entries(&latest_manifest).await?
+        let pk_columns = self.primary_key.read().clone();
+        let _pk_val_guard = if !pk_columns.is_empty() {
+            Some(self.pk_validation_lock.lock().await)
         } else {
-            Vec::new()
+            None
         };
 
+        // Cross-process serialization lock for primary key validation and publication
+        let _cross_process_guard = if !pk_columns.is_empty() {
+            let lock_path = object_store::path::Path::from("_metadata/pk_commit.lock");
+            let lock = crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path, 30);
+            let mut acquired = None;
+            for _ in 0..100 {
+                if let Some(guard) = lock.try_acquire().await? {
+                    acquired = Some(guard);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            acquired
+        } else {
+            None
+        };
+
+        let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let root_prefix = self.uri.trim_end_matches('/');
         let normalize_rel = |path: &str| -> String {
             path.strip_prefix(root_prefix)
@@ -218,40 +235,89 @@ impl Table {
                 .trim_start_matches('/')
                 .to_string()
         };
-        let existing_paths: std::collections::HashSet<String> = existing_entries
-            .iter()
-            .map(|e| normalize_rel(&e.file_path))
-            .collect();
 
         let total_rows: i64 = entries.iter().map(|e| e.record_count).sum();
         let entry_count = entries.len();
-        let pending_entries: Vec<ManifestEntry> = entries
-            .into_iter()
-            .filter(|e| !existing_paths.contains(&normalize_rel(&e.file_path)))
-            .collect();
 
-        let new_manifest = if pending_entries.is_empty() {
-            tracing::debug!(
-                "All {} staged data file(s) already present in {} v{}; converging snapshot publication",
-                entry_count,
-                self.uri,
-                latest_manifest.version
-            );
-            latest_manifest
-        } else {
-            let pk_columns = self.primary_key.read().clone();
+        let mut new_manifest = None;
+        let max_commit_attempts = 50;
+
+        for attempt in 0..max_commit_attempts {
+            let (latest_manifest, latest_ver) = manifest_manager.load_latest_direct().await?;
+            let existing_entries = if latest_ver > 0 {
+                manifest_manager.load_all_entries(&latest_manifest).await?
+            } else {
+                Vec::new()
+            };
+
+            let existing_paths: std::collections::HashSet<String> = existing_entries
+                .iter()
+                .map(|e| normalize_rel(&e.file_path))
+                .collect();
+
+            let pending_entries: Vec<ManifestEntry> = entries
+                .iter()
+                .filter(|e| !existing_paths.contains(&normalize_rel(&e.file_path)))
+                .cloned()
+                .collect();
+
+            if pending_entries.is_empty() {
+                tracing::debug!(
+                    "All {} staged data file(s) already present in {} v{}; converging snapshot publication",
+                    entry_count,
+                    self.uri,
+                    latest_manifest.version
+                );
+                new_manifest = Some(latest_manifest);
+                break;
+            }
+
             if !pk_columns.is_empty() {
                 self.validate_staged_entries_primary_keys(&pending_entries, &pk_columns)
                     .await?;
             }
-            manifest_manager
-                .commit(
-                    &pending_entries,
-                    &[],
-                    crate::core::manifest::CommitMetadata::default(),
-                )
-                .await?
-        };
+
+            let commit_metadata = crate::core::manifest::CommitMetadata {
+                expected_version: if !pk_columns.is_empty() {
+                    Some(latest_ver)
+                } else {
+                    None
+                },
+                ..Default::default()
+            };
+
+            match manifest_manager
+                .commit(&pending_entries, &[], commit_metadata)
+                .await
+            {
+                Ok(manifest) => {
+                    new_manifest = Some(manifest);
+                    break;
+                }
+                Err(err)
+                    if matches!(
+                        err.downcast_ref::<crate::core::error::BenoStreamError>(),
+                        Some(crate::core::error::BenoStreamError::ManifestVersionMismatch { .. })
+                    ) =>
+                {
+                    tracing::debug!(
+                        attempt,
+                        "Concurrent manifest publication detected; reloading manifest and re-validating primary keys"
+                    );
+                    let delay_ms = 10 + (rand::random::<u64>() % 25);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        let new_manifest = new_manifest.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Failed to commit staged entries to {} after max retries due to concurrent updates",
+                self.uri
+            )
+        })?;
 
         self.ensure_table_metadata_async(&new_manifest).await?;
         self.publish_snapshot_async(&new_manifest, "append").await?;
@@ -377,22 +443,57 @@ impl Table {
     }
 
     /// Enforce primary-key uniqueness across staged entries and against committed
-    /// storage at the commit boundary (under commit_lock).
+    /// storage at the commit boundary (under commit_lock and pk_validation_lock).
     async fn validate_staged_entries_primary_keys(
         &self,
         entries: &[ManifestEntry],
         pk_columns: &[String],
     ) -> Result<()> {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // 1. Pre-populate seen keys from any active in-flight write buffer or staging commit
+        {
+            let pc_guard = self.pending_commit.lock();
+            let pending = self.pending_writes.read();
+            let staging_iter = pc_guard
+                .as_ref()
+                .filter(|pc| pc.phase == super::CommitPhase::Staging)
+                .into_iter()
+                .flat_map(|pc| pc.batches.iter());
+            for b_batch in staging_iter.chain(pending.iter().map(|p| &p.batch)) {
+                let key_cols: Vec<_> = pk_columns
+                    .iter()
+                    .filter_map(|name| b_batch.column_by_name(name))
+                    .collect();
+                if key_cols.len() == pk_columns.len() {
+                    for r in 0..b_batch.num_rows() {
+                        let mut val_strings = Vec::with_capacity(pk_columns.len());
+                        for col in &key_cols {
+                            val_strings.push(ManifestValue::from_array(col, r).to_string());
+                        }
+                        let tuple_key = crate::core::manifest::encode_composite_key(
+                            val_strings.iter().map(|s| s.as_str()),
+                        );
+                        seen.insert(tuple_key);
+                    }
+                }
+            }
+        }
+
         let table_schema = self.arrow_schema();
         let mut pk_fields = Vec::with_capacity(pk_columns.len());
         for name in pk_columns {
-            if let Ok(field) = table_schema.field_with_name(name) {
-                pk_fields.push(field.clone());
+            match table_schema.field_with_name(name) {
+                Ok(field) => pk_fields.push(field.clone()),
+                Err(_) => {
+                    return Err(anyhow::Error::from(
+                        crate::core::error::BenoStreamError::ColumnNotFound {
+                            column: name.clone(),
+                            table: Some(self.uri.clone()),
+                        },
+                    ));
+                }
             }
-        }
-        if pk_fields.len() != pk_columns.len() {
-            return Ok(());
         }
         let proj_schema = Arc::new(arrow::datatypes::Schema::new(pk_fields));
 
@@ -407,7 +508,15 @@ impl Table {
                     .filter_map(|name| batch.column_by_name(name).cloned())
                     .collect();
                 if key_columns.len() != pk_columns.len() {
-                    continue;
+                    return Err(anyhow::Error::from(
+                        crate::core::error::BenoStreamError::SchemaIncompatible {
+                            reason: format!(
+                                "Staged file batch is missing required primary key columns: expected {:?}, found {:?}",
+                                pk_columns,
+                                batch.schema().fields().iter().map(|f| f.name().as_str()).collect::<Vec<_>>()
+                            ),
+                        },
+                    ));
                 }
                 for row in 0..batch.num_rows() {
                     let mut val_strings = Vec::with_capacity(pk_columns.len());

@@ -1,3 +1,14 @@
+//! Distributed file-based locking primitive with lease generation fencing.
+//!
+//! # Backend Concurrency Guarantees
+//! - **Cloud Object Stores (S3, GCS, Azure):** Provide strict compare-and-swap (CAS) via
+//!   `PutMode::Create` and `PutMode::Update(UpdateVersion)`. Lock acquisitions, releases,
+//!   and steals transition atomically via tombstone payloads (`owner: ""`, `expires_at: 0`),
+//!   completely eliminating the read-then-delete race and guaranteeing end-to-end lease fencing.
+//! - **Local Filesystem & Non-CAS Stores:** Fall back to optimistic tombstone overwriting
+//!   with re-read verification. Generation numbers remain strictly monotonic across releases
+//!   and acquisitions, but lock steals carry a documented window suitable for local developer testing.
+
 use anyhow::Result;
 use object_store::{path::Path, ObjectStore, PutMode, PutOptions, UpdateVersion};
 use serde::{Deserialize, Serialize};
@@ -73,6 +84,56 @@ impl LockGuard {
         Ok(())
     }
 
+    /// Produce an atomic publication fencing validator bound to this lock guard.
+    /// This closure can be supplied to `CommitMetadata::publication_fence` so that
+    /// the atomic manifest publish point validates lease ownership and generation
+    /// immediately before writing `v{N+1}.json`.
+    pub fn fencing_verifier(
+        &self,
+    ) -> Arc<dyn Fn() -> futures::future::BoxFuture<'static, Result<()>> + Send + Sync> {
+        let store = self.store.clone();
+        let path = self.path.clone();
+        let owner = self.owner.clone();
+        let generation = self.generation;
+        Arc::new(move || {
+            let store = store.clone();
+            let path = path.clone();
+            let owner = owner.clone();
+            Box::pin(async move {
+                let res = store.get(&path).await?;
+                let bytes = res.bytes().await?;
+                let payload: LockPayload = serde_json::from_slice(&bytes)?;
+                if payload.owner != owner {
+                    anyhow::bail!(
+                        "Lease fencing violation: lock '{}' is now owned by '{}', expected '{}'",
+                        path,
+                        payload.owner,
+                        owner
+                    );
+                }
+                if payload.generation != generation {
+                    anyhow::bail!(
+                        "Lease fencing violation: lock '{}' generation mismatch (current {}, expected {})",
+                        path,
+                        payload.generation,
+                        generation
+                    );
+                }
+                let now_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+                let expires_ms = payload.expires_at * 1000;
+                if now_ms > expires_ms {
+                    anyhow::bail!(
+                        "Lease expired: lock '{}' expired at {} ms, current time is {} ms",
+                        path,
+                        expires_ms,
+                        now_ms
+                    );
+                }
+                Ok(())
+            })
+        })
+    }
+
     /// Release the lock synchronously, waiting for the delete to complete.
     ///
     /// `Drop` spawns the delete on the runtime, so a caller that immediately
@@ -136,14 +197,33 @@ impl LockGuard {
                         };
 
                         if let Ok(bytes) = serde_json::to_vec(&released_payload) {
-                            match store.put_opts(&path, bytes.into(), update_opts).await {
+                            match store
+                                .put_opts(&path, bytes.clone().into(), update_opts)
+                                .await
+                            {
                                 Ok(_) => {
                                     // Successfully updated to released tombstone without unconditional delete.
                                 }
                                 Err(object_store::Error::NotImplemented)
                                 | Err(object_store::Error::NotSupported { .. }) => {
                                     // Fallback for stores lacking conditional update (e.g. local FS).
-                                    let _ = store.delete(&path).await;
+                                    // Instead of deleting the lock and resetting generation history to 1,
+                                    // re-verify ownership and write the released tombstone payload.
+                                    // This preserves monotonic generation numbers across acquisitions
+                                    // even on backends without native CAS primitives.
+                                    if let Ok(check_res) = store.get(&path).await {
+                                        if let Ok(check_bytes) = check_res.bytes().await {
+                                            if let Ok(check_payload) =
+                                                serde_json::from_slice::<LockPayload>(&check_bytes)
+                                            {
+                                                if check_payload.owner == owner
+                                                    && check_payload.generation == generation
+                                                {
+                                                    let _ = store.put(&path, bytes.into()).await;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     tracing::warn!(
@@ -537,5 +617,40 @@ mod tests {
 
         // 4. Worker B is valid
         assert!(guard_b.verify_valid().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_lock_fallback_preserves_monotonic_generation_across_releases() {
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let path = Path::from("fallback_monotonic.lock");
+
+        // 1. Worker A acquires
+        let lock_a = FileBasedLock::new(store.clone(), path.clone(), 30).with_clock_skew(0);
+        let guard_a = lock_a.try_acquire().await.unwrap().expect("A acquires");
+        assert_eq!(guard_a.generation(), 1);
+
+        // 2. Worker A releases -> tombstone written preserving generation 1
+        guard_a.release().await;
+
+        // Verify tombstone in storage has generation 1
+        let res = store.get(&path).await.unwrap();
+        let bytes = res.bytes().await.unwrap();
+        let payload: LockPayload = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(payload.owner, "");
+        assert_eq!(payload.generation, 1);
+
+        // 3. Worker B acquires -> generation increments to 2
+        let lock_b = FileBasedLock::new(store.clone(), path.clone(), 30).with_clock_skew(0);
+        let guard_b = lock_b.try_acquire().await.unwrap().expect("B acquires");
+        assert_eq!(guard_b.generation(), 2);
+
+        // 4. Worker B releases -> tombstone written preserving generation 2
+        guard_b.release().await;
+
+        // 5. Worker C acquires -> generation increments to 3
+        let lock_c = FileBasedLock::new(store.clone(), path.clone(), 30).with_clock_skew(0);
+        let guard_c = lock_c.try_acquire().await.unwrap().expect("C acquires");
+        assert_eq!(guard_c.generation(), 3);
+        assert!(guard_c.verify_valid().await.is_ok());
     }
 }

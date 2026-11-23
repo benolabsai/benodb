@@ -266,8 +266,8 @@ impl Table {
         column: &str,
         value: &serde_json::Value,
     ) -> Result<bool> {
-        let manifest = self.manifest().await?;
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let (manifest, _) = manager.load_latest_direct().await?;
         let all_entries = manager.load_all_entries(&manifest).await?;
         let iceberg_schema = manifest
             .schemas
@@ -327,8 +327,8 @@ impl Table {
                 .await;
         }
 
-        let manifest = self.manifest().await?;
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let (manifest, _) = manager.load_latest_direct().await?;
         let all_entries = manager.load_all_entries(&manifest).await?;
         let iceberg_schema = manifest
             .schemas

@@ -749,14 +749,10 @@ impl Table {
 
         // 2. WAL Append Task — appends according to durability configuration (Sync waits for disk sync, Async batches)
         let tx_id = uuid::Uuid::new_v4();
-        let batches_for_wal: Vec<RecordBatch> = batches
-            .iter()
-            .enumerate()
-            .map(|(i, b)| {
-                crate::core::wal::tag_batch_with_wal_tx(b, tx_id, i as u64)
-                    .unwrap_or_else(|_| b.clone())
-            })
-            .collect();
+        let mut batches_for_wal: Vec<RecordBatch> = Vec::with_capacity(batches.len());
+        for (i, b) in batches.iter().enumerate() {
+            batches_for_wal.push(crate::core::wal::tag_batch_with_wal_tx(b, tx_id, i as u64)?);
+        }
 
         let t_wal_task = std::time::Instant::now();
         let wal_lock = wal.lock().await;

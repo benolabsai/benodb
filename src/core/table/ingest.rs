@@ -475,6 +475,7 @@ impl Table {
                             &[],
                             CommitMetadata {
                                 skip_missing_remove_paths: true,
+                                publication_fence: Some(lease.fencing_verifier()),
                                 ..Default::default()
                             },
                         )

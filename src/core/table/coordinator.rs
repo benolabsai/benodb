@@ -99,6 +99,13 @@ impl Lease {
             guard,
         }
     }
+
+    /// Produce an atomic publication fencing validator bound to this lease's lock guard.
+    pub fn fencing_verifier(
+        &self,
+    ) -> Arc<dyn Fn() -> futures::future::BoxFuture<'static, Result<()>> + Send + Sync> {
+        self.guard.fencing_verifier()
+    }
 }
 
 /// Lease-based work coordination across machines.
@@ -210,6 +217,8 @@ impl WorkCoordinator for ObjectStoreCoordinator {
     }
 
     async fn complete(&self, lease: Lease) -> Result<()> {
+        // Enforce lease validity before recording completion
+        lease.guard.verify_valid().await?;
         let key = lease.unit.key();
         self.store
             .put(&self.done_path(&lease.unit), key.into_bytes().into())
@@ -423,6 +432,64 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Lease fencing violation"));
+    }
+
+    #[tokio::test]
+    async fn lease_expiry_race_fences_manifest_publication() {
+        let s = store();
+        let unit = units()[0].clone();
+        let c1 =
+            ObjectStoreCoordinator::new(s.clone(), vec![unit.clone()], Duration::from_secs(60))
+                .with_clock_skew(0);
+        let done = HashSet::new();
+        let l1 = c1.claim(&done).await.unwrap().unwrap();
+        assert_eq!(l1.generation, 1);
+
+        // Worker A verifies initially (succeeds)
+        assert!(c1.verify_lease(&l1).await.is_ok());
+
+        // Worker B claims the lease (stolen with higher generation)
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let stolen = crate::core::lock::LockPayload {
+            owner: "worker-b".to_string(),
+            expires_at: now + 60,
+            generation: 2,
+        };
+        s.put(
+            &c1.lease_path(&unit),
+            serde_json::to_vec(&stolen).unwrap().into(),
+        )
+        .await
+        .unwrap();
+
+        // Worker A attempts manifest publication using its fencing verifier
+        let manifest_manager =
+            crate::core::manifest::ManifestManager::new(s.clone(), "test_table", "memory://");
+        let fence = l1.fencing_verifier();
+        let commit_meta = crate::core::manifest::CommitMetadata {
+            publication_fence: Some(fence),
+            ..Default::default()
+        };
+
+        let commit_res = manifest_manager.commit(&[], &[], commit_meta).await;
+        assert!(
+            commit_res.is_err(),
+            "Worker A must be fenced out of publication"
+        );
+        assert!(commit_res
+            .unwrap_err()
+            .to_string()
+            .contains("Lease fencing violation"));
+
+        // Worker A cannot mark the unit as complete
+        let complete_res = c1.complete(l1).await;
+        assert!(
+            complete_res.is_err(),
+            "Worker A cannot complete stolen lease"
+        );
     }
 
     #[tokio::test]

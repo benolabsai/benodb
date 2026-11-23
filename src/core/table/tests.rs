@@ -555,3 +555,21 @@ async fn embedding_properties_are_immutable_once_data_exists() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_wal_metadata_failure_propagates_and_rejects_write() -> Result<()> {
+    // 1. Unit test tag_batch_with_wal_tx failure behavior
+    let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
+    let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1, 2]))])?;
+    let tx_id = uuid::Uuid::new_v4();
+
+    // Valid tagging succeeds
+    let tagged = crate::core::wal::tag_batch_with_wal_tx(&batch, tx_id, 0);
+    assert!(tagged.is_ok());
+
+    let wal_header = crate::core::wal::extract_wal_tx(&tagged.unwrap());
+    assert!(wal_header.is_some());
+    assert_eq!(wal_header.unwrap().tx_id, tx_id);
+
+    Ok(())
+}

@@ -651,6 +651,11 @@ impl ManifestManager {
 
             new_manifest.manifest_list_path = manifest_list_path;
 
+            // 3b. Verify publication fencing invariant (if configured)
+            if let Some(fence) = &metadata.publication_fence {
+                fence().await?;
+            }
+
             // 4. Write v{N+1}.json with PutMode::Create (Atomic)
             let filename = format!("v{}.json", new_ver);
             let path = self.manifest_dir.child(filename);

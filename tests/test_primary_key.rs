@@ -451,3 +451,171 @@ async fn test_staged_writes_enforce_pk_uniqueness_at_commit_boundary() -> anyhow
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_cross_process_composite_pk_race_independent_table_instances() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("tenant_id", DataType::Int32, false),
+        Field::new("doc_id", DataType::Int32, false),
+        Field::new("payload", DataType::Utf8, true),
+    ]));
+
+    let table_init = Table::create_async(uri.clone(), schema.clone()).await?;
+    table_init
+        .set_primary_key_async(vec!["tenant_id".to_string(), "doc_id".to_string()])
+        .await?;
+
+    // Open two independent Table instances simulating separate processes/drivers
+    let table_a = Table::new_async(uri.clone()).await?;
+    let table_b = Table::new_async(uri.clone()).await?;
+
+    let batch_a = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![100])),
+            Arc::new(StringArray::from(vec!["writer_a"])),
+        ],
+    )?;
+
+    let batch_b = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![100])),
+            Arc::new(StringArray::from(vec!["writer_b"])),
+        ],
+    )?;
+
+    // Both independent tables stage files concurrently
+    let staged_a = table_a.stage_data_files_async(vec![batch_a]).await?;
+    let staged_b = table_b.stage_data_files_async(vec![batch_b]).await?;
+
+    // Attempt concurrent staged commit across independent table instances
+    let (res_a, res_b) = tokio::join!(
+        table_a.commit_staged_entries_async(staged_a),
+        table_b.commit_staged_entries_async(staged_b)
+    );
+
+    let successes = [res_a.is_ok(), res_b.is_ok()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+    let failures = [res_a.is_err(), res_b.is_err()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
+    assert_eq!(
+        successes, 1,
+        "Exactly one cross-process staged commit must succeed"
+    );
+    assert_eq!(
+        failures, 1,
+        "The competing cross-process staged commit must be rejected"
+    );
+
+    let err_msg = if let Err(e) = res_a {
+        e.to_string()
+    } else {
+        res_b.unwrap_err().to_string()
+    };
+    assert!(
+        err_msg.contains("Duplicate primary key error"),
+        "Expected PrimaryKeyViolation, got {err_msg}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mixed_write_path_pk_race_buffered_and_staged() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key(vec!["id".to_string()]);
+
+    let batch_buffered = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![77])),
+            Arc::new(StringArray::from(vec!["buffered"])),
+        ],
+    )?;
+
+    let batch_staged = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![77])),
+            Arc::new(StringArray::from(vec!["staged"])),
+        ],
+    )?;
+
+    // Stage the file first (not committed yet)
+    let staged = table.stage_data_files_async(vec![batch_staged]).await?;
+
+    // Perform buffered write into memory
+    table.write_async(vec![batch_buffered]).await?;
+
+    // Now attempt to commit staged entries with colliding key: must be detected in pending writes!
+    let res = table.commit_staged_entries_async(staged).await;
+    assert!(
+        res.is_err(),
+        "Staged commit must reject key present in active write buffer"
+    );
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate primary key error"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_staged_validation_rejects_missing_schema_or_batch_pk_fields() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    // Configure a PK column that doesn't exist in the schema
+    table.set_primary_key(vec!["non_existent_col".to_string()]);
+
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![1])),
+            Arc::new(StringArray::from(vec!["test"])),
+        ],
+    )?;
+
+    let staged = table.stage_data_files_async(vec![batch]).await?;
+    let res = table.commit_staged_entries_async(staged).await;
+    assert!(
+        res.is_err(),
+        "Must fail when primary key column is not in schema"
+    );
+    let err_str = res.unwrap_err().to_string();
+    assert!(
+        err_str.contains("ColumnNotFound") || err_str.contains("non_existent_col"),
+        "Expected ColumnNotFound error, got: {err_str}"
+    );
+
+    Ok(())
+}

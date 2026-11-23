@@ -45,7 +45,7 @@ pub struct ManifestManager {
     pub(crate) pinned_version: Option<u64>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct CommitMetadata {
     pub updated_schemas: Option<Vec<Schema>>,
     pub updated_schema_id: Option<i32>,
@@ -90,6 +90,23 @@ pub struct CommitMetadata {
     /// `benodb.committed_wal_tx` property inside the OCC commit loop so
     /// concurrent writers never overwrite one another's idempotency markers.
     pub append_committed_wal_tx: Vec<String>,
+    /// Optional publication fencing validator invoked immediately before writing
+    /// `v{N+1}.json` to storage. In an OCC retry loop, this validator runs on every
+    /// attempt, ensuring that any lease, fencing token, or external invariant is
+    /// verified at the atomic publication boundary.
+    pub publication_fence:
+        Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, Result<()>> + Send + Sync>>,
+}
+
+impl std::fmt::Debug for CommitMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommitMetadata")
+            .field("expected_version", &self.expected_version)
+            .field("format_version", &self.format_version)
+            .field("is_fast_append", &self.is_fast_append)
+            .field("has_publication_fence", &self.publication_fence.is_some())
+            .finish()
+    }
 }
 
 impl ManifestManager {

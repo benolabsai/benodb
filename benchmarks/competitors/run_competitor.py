@@ -196,6 +196,8 @@ class FaissAdapter(VectorAdapter):
         self._train: Optional[np.ndarray] = None
         self._ivf = None
         self._nprobe = 0
+        self._refine = False
+        self._base_u8: Optional[np.ndarray] = None
 
     def build(self, train, params, ctx):
         import faiss
@@ -252,13 +254,21 @@ class FaissAdapter(VectorAdapter):
                 else max(1, int(params.get("ef_search", 16) or 16) // 10)
             )
             if self.index_type == "ivfpq" and params.get("refine", False):
-                index = faiss.IndexRefineFlat(index, faiss.swig_ptr(data))
+                # Refine manually against the source vectors instead of wrapping
+                # faiss.IndexRefineFlat. IndexRefineFlat copies the full float32
+                # base into its internal IndexFlat, doubling the resident set; on
+                # BigANN 10M that is 5.12 GiB of float32 for the upcast plus a
+                # second 5.12 GiB copy, which OOMs the 16 GiB cgroup. BigANN is
+                # uint8, so exact L2 refinement against the 1.28 GiB uint8 source
+                # is both lossless and four times smaller.
+                self._refine = True
+                self._base_u8 = train if train.dtype in (np.uint8, np.int8) else data
         else:
             index = faiss.IndexHNSWFlat(dim, params["m"], faiss_metric)
             index.hnsw.efConstruction = params["ef_construction"]
             index.add(data)
 
-        self._train = data
+        self._train = None if self._refine else data
         self._used_gpu = False
         if ctx.get("device") == "gpu":
             # Requires faiss-gpu; falls back to the CPU index when unavailable.
@@ -268,6 +278,8 @@ class FaissAdapter(VectorAdapter):
                 self._used_gpu = True
             except Exception as exc:
                 print(f"faiss: GPU unavailable, using CPU index ({exc})", flush=True)
+        if self._refine:
+            return (index, self._base_u8)
         return (index, data)
 
     def search(self, handle, queries, k, ef_search, metric):
@@ -284,7 +296,12 @@ class FaissAdapter(VectorAdapter):
             nprobe = self._nprobe if self._nprobe > 0 else max(1, int(ef_search) // 10)
             nprobe = min(nlist, nprobe) if nlist else nprobe
             self._ivf.nprobe = nprobe
-            _, ids = index.search(q, k)
+            if self._refine:
+                k_factor = int(os.environ.get("REFINE_FACTOR", "4") or 4)
+                _, cand = self._ivf.search(q, max(k, k * k_factor))
+                ids = self._refine_topk(q, cand, k, metric)
+            else:
+                _, ids = index.search(q, k)
         else:
             index.hnsw.efSearch = ef_search
             _, ids = index.search(q, k)
@@ -296,6 +313,26 @@ class FaissAdapter(VectorAdapter):
         if data is not None and len(ids) > 0:
             return data[ids[0]]
         return ids
+
+    def _refine_topk(self, q, cand_ids, k, metric):
+        """Re-score IVF-PQ candidates exactly against the source vectors."""
+        base = self._base_u8 if self._base_u8 is not None else self._train
+        cids = np.asarray(cand_ids[0], dtype=np.int64)
+        cids = cids[cids >= 0]
+        if len(cids) == 0 or base is None:
+            return np.asarray(cand_ids, dtype=np.int64)[:, :k]
+        vecs = base[cids]
+        if vecs.dtype != np.float32:
+            vecs = vecs.astype(np.float32)
+        qv = q[0]
+        if qv.dtype != np.float32:
+            qv = qv.astype(np.float32)
+        if metric == "l2":
+            d = ((vecs - qv) ** 2).sum(axis=1)
+        else:
+            d = -(vecs @ qv)
+        order = np.argsort(d)[:k]
+        return cids[order][None, :]
 
     def index_bytes(self, handle):
         import faiss
