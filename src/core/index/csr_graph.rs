@@ -71,7 +71,7 @@ fn bytes_to_u64_vec(bytes: &[u8]) -> Vec<u64> {
 
 fn bytes_to_edges_vec(bytes: &[u8]) -> Vec<CsrEdge> {
     bytes
-        .as_chunks::<12>()
+        .as_chunks::<16>()
         .0
         .iter()
         .map(|chunk| {
