@@ -1,17 +1,29 @@
 //! Distributed file-based locking primitive with lease generation fencing.
 //!
+//! # Fencing and Publication Semantics
+//! In cloud object stores (S3, GCS, Azure), atomic multi-key transactions across distinct
+//! resource paths do not exist. BenoDB therefore implements **publication-time lease verification**:
+//! immediately before publishing a new manifest snapshot (e.g. `v{N+1}.json`), the manifest
+//! publication boundary invokes `fencing_verifier()` to verify that the active worker still holds
+//! valid lease ownership, unexpired TTL, and the matching monotonic generation.
+//!
+//! This ensures that if a lease expires or is stolen during prolonged processing, the stale worker
+//! aborts before publishing. It does not provide cross-resource two-phase commit across separate keys;
+//! rather, it establishes a publication-boundary verification gate.
+//!
 //! # Backend Concurrency Guarantees
 //! - **Cloud Object Stores (S3, GCS, Azure):** Provide strict compare-and-swap (CAS) via
 //!   `PutMode::Create` and `PutMode::Update(UpdateVersion)`. Lock acquisitions, releases,
 //!   and steals transition atomically via tombstone payloads (`owner: ""`, `expires_at: 0`),
-//!   completely eliminating the read-then-delete race and guaranteeing end-to-end lease fencing.
+//!   eliminating the read-then-delete race and guaranteeing monotonic lease generation progression.
 //! - **Local Filesystem & Non-CAS Stores:** Fall back to optimistic tombstone overwriting
 //!   with re-read verification. Generation numbers remain strictly monotonic across releases
-//!   and acquisitions, but lock steals carry a documented window suitable for local developer testing.
+//!   and acquisitions, providing a development and local-testing baseline.
 
 use anyhow::Result;
 use object_store::{path::Path, ObjectStore, PutMode, PutOptions, UpdateVersion};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -40,6 +52,7 @@ pub struct LockGuard {
     generation: u64,
     abort_tx: Option<oneshot::Sender<()>>,
     released: bool,
+    lost_lease: Arc<AtomicBool>,
 }
 
 impl LockGuard {
@@ -51,7 +64,20 @@ impl LockGuard {
         self.generation
     }
 
+    pub fn is_valid(&self) -> bool {
+        !self.released && !self.lost_lease.load(Ordering::SeqCst)
+    }
+
     pub async fn verify_valid(&self) -> Result<()> {
+        if self.lost_lease.load(Ordering::SeqCst) {
+            anyhow::bail!(
+                "Lease lost: heartbeat renewal failed or ownership changed for lock '{}'",
+                self.path
+            );
+        }
+        if self.released {
+            anyhow::bail!("Lock '{}' has already been released", self.path);
+        }
         let res = self.store.get(&self.path).await?;
         let bytes = res.bytes().await?;
         let payload: LockPayload = serde_json::from_slice(&bytes)?;
@@ -95,11 +121,19 @@ impl LockGuard {
         let path = self.path.clone();
         let owner = self.owner.clone();
         let generation = self.generation;
+        let lost_lease = self.lost_lease.clone();
         Arc::new(move || {
             let store = store.clone();
             let path = path.clone();
             let owner = owner.clone();
+            let lost_lease = lost_lease.clone();
             Box::pin(async move {
+                if lost_lease.load(Ordering::SeqCst) {
+                    anyhow::bail!(
+                        "Lease lost: heartbeat renewal failed or ownership changed for lock '{}'",
+                        path
+                    );
+                }
                 let res = store.get(&path).await?;
                 let bytes = res.bytes().await?;
                 let payload: LockPayload = serde_json::from_slice(&bytes)?;
@@ -379,9 +413,15 @@ impl FileBasedLock {
         let path = self.path.clone();
         let owner = self.owner.clone();
         let ttl_seconds = self.ttl_seconds;
+        let lost_lease = Arc::new(AtomicBool::new(false));
+        let lost_lease_worker = lost_lease.clone();
 
-        // Heartbeat wakes up at TTL/2 to renew
-        let interval_ms = (ttl_seconds * 1000) / 2;
+        // Heartbeat wakes up at TTL/2 to renew (minimum 50ms interval to prevent busy loops)
+        let interval_ms = if ttl_seconds == 0 {
+            50
+        } else {
+            ((ttl_seconds * 1000) / 2).max(50)
+        };
 
         tokio::spawn(async move {
             loop {
@@ -402,31 +442,52 @@ impl FileBasedLock {
                         };
                         if let Ok(bytes) = serde_json::to_vec(&payload) {
                             // Fetch meta to do an atomic PutMode::Update if supported
-                            if let Ok(get_res) = store.get(&path).await {
-                                let meta = get_res.meta.clone();
-                                if let Ok(current_bytes) = get_res.bytes().await {
-                                    if let Ok(current_payload) = serde_json::from_slice::<LockPayload>(&current_bytes) {
-                                        if current_payload.owner != owner || current_payload.generation != generation {
-                                            tracing::error!(
-                                                "Lock heartbeat detected ownership/generation change! Current owner: '{}' (gen {}), our owner: '{}' (gen {}). Aborting heartbeat renewal.",
-                                                current_payload.owner,
-                                                current_payload.generation,
-                                                owner,
-                                                generation
-                                            );
+                            match store.get(&path).await {
+                                Ok(get_res) => {
+                                    let meta = get_res.meta.clone();
+                                    if let Ok(current_bytes) = get_res.bytes().await {
+                                        if let Ok(current_payload) = serde_json::from_slice::<LockPayload>(&current_bytes) {
+                                            if current_payload.owner != owner || current_payload.generation != generation {
+                                                tracing::error!(
+                                                    "Lock heartbeat detected ownership/generation change! Current owner: '{}' (gen {}), our owner: '{}' (gen {}). Aborting heartbeat renewal.",
+                                                    current_payload.owner,
+                                                    current_payload.generation,
+                                                    owner,
+                                                    generation
+                                                );
+                                                lost_lease_worker.store(true, Ordering::SeqCst);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    let update_opts = PutOptions {
+                                        mode: PutMode::Update(UpdateVersion {
+                                            e_tag: meta.e_tag,
+                                            version: meta.version,
+                                        }),
+                                        ..Default::default()
+                                    };
+                                    match store.put_opts(&path, bytes.clone().into(), update_opts).await {
+                                        Ok(_) => {}
+                                        Err(object_store::Error::NotImplemented)
+                                        | Err(object_store::Error::NotSupported { .. }) => {
+                                            if let Err(e) = store.put(&path, bytes.into()).await {
+                                                tracing::warn!("Failed to renew lock heartbeat: {}", e);
+                                                lost_lease_worker.store(true, Ordering::SeqCst);
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("Failed to renew lock heartbeat: {}", e);
+                                            lost_lease_worker.store(true, Ordering::SeqCst);
                                             break;
                                         }
                                     }
                                 }
-                                let update_opts = PutOptions {
-                                    mode: PutMode::Update(UpdateVersion {
-                                        e_tag: meta.e_tag,
-                                        version: meta.version,
-                                    }),
-                                    ..Default::default()
-                                };
-                                if let Err(e) = store.put_opts(&path, bytes.into(), update_opts).await {
-                                    tracing::warn!("Failed to renew lock heartbeat: {}", e);
+                                Err(e) => {
+                                    tracing::warn!("Failed to get lock during heartbeat renewal: {}", e);
+                                    lost_lease_worker.store(true, Ordering::SeqCst);
+                                    break;
                                 }
                             }
                         }
@@ -442,6 +503,7 @@ impl FileBasedLock {
             generation,
             abort_tx: Some(tx),
             released: false,
+            lost_lease,
         }
     }
 
@@ -652,5 +714,43 @@ mod tests {
         let guard_c = lock_c.try_acquire().await.unwrap().expect("C acquires");
         assert_eq!(guard_c.generation(), 3);
         assert!(guard_c.verify_valid().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_renewal_failure_marks_guard_invalid() {
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let path = Path::from("heartbeat_fail.lock");
+
+        // 1. Worker A acquires lock with 0 TTL (heartbeat will poll at 50ms)
+        let lock_a = FileBasedLock::new(store.clone(), path.clone(), 0).with_clock_skew(0);
+        let guard_a = lock_a.try_acquire().await.unwrap().expect("A acquires");
+        assert!(guard_a.is_valid());
+
+        // 2. Tamper with the lock payload by replacing owner with an external thief
+        let thief_payload = LockPayload {
+            owner: "thief".to_string(),
+            expires_at: 9999999999,
+            generation: 99,
+        };
+        let thief_bytes = serde_json::to_vec(&thief_payload).unwrap();
+        store.put(&path, thief_bytes.into()).await.unwrap();
+
+        // 3. Wait 120ms for heartbeat to detect ownership change and set lost_lease = true
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+
+        // 4. Assert that guard_a is now marked invalid and verify_valid fails
+        assert!(
+            !guard_a.is_valid(),
+            "Guard must be invalid after heartbeat detects lease loss"
+        );
+        let verify_res = guard_a.verify_valid().await;
+        assert!(verify_res.is_err());
+        assert!(verify_res.unwrap_err().to_string().contains("Lease lost"));
+
+        // 5. Manifest fencing verifier also immediately rejects
+        let verifier = guard_a.fencing_verifier();
+        let verifier_res = verifier().await;
+        assert!(verifier_res.is_err());
+        assert!(verifier_res.unwrap_err().to_string().contains("Lease lost"));
     }
 }

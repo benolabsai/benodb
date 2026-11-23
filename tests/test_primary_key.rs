@@ -619,3 +619,111 @@ async fn test_staged_validation_rejects_missing_schema_or_batch_pk_fields() -> a
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_pk_lock_timeout_fails_closed() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key_async(vec!["id".to_string()]).await?;
+
+    // Pre-acquire the table's pk_commit lock externally to simulate another process holding it
+    let lock_path = table.pk_lock_path();
+    let external_lock =
+        benodb::core::lock::FileBasedLock::new(table.store.clone(), lock_path.clone(), 300);
+    let _held_guard = external_lock
+        .try_acquire()
+        .await?
+        .expect("External lock must be acquired");
+
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![1])),
+            Arc::new(StringArray::from(vec!["test"])),
+        ],
+    )?;
+
+    let staged = table.stage_data_files_async(vec![batch]).await?;
+
+    // Staged commit must fail closed with LockAcquireFailed, rather than proceeding without the lock
+    let res = table.commit_staged_entries_async(staged).await;
+    assert!(
+        res.is_err(),
+        "Commit must fail closed when PK lock is held by another process"
+    );
+    let err_str = res.unwrap_err().to_string();
+    assert!(
+        err_str.contains("LockAcquireFailed")
+            || err_str.contains("Failed to acquire distributed lock")
+            || err_str.to_lowercase().contains("failed to acquire"),
+        "Expected lock acquisition failure, got: {err_str}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cross_instance_buffered_vs_staged_pk_collision() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table_init = Table::create_async(uri.clone(), schema.clone()).await?;
+    table_init
+        .set_primary_key_async(vec!["id".to_string()])
+        .await?;
+
+    // Open two independent Table instances pointing to the same storage
+    let table_a = Table::new_async(uri.clone()).await?;
+    let table_b = Table::new_async(uri.clone()).await?;
+
+    let batch_a = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![999])),
+            Arc::new(StringArray::from(vec!["staged_by_a"])),
+        ],
+    )?;
+
+    let batch_b = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![999])),
+            Arc::new(StringArray::from(vec!["buffered_by_b"])),
+        ],
+    )?;
+
+    // Table B writes key 999 into its memory buffer before Table A commits to storage
+    table_b.write_async(vec![batch_b]).await?;
+
+    // Table A stages and commits key 999 to durable storage concurrently
+    let staged_a = table_a.stage_data_files_async(vec![batch_a]).await?;
+    table_a.commit_staged_entries_async(staged_a).await?;
+
+    // Table B flushes its buffer: flush must fail during storage validation under pk_commit lock
+    let flush_res = table_b.flush_async().await;
+    assert!(
+        flush_res.is_err(),
+        "Table B flush must be rejected due to collision with committed key 999"
+    );
+    let err_str = flush_res.unwrap_err().to_string();
+    assert!(
+        err_str.contains("Duplicate primary key error") || err_str.contains("PrimaryKeyViolation"),
+        "Expected primary key violation on flush, got: {err_str}"
+    );
+
+    Ok(())
+}

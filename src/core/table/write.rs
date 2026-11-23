@@ -946,7 +946,7 @@ impl Table {
         // Stage Parquet files and atomically commit the manifest. On pre-manifest failure,
         // restore the Staging buffer so in-memory visibility and retryability remain intact.
         let staged = match self
-            .stage_and_commit_manifest_async(&batches_to_write, &wal_tx_ids)
+            .stage_and_commit_manifest_async(&batches_to_write, &wal_tx_ids, commit_id)
             .await
         {
             Ok(res) => res,
@@ -1219,6 +1219,7 @@ impl Table {
         &self,
         batches_to_write: &[RecordBatch],
         wal_tx_ids: &[uuid::Uuid],
+        commit_id: uuid::Uuid,
     ) -> Result<StagedManifestResult> {
         type PartitionSegment = (
             crate::core::manifest::ManifestEntry,
@@ -1236,6 +1237,34 @@ impl Table {
         if is_local_uri {
             std::fs::create_dir_all(base_path)?;
         }
+
+        let pk_cols = self.primary_key.read().clone();
+        let _cross_process_guard = if !pk_cols.is_empty() {
+            let lock_path = self.pk_lock_path();
+            let lock =
+                crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path.clone(), 30);
+            let mut acquired = None;
+            for _ in 0..100 {
+                if let Some(guard) = lock.try_acquire().await? {
+                    acquired = Some(guard);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            match acquired {
+                Some(guard) => Some(guard),
+                None => {
+                    return Err(anyhow::Error::from(
+                        crate::core::error::BenoStreamError::LockAcquireFailed {
+                            resource: lock_path.to_string(),
+                            retries: 100,
+                        },
+                    ));
+                }
+            }
+        } else {
+            None
+        };
 
         for v3_attempt in 0..MAX_V3_RETRIES {
             let (head_manifest, head_ver) = manifest_manager.load_latest_direct().await?;
@@ -1663,7 +1692,7 @@ impl Table {
                 updated_last_column_id: None,
                 format_version: Some(effective_fv),
                 is_fast_append: false,
-                expected_version: if effective_fv >= 3 {
+                expected_version: if effective_fv >= 3 || !pk_cols.is_empty() {
                     Some(head_ver)
                 } else {
                     None
@@ -1673,6 +1702,20 @@ impl Table {
             };
 
             let added_rows_total: i64 = all_new_entries.iter().map(|e| e.record_count).sum();
+
+            if !pk_cols.is_empty() {
+                if let Err(e) = self
+                    .validate_staged_entries_primary_keys(
+                        &all_new_entries,
+                        &pk_cols,
+                        Some(commit_id),
+                    )
+                    .await
+                {
+                    self.cleanup_staged_segment_files(&all_new_entries).await;
+                    return Err(e);
+                }
+            }
 
             // WS2 crash boundary: immediately before the atomic manifest publish point.
             if let Err(e) = crate::core::fault_injection::check(
@@ -1697,7 +1740,7 @@ impl Table {
                     });
                 }
                 Err(err)
-                    if effective_fv >= 3
+                    if (effective_fv >= 3 || !pk_cols.is_empty())
                         && matches!(
                             err.downcast_ref::<BenoStreamError>(),
                             Some(BenoStreamError::ManifestVersionMismatch { .. })
@@ -1705,7 +1748,7 @@ impl Table {
                 {
                     tracing::debug!(
                         v3_attempt,
-                        "V3 row-lineage OCC conflict; removing stale staged Parquet files and retrying"
+                        "Concurrent manifest publication detected; reloading manifest and re-validating primary keys"
                     );
                     self.cleanup_staged_segment_files(&all_new_entries).await;
                     if v3_attempt + 1 == MAX_V3_RETRIES {

@@ -27,6 +27,27 @@ impl Table {
     // Primary key setters / getters
     // -----------------------------------------------------------------------
 
+    /// Derive an isolated lock path for primary key publication.
+    /// Scoped to the table's URI segment/slug so separate tables sharing an
+    /// object store namespace do not contend on the same lock.
+    pub fn pk_lock_path(&self) -> object_store::path::Path {
+        let table_slug = if let Ok(url) = url::Url::parse(&self.uri) {
+            url.path()
+                .trim_matches('/')
+                .split('/')
+                .rfind(|s| !s.is_empty())
+                .map(String::from)
+                .unwrap_or_else(|| "root".to_string())
+        } else {
+            self.uri
+                .split('/')
+                .rfind(|s| !s.is_empty())
+                .map(String::from)
+                .unwrap_or_else(|| "root".to_string())
+        };
+        object_store::path::Path::from(format!("_metadata/pk_commit_{}.lock", table_slug))
+    }
+
     pub fn set_primary_key(&self, columns: Vec<String>) {
         if let Some(ref rt) = self.rt {
             let _ = rt.block_on(self.set_primary_key_async(columns));

@@ -212,8 +212,9 @@ impl Table {
 
         // Cross-process serialization lock for primary key validation and publication
         let _cross_process_guard = if !pk_columns.is_empty() {
-            let lock_path = object_store::path::Path::from("_metadata/pk_commit.lock");
-            let lock = crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path, 30);
+            let lock_path = self.pk_lock_path();
+            let lock =
+                crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path.clone(), 30);
             let mut acquired = None;
             for _ in 0..100 {
                 if let Some(guard) = lock.try_acquire().await? {
@@ -222,7 +223,17 @@ impl Table {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
-            acquired
+            match acquired {
+                Some(guard) => Some(guard),
+                None => {
+                    return Err(anyhow::Error::from(
+                        crate::core::error::BenoStreamError::LockAcquireFailed {
+                            resource: lock_path.to_string(),
+                            retries: 100,
+                        },
+                    ));
+                }
+            }
         } else {
             None
         };
@@ -273,7 +284,7 @@ impl Table {
             }
 
             if !pk_columns.is_empty() {
-                self.validate_staged_entries_primary_keys(&pending_entries, &pk_columns)
+                self.validate_staged_entries_primary_keys(&pending_entries, &pk_columns, None)
                     .await?;
             }
 
@@ -444,10 +455,11 @@ impl Table {
 
     /// Enforce primary-key uniqueness across staged entries and against committed
     /// storage at the commit boundary (under commit_lock and pk_validation_lock).
-    async fn validate_staged_entries_primary_keys(
+    pub(crate) async fn validate_staged_entries_primary_keys(
         &self,
         entries: &[ManifestEntry],
         pk_columns: &[String],
+        exclude_commit_id: Option<uuid::Uuid>,
     ) -> Result<()> {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -457,7 +469,9 @@ impl Table {
             let pending = self.pending_writes.read();
             let staging_iter = pc_guard
                 .as_ref()
-                .filter(|pc| pc.phase == super::CommitPhase::Staging)
+                .filter(|pc| {
+                    pc.phase == super::CommitPhase::Staging && Some(pc.id) != exclude_commit_id
+                })
                 .into_iter()
                 .flat_map(|pc| pc.batches.iter());
             for b_batch in staging_iter.chain(pending.iter().map(|p| &p.batch)) {
