@@ -73,6 +73,10 @@ ignore = [
     "RUSTSEC-2026-0391",
     "RUSTSEC-2026-0398",
     "RUSTSEC-2026-0403",
+    # RUSTSEC-2026-0595 (Apache Arrow Rust: Bloom filters written as plaintext when writing encrypted Parquet).
+    # Pinned by datafusion 52.5.0 which requires arrow/parquet 57.3.1.
+    # Unexploitable: BenoDB does not write encrypted Parquet files.
+    "RUSTSEC-2026-0595",
 ]
 
 [bans]

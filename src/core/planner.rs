@@ -366,34 +366,58 @@ impl FilterExpr {
 
         let sql = format!("SELECT * FROM t WHERE {}", filter);
 
-        // Pre-parse with sqlparser to guard against upstream DataFusion panics on malformed
-        // typed strings (e.g. `TIME?` where DataFusion 52.5.0 calls `value.into_string().unwrap()`).
+        // Pre-parse with sqlparser to guard against upstream DataFusion 52.5.0 panics:
+        // 1. Malformed typed strings (e.g. `TIME?` where DataFusion calls `value.into_string().unwrap()`).
+        // 2. Compound identifiers with >4 parts (e.g. `a.b.c.d.e` where DataFusion's `form_identifier`
+        //    returns `Err(Internal("Incorrect number of identifiers: ..."))` and DataFusion calls `.unwrap()`).
         {
             use datafusion::sql::sqlparser::ast::{Expr as SQLExpr, SetExpr, Statement};
             use datafusion::sql::sqlparser::dialect::GenericDialect;
             use datafusion::sql::sqlparser::parser::Parser;
 
-            fn has_invalid_typed_string(expr: &SQLExpr) -> bool {
+            fn is_panic_inducing_expr(expr: &SQLExpr) -> bool {
                 match expr {
+                    SQLExpr::CompoundIdentifier(idents) => idents.len() > 4 || idents.is_empty(),
                     SQLExpr::TypedString(ts) => ts.value.clone().into_string().is_none(),
                     SQLExpr::BinaryOp { left, right, .. } => {
-                        has_invalid_typed_string(left) || has_invalid_typed_string(right)
+                        is_panic_inducing_expr(left) || is_panic_inducing_expr(right)
                     }
                     SQLExpr::UnaryOp { expr, .. } | SQLExpr::Nested(expr) => {
-                        has_invalid_typed_string(expr)
+                        is_panic_inducing_expr(expr)
                     }
+                    SQLExpr::Cast { expr, .. } => is_panic_inducing_expr(expr),
                     SQLExpr::IsNull(expr) | SQLExpr::IsNotNull(expr) => {
-                        has_invalid_typed_string(expr)
+                        is_panic_inducing_expr(expr)
                     }
                     SQLExpr::InList { expr, list, .. } => {
-                        has_invalid_typed_string(expr) || list.iter().any(has_invalid_typed_string)
+                        is_panic_inducing_expr(expr) || list.iter().any(is_panic_inducing_expr)
                     }
                     SQLExpr::Between {
                         expr, low, high, ..
                     } => {
-                        has_invalid_typed_string(expr)
-                            || has_invalid_typed_string(low)
-                            || has_invalid_typed_string(high)
+                        is_panic_inducing_expr(expr)
+                            || is_panic_inducing_expr(low)
+                            || is_panic_inducing_expr(high)
+                    }
+                    SQLExpr::Like { expr, pattern, .. }
+                    | SQLExpr::ILike { expr, pattern, .. }
+                    | SQLExpr::SimilarTo { expr, pattern, .. } => {
+                        is_panic_inducing_expr(expr) || is_panic_inducing_expr(pattern)
+                    }
+                    SQLExpr::Case {
+                        operand,
+                        conditions,
+                        else_result,
+                        ..
+                    } => {
+                        operand.as_ref().is_some_and(|e| is_panic_inducing_expr(e))
+                            || conditions.iter().any(|cw| {
+                                is_panic_inducing_expr(&cw.condition)
+                                    || is_panic_inducing_expr(&cw.result)
+                            })
+                            || else_result
+                                .as_ref()
+                                .is_some_and(|e| is_panic_inducing_expr(e))
                     }
                     SQLExpr::Function(f) => {
                         use datafusion::sql::sqlparser::ast::{
@@ -404,7 +428,7 @@ impl FilterExpr {
                                 arg_list.args.iter().any(|arg| match arg {
                                     FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
                                         match arg {
-                                            FunctionArgExpr::Expr(e) => has_invalid_typed_string(e),
+                                            FunctionArgExpr::Expr(e) => is_panic_inducing_expr(e),
                                             _ => false,
                                         }
                                     }
@@ -414,6 +438,8 @@ impl FilterExpr {
                             _ => false,
                         }
                     }
+                    SQLExpr::Tuple(exprs) => exprs.iter().any(is_panic_inducing_expr),
+                    SQLExpr::Array(arr) => arr.elem.iter().any(is_panic_inducing_expr),
                     _ => false,
                 }
             }
@@ -423,8 +449,11 @@ impl FilterExpr {
                     if let Statement::Query(query) = stmt {
                         if let SetExpr::Select(select) = *query.body {
                             if let Some(selection) = select.selection {
-                                if has_invalid_typed_string(&selection) {
-                                    anyhow::bail!("malformed typed string in filter: '{}'", filter);
+                                if is_panic_inducing_expr(&selection) {
+                                    anyhow::bail!(
+                                        "malformed or unsupported expression in filter: '{}'",
+                                        filter
+                                    );
                                 }
                             }
                         }
@@ -1161,6 +1190,21 @@ mod between_dump_tests {
         );
         let res_outer = FilterExpr::parse_sql("TIME?", schema).await;
         assert!(res_outer.is_err(), "parse_sql('TIME?') must return an Err");
+    }
+
+    #[tokio::test]
+    async fn fuzzer_compound_identifier_depth() {
+        let schema = std::sync::Arc::new(arrow::datatypes::Schema::new(vec![
+            arrow::datatypes::Field::new("id", arrow::datatypes::DataType::Int64, false),
+            arrow::datatypes::Field::new("title", arrow::datatypes::DataType::Utf8, true),
+            arrow::datatypes::Field::new("score", arrow::datatypes::DataType::Float64, true),
+        ]));
+        let input = "+Pm.Xr.XrPm.Xr.Xr.XTIME.XTIMEs";
+        let res = FilterExpr::parse_sql_inner(input.to_string(), schema.clone()).await;
+        assert!(
+            res.is_err(),
+            "compound identifier with >4 parts must return Err, not panic"
+        );
     }
 }
 
