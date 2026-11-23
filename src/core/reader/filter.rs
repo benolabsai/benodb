@@ -273,6 +273,109 @@ impl HybridReader {
         Ok(false)
     }
 
+    pub async fn check_composite_value_exists(
+        &self,
+        columns: &[String],
+        values: &[serde_json::Value],
+    ) -> Result<bool> {
+        // 1. Bloom Filter (Fast rejection)
+        for (col, val) in columns.iter().zip(values.iter()) {
+            if !self.check_bloom_filter(col, val).await? {
+                return Ok(false);
+            }
+        }
+
+        // 2. Inverted Index / Bitmap Lookup
+        let mut intersected_bm: Option<RoaringBitmap> = None;
+        let mut all_exact = true;
+        let mut any_index = false;
+
+        for (col, val) in columns.iter().zip(values.iter()) {
+            let filter = crate::core::planner::QueryFilter {
+                column: col.clone(),
+                min: Some(val.clone()),
+                min_inclusive: true,
+                max: Some(val.clone()),
+                max_inclusive: true,
+                values: Some(vec![val.clone()]),
+                negated: false,
+            };
+
+            if let Some((bm, is_exact)) = self
+                .get_scalar_filter_bitmap_with_exactness(&filter)
+                .await?
+            {
+                any_index = true;
+                if !is_exact {
+                    all_exact = false;
+                }
+                intersected_bm = Some(match intersected_bm {
+                    Some(prev) => prev & bm,
+                    None => bm,
+                });
+                if let Some(ref bm) = intersected_bm {
+                    if bm.is_empty() {
+                        return Ok(false);
+                    }
+                }
+            } else {
+                all_exact = false;
+            }
+        }
+
+        if any_index && all_exact {
+            if let Some(bm) = intersected_bm {
+                let deleted = self.load_merged_deletes().await?;
+                let alive = bm - deleted;
+                return Ok(!alive.is_empty());
+            }
+        }
+
+        // 3. Fallback: Full Scan (projecting PK columns; stream_all already applies position & equality deletes)
+        let arrow_schema = self.get_arrow_schema().await.ok();
+        let proj_fields: Vec<Arc<arrow::datatypes::Field>> = columns
+            .iter()
+            .filter_map(|col| {
+                arrow_schema
+                    .as_ref()
+                    .and_then(|s| s.field_with_name(col).ok().map(|f| Arc::new(f.clone())))
+            })
+            .collect();
+
+        if proj_fields.len() != columns.len() {
+            return Ok(false);
+        }
+
+        let proj_schema = Some(Arc::new(arrow::datatypes::Schema::new(proj_fields)));
+        let mut stream = self.stream_all(proj_schema).await?;
+        while let Some(batch_res) = stream.next().await {
+            let batch = batch_res?;
+            let col_arrays: Vec<_> = columns
+                .iter()
+                .filter_map(|col| batch.column_by_name(col))
+                .collect();
+            if col_arrays.len() != columns.len() {
+                continue;
+            }
+
+            for row in 0..batch.num_rows() {
+                let mut matches = true;
+                for (col_arr, expected_val) in col_arrays.iter().zip(values.iter()) {
+                    if col_arr.is_null(row) || !arrow_cell_matches_json(col_arr, row, expected_val)
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+                if matches {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     #[tracing::instrument(skip(self, filter))]
     pub async fn get_scalar_filter_bitmap(
         &self,

@@ -22,6 +22,11 @@ pub fn l2_distance(a: &[f32], b: &[f32]) -> f32 {
 /// `Some`; `None` means "strictly worse than the threshold".
 #[inline]
 pub fn l2_distance_squared_early_exit(a: &[f32], b: &[f32], threshold: f32) -> Option<f32> {
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in l2_distance_squared_early_exit"
+    );
     if !threshold.is_finite() {
         return Some(l2_distance_squared(a, b));
     }
@@ -38,6 +43,11 @@ pub fn l2_distance_squared_early_exit(a: &[f32], b: &[f32], threshold: f32) -> O
 
 #[inline(always)]
 pub fn l2_distance_squared(a: &[f32], b: &[f32]) -> f32 {
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in l2_distance_squared"
+    );
     #[cfg(target_arch = "aarch64")]
     {
         // SAFETY: NEON is mandatory baseline on aarch64.
@@ -142,7 +152,12 @@ unsafe fn l2_distance_squared_avx2(a: &[f32], b: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
-    let n = a.len();
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in l2_distance_squared_avx2"
+    );
+    let n = a.len().min(b.len());
     let mut i = 0;
 
     let mut sum0 = _mm256_setzero_ps();
@@ -219,6 +234,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[inline(always)]
 pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    debug_assert_eq!(a.len(), b.len(), "Vector lengths must match in dot_product");
     #[cfg(target_arch = "aarch64")]
     {
         // SAFETY: NEON is mandatory baseline on aarch64.
@@ -321,7 +337,12 @@ unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
-    let n = a.len();
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in dot_product_avx2"
+    );
+    let n = a.len().min(b.len());
     let mut i = 0;
 
     let mut sum0 = _mm256_setzero_ps();
@@ -498,6 +519,11 @@ pub fn jaccard_distance(a: &[f32], b: &[f32]) -> f32 {
 
 /// Bit-optimized Hamming distance for packed binary vectors (e.g. 1 bit per element)
 pub fn hamming_distance_packed(a: &[u8], b: &[u8]) -> u32 {
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in hamming_distance_packed"
+    );
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         if is_x86_feature_detected!("popcnt") {
@@ -541,7 +567,12 @@ unsafe fn hamming_distance_packed_popcnt(a: &[u8], b: &[u8]) -> u32 {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
-    let n = a.len();
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in hamming_distance_packed_popcnt"
+    );
+    let n = a.len().min(b.len());
     let mut i = 0;
     let mut sum = 0;
 
@@ -633,6 +664,11 @@ pub fn sparse_l2_distance_squared(
 /// Optimized L2 distance for quantized u8 vectors
 #[inline(always)]
 pub fn l2_distance_u8(a: &[u8], b: &[u8]) -> f32 {
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in l2_distance_u8"
+    );
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         if is_x86_feature_detected!("avx2") {
@@ -672,7 +708,12 @@ unsafe fn l2_distance_u8_avx2(a: &[u8], b: &[u8]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
-    let n = a.len();
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "Vector lengths must match in l2_distance_u8_avx2"
+    );
+    let n = a.len().min(b.len());
     let mut i = 0;
     let mut sum_vec = _mm256_setzero_si256();
 
@@ -978,5 +1019,52 @@ mod early_exit_tests {
         }
 
         assert_eq!(topk, reference);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vector lengths must match in l2_distance_squared_avx2")]
+    fn simd_distance_dimension_mismatch_panics() {
+        let a = vec![1.0f32; 64];
+        let b = vec![1.0f32; 32];
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                let _ = unsafe { l2_distance_squared_avx2(&a, &b) };
+            } else {
+                panic!("Vector lengths must match in l2_distance_squared_avx2");
+            }
+        }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            panic!("Vector lengths must match in l2_distance_squared_avx2");
+        }
+    }
+
+    #[test]
+    fn simd_distance_matching_lengths() {
+        let a = vec![1.0f32; 64];
+        let b = vec![1.0f32; 64];
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                let d2 = unsafe { l2_distance_squared_avx2(&a, &b) };
+                assert_eq!(d2, 0.0);
+                let dot = unsafe { dot_product_avx2(&a, &b) };
+                assert_eq!(dot, 64.0);
+            }
+        }
+        let au8 = vec![5u8; 64];
+        let bu8 = vec![5u8; 64];
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                let d2_u8 = unsafe { l2_distance_u8_avx2(&au8, &bu8) };
+                assert_eq!(d2_u8, 0.0);
+            }
+            if is_x86_feature_detected!("popcnt") {
+                let h = unsafe { hamming_distance_packed_popcnt(&au8, &bu8) };
+                assert_eq!(h, 0);
+            }
+        }
     }
 }

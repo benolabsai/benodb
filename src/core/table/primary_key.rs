@@ -315,6 +315,65 @@ impl Table {
         }
     }
 
+    /// Check if a composite primary key tuple exists in committed storage.
+    pub(crate) async fn _check_composite_pk_in_storage_async(
+        &self,
+        columns: &[String],
+        values: &[serde_json::Value],
+    ) -> Result<bool> {
+        if columns.len() == 1 {
+            return self
+                ._check_pk_in_storage_async(&columns[0], &values[0])
+                .await;
+        }
+
+        let manifest = self.manifest().await?;
+        let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
+        let all_entries = manager.load_all_entries(&manifest).await?;
+        let iceberg_schema = manifest
+            .schemas
+            .iter()
+            .find(|s| s.schema_id == manifest.current_schema_id)
+            .or_else(|| manifest.schemas.last())
+            .cloned()
+            .unwrap_or_default();
+
+        use futures::stream::{self, StreamExt};
+
+        let readers: Vec<HybridReader> = all_entries
+            .into_iter()
+            .rev()
+            .map(|entry| {
+                self.segment_reader(&entry)
+                    .map(|r| r.with_iceberg_schema(iceberg_schema.clone()))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let concurrency = 8;
+        let result_stream = stream::iter(readers)
+            .map(|reader| {
+                let columns = columns.to_vec();
+                let values = values.to_vec();
+                async move { reader.check_composite_value_exists(&columns, &values).await }
+            })
+            .buffer_unordered(concurrency)
+            .filter_map(|res| async {
+                match res {
+                    Ok(true) => Some(Ok(true)),
+                    Ok(false) => None,
+                    Err(e) => Some(Err(e)),
+                }
+            });
+
+        let mut pinned_stream = Box::pin(result_stream);
+        let result = pinned_stream.next().await;
+
+        match result {
+            Some(res) => res,
+            None => Ok(false),
+        }
+    }
+
     /// Check if any keys in the batch already exist in the table (Primary Key Enforcement)
     pub async fn check_primary_key_uniqueness_async(
         &self,

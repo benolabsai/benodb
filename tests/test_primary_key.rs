@@ -167,3 +167,139 @@ async fn test_primary_key_nullability_enforcement() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_compound_primary_key_staged_write_uniqueness() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("pk1", DataType::Int32, false),
+        Field::new("pk2", DataType::Int32, false),
+        Field::new("val", DataType::Int32, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key(vec!["pk1".to_string(), "pk2".to_string()]);
+
+    // 1. Write and commit (10, 100)
+    let batch1 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![100])),
+            Arc::new(Int32Array::from(vec![1])),
+        ],
+    )?;
+    table.write_async(vec![batch1]).await?;
+    table.commit_async().await?;
+    table.wait_for_background_tasks_async().await?;
+
+    // 2. Stage (10, 101) - should SUCCEED (partial overlap, distinct composite key)
+    let batch2 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![101])),
+            Arc::new(Int32Array::from(vec![2])),
+        ],
+    )?;
+    let staged_entries = table.stage_data_files_async(vec![batch2]).await?;
+    assert!(!staged_entries.is_empty());
+    table.commit_staged_entries_async(staged_entries).await?;
+    table.wait_for_background_tasks_async().await?;
+
+    // 3. Stage (10, 100) - should FAIL (exists in committed storage)
+    let batch3 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![10])),
+            Arc::new(Int32Array::from(vec![100])),
+            Arc::new(Int32Array::from(vec![3])),
+        ],
+    )?;
+    let res = table.stage_data_files_async(vec![batch3]).await;
+    assert!(
+        res.is_err(),
+        "Should have failed due to duplicate compound PK in storage"
+    );
+    let err_msg = res.unwrap_err().to_string();
+    assert!(err_msg.contains("Duplicate primary key error"));
+
+    // 4. Stage duplicate within same staged batch - should FAIL
+    let batch4 = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![20, 20])),
+            Arc::new(Int32Array::from(vec![200, 200])),
+            Arc::new(Int32Array::from(vec![4, 5])),
+        ],
+    )?;
+    let res4 = table.stage_data_files_async(vec![batch4]).await;
+    assert!(
+        res4.is_err(),
+        "Should have failed due to duplicate compound PK within batch"
+    );
+    assert!(res4
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate primary key error"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_concurrent_primary_key_writes_serialized() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Int32, true),
+    ]));
+
+    let table = Arc::new(Table::create_async(uri.clone(), schema.clone()).await?);
+    table.set_primary_key(vec!["id".to_string()]);
+
+    let batch_a = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![42])),
+            Arc::new(Int32Array::from(vec![1])),
+        ],
+    )?;
+    let batch_b = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![42])),
+            Arc::new(Int32Array::from(vec![2])),
+        ],
+    )?;
+
+    let t1 = table.clone();
+    let t2 = table.clone();
+
+    let h1 = tokio::spawn(async move { t1.write_async(vec![batch_a]).await });
+    let h2 = tokio::spawn(async move { t2.write_async(vec![batch_b]).await });
+
+    let (res1, res2) = tokio::join!(h1, h2);
+    let r1 = res1?;
+    let r2 = res2?;
+
+    let (successes, failures) = match (r1, r2) {
+        (Ok(_), Err(e)) => (1, vec![e]),
+        (Err(e), Ok(_)) => (1, vec![e]),
+        (Ok(_), Ok(_)) => (2, vec![]),
+        (Err(e1), Err(e2)) => (0, vec![e1, e2]),
+    };
+
+    assert_eq!(successes, 1, "Exactly one concurrent write must succeed");
+    assert_eq!(failures.len(), 1);
+    assert!(failures[0]
+        .to_string()
+        .contains("Duplicate primary key error"));
+
+    Ok(())
+}

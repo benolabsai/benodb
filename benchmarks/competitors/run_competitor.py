@@ -179,11 +179,23 @@ def _dir_size(path: str) -> int:
 
 class FaissAdapter(VectorAdapter):
     def __init__(self, index_type: str = "flat") -> None:
-        name = "faiss_sq" if index_type in ("hnsw_sq", "sq") else "faiss"
+        name = {
+            "hnsw_sq": "faiss_sq",
+            "sq": "faiss_sq",
+            "ivf_sq8": "faiss_ivfsq8",
+            "ivfpq": "faiss_ivfpq",
+        }.get(index_type, "faiss")
         super().__init__(name=name, module="faiss")
         self.index_type = index_type
-        self.index_precision = "sq" if index_type in ("hnsw_sq", "sq") else "f32"
+        self.index_precision = {
+            "hnsw_sq": "sq",
+            "sq": "sq",
+            "ivf_sq8": "sq",
+            "ivfpq": "pq",
+        }.get(index_type, "f32")
         self._train: Optional[np.ndarray] = None
+        self._ivf = None
+        self._nprobe = 0
 
     def build(self, train, params, ctx):
         import faiss
@@ -196,6 +208,8 @@ class FaissAdapter(VectorAdapter):
             else faiss.METRIC_L2
         )
         data = np.ascontiguousarray(train)
+        if data.dtype != np.float32:
+            data = data.astype(np.float32)
         if metric == "cosine":
             faiss.normalize_L2(data)
 
@@ -206,6 +220,39 @@ class FaissAdapter(VectorAdapter):
             index.hnsw.efConstruction = params["ef_construction"]
             index.train(data)
             index.add(data)
+        elif self.index_type in ("ivf_sq8", "ivfpq"):
+            nlist = int(params.get("nlist", 1024) or 1024)
+            self._nprobe = int(params.get("nprobe", 0) or 0)
+            quantizer = (
+                faiss.IndexFlatIP(dim)
+                if faiss_metric == faiss.METRIC_INNER_PRODUCT
+                else faiss.IndexFlatL2(dim)
+            )
+            if self.index_type == "ivf_sq8":
+                index = faiss.IndexIVFScalarQuantizer(
+                    quantizer, dim, nlist, faiss.ScalarQuantizer.QT_8bit, faiss_metric
+                )
+            else:
+                pq_m = int(params.get("pq_m", 16) or 16)
+                pq_nbits = int(params.get("pq_nbits", 8) or 8)
+                index = faiss.IndexIVFPQ(quantizer, dim, nlist, pq_m, pq_nbits, faiss_metric)
+            index.train(data)
+            if params.get("mmap_invlists"):
+                base = ctx.get("path") or tempfile.mkdtemp(prefix="faiss_ivf_")
+                os.makedirs(base, exist_ok=True)
+                inv = faiss.OnDiskInvertedLists(
+                    index.nlist, index.code_size, os.path.join(base, "invlists.dat")
+                )
+                index.replace_invlists(inv)
+            index.add(data)
+            self._ivf = index
+            index.nprobe = (
+                self._nprobe
+                if self._nprobe > 0
+                else max(1, int(params.get("ef_search", 16) or 16) // 10)
+            )
+            if self.index_type == "ivfpq" and params.get("refine", False):
+                index = faiss.IndexRefineFlat(index, faiss.swig_ptr(data))
         else:
             index = faiss.IndexHNSWFlat(dim, params["m"], faiss_metric)
             index.hnsw.efConstruction = params["ef_construction"]
@@ -227,11 +274,20 @@ class FaissAdapter(VectorAdapter):
         import faiss
 
         index = handle[0] if isinstance(handle, tuple) else handle
-        index.hnsw.efSearch = ef_search
         q = np.ascontiguousarray(queries)
+        if q.dtype != np.float32:
+            q = q.astype(np.float32)
         if metric == "cosine":
             faiss.normalize_L2(q)
-        _, ids = index.search(q, k)
+        if self.index_type in ("ivf_sq8", "ivfpq"):
+            nlist = int(getattr(self._ivf, "nlist", 0) or 0)
+            nprobe = self._nprobe if self._nprobe > 0 else max(1, int(ef_search) // 10)
+            nprobe = min(nlist, nprobe) if nlist else nprobe
+            self._ivf.nprobe = nprobe
+            _, ids = index.search(q, k)
+        else:
+            index.hnsw.efSearch = ef_search
+            _, ids = index.search(q, k)
         return ids
 
     def search_full_row(self, handle, queries, k, ef_search, metric):
@@ -1184,6 +1240,8 @@ def vector_adapters() -> dict[str, VectorAdapter]:
         "diskann_mem": DiskANNAdapter("memory"),
         "faiss": FaissAdapter("flat"),
         "faiss_sq": FaissAdapter("hnsw_sq"),
+        "faiss_ivfsq8": FaissAdapter("ivf_sq8"),
+        "faiss_ivfpq": FaissAdapter("ivfpq"),
         "hnswlib": HnswlibAdapter(),
         "pgvector": PgvectorAdapter(),
         # LanceDB HNSW: uncompressed float32 (HnswFlat) and scalar-quantized (HnswSq)
@@ -1265,7 +1323,7 @@ def load_dataset(path: str, data_dir: Optional[str] = None):
         with open(gt_path, "rb") as f:
             header = np.fromfile(f, dtype=np.int32, count=2)
             n_q, file_k = int(header[0]), int(header[1])
-            neighbors = np.fromfile(f, dtype=np.uint32, offset=8, count=n_q * file_k).reshape((n_q, file_k))
+            neighbors = np.fromfile(f, dtype=np.uint32, count=n_q * file_k).reshape((n_q, file_k))
         return train, test, neighbors
 
     import h5py
@@ -1313,6 +1371,12 @@ def run_vector(adapter: VectorAdapter, args) -> dict:
         "ef_construction": args.ef_construction,
         "ef_search": args.ef_search,
         "metric": metric,
+        "nlist": args.nlist,
+        "nprobe": args.nprobe,
+        "pq_m": args.pq_m,
+        "pq_nbits": args.pq_nbits,
+        "refine": args.refine,
+        "mmap_invlists": args.mmap_invlists,
     }
     ctx = {
         "dsn": args.dsn,
@@ -2554,6 +2618,12 @@ def main() -> None:
     ap.add_argument("--m", type=int, default=16)
     ap.add_argument("--ef-construction", type=int, default=200)
     ap.add_argument("--ef-search", type=int, default=200)
+    ap.add_argument("--nlist", type=int, default=1024)
+    ap.add_argument("--nprobe", type=int, default=0)
+    ap.add_argument("--pq-m", type=int, default=16)
+    ap.add_argument("--pq-nbits", type=int, default=8)
+    ap.add_argument("--refine", action="store_true")
+    ap.add_argument("--mmap-invlists", action="store_true")
     ap.add_argument("--metric", default=None)
     ap.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
     ap.add_argument("--cores", type=int, default=0)

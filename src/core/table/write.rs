@@ -397,136 +397,89 @@ impl Table {
         // 2. Primary Key Uniqueness Validation
         let t_pk = std::time::Instant::now();
         let pk_cols = self.primary_key.read().clone();
+        let _pk_validation_guard = if !pk_cols.is_empty() {
+            Some(self.pk_validation_lock.lock().await)
+        } else {
+            None
+        };
+
         if !pk_cols.is_empty() {
-            // Accelerated path for single-column Primary Keys
-            if pk_cols.len() == 1 {
-                let pk_col = &pk_cols[0];
-                let mut seen_keys = std::collections::HashSet::new();
+            let mut seen_keys = std::collections::HashSet::new();
 
-                {
-                    let pc_guard = self.pending_commit.lock();
-                    let pending = self.pending_writes.read();
-                    // 1. Pre-populate seen keys from any Staging commit + active write buffer
-                    let staging_iter = pc_guard
-                        .as_ref()
-                        .filter(|pc| pc.phase == CommitPhase::Staging)
-                        .into_iter()
-                        .flat_map(|pc| pc.batches.iter());
-                    for b_batch in staging_iter.chain(pending.iter().map(|p| &p.batch)) {
-                        if let Some(b_col) = b_batch.column_by_name(pk_col) {
-                            for j in 0..b_batch.num_rows() {
-                                let b_val =
-                                    crate::core::manifest::ManifestValue::from_array(b_col, j);
-                                seen_keys.insert(b_val.to_string());
+            // 1. Pre-populate seen keys from any Staging commit + active write buffer
+            {
+                let pc_guard = self.pending_commit.lock();
+                let pending = self.pending_writes.read();
+                let staging_iter = pc_guard
+                    .as_ref()
+                    .filter(|pc| pc.phase == CommitPhase::Staging)
+                    .into_iter()
+                    .flat_map(|pc| pc.batches.iter());
+                for b_batch in staging_iter.chain(pending.iter().map(|p| &p.batch)) {
+                    let key_cols: Vec<_> = pk_cols
+                        .iter()
+                        .filter_map(|name| b_batch.column_by_name(name))
+                        .collect();
+                    if key_cols.len() == pk_cols.len() {
+                        for j in 0..b_batch.num_rows() {
+                            let mut tuple_key = String::new();
+                            for col in &key_cols {
+                                let val = crate::core::manifest::ManifestValue::from_array(col, j);
+                                tuple_key.push_str(&val.to_string());
+                                tuple_key.push('\u{1f}');
                             }
+                            seen_keys.insert(tuple_key);
                         }
                     }
                 }
+            }
 
-                // 2. Check each record in the incoming batches
-                for batch in &batches {
-                    if let Some(col) = batch.column_by_name(pk_col) {
-                        for i in 0..batch.num_rows() {
-                            let m_val = crate::core::manifest::ManifestValue::from_array(col, i);
-
-                            // Check for nulls in PK
-                            if matches!(m_val, crate::core::manifest::ManifestValue::Null) {
-                                return Err(anyhow::Error::from(
-                                    BenoStreamError::NullConstraintViolation {
-                                        column: pk_col.clone(),
-                                    },
-                                ));
-                            }
-
-                            let val_str = m_val.to_string();
-
-                            // Check against buffer and current batch
-                            if seen_keys.contains(&val_str) {
-                                return Err(anyhow::Error::from(
-                                    BenoStreamError::PrimaryKeyViolation {
-                                        key: val_str.clone(),
-                                    },
-                                ));
-                            }
-
-                            // 3. Check against storage (Index-driven)
-                            let val_json =
-                                serde_json::to_value(&m_val).unwrap_or(serde_json::Value::Null);
-                            if self._check_pk_in_storage_async(pk_col, &val_json).await? {
-                                return Err(anyhow::Error::from(
-                                    BenoStreamError::PrimaryKeyViolation {
-                                        key: val_str.clone(),
-                                    },
-                                ));
-                            }
-
-                            seen_keys.insert(val_str);
-                        }
-                    }
+            // 2. Check incoming batches against nulls, buffer/batch duplicates, and committed storage
+            for batch in &batches {
+                let key_cols: Vec<_> = pk_cols
+                    .iter()
+                    .filter_map(|name| batch.column_by_name(name))
+                    .collect();
+                if key_cols.len() != pk_cols.len() {
+                    continue;
                 }
-            } else {
-                let buffered_batches: Vec<RecordBatch> = {
-                    let pc_guard = self.pending_commit.lock();
-                    let pending = self.pending_writes.read();
-                    let mut combined = Vec::new();
-                    if let Some(pc) = pc_guard.as_ref() {
-                        if pc.phase == CommitPhase::Staging {
-                            combined.extend(pc.batches.iter().cloned());
+
+                for i in 0..batch.num_rows() {
+                    let mut tuple_key = String::new();
+                    let mut tuple_values = Vec::with_capacity(pk_cols.len());
+
+                    for (col_idx, col) in key_cols.iter().enumerate() {
+                        let m_val = crate::core::manifest::ManifestValue::from_array(col, i);
+                        if matches!(m_val, crate::core::manifest::ManifestValue::Null) {
+                            return Err(anyhow::Error::from(
+                                BenoStreamError::NullConstraintViolation {
+                                    column: pk_cols[col_idx].clone(),
+                                },
+                            ));
                         }
+                        tuple_key.push_str(&m_val.to_string());
+                        tuple_key.push('\u{1f}');
+                        let val_json =
+                            serde_json::to_value(&m_val).unwrap_or(serde_json::Value::Null);
+                        tuple_values.push(val_json);
                     }
-                    combined.extend(pending.iter().map(|p| p.batch.clone()));
-                    combined
-                };
-                // Fallback for multi-column PKs (O(N*M) check for now)
-                for batch in &batches {
-                    for pk_col in &pk_cols {
-                        if let Some(col) = batch.column_by_name(pk_col) {
-                            for i in 0..batch.num_rows() {
-                                let val = crate::core::manifest::ManifestValue::from_array(col, i);
 
-                                // Check for nulls in PK
-                                if matches!(val, crate::core::manifest::ManifestValue::Null) {
-                                    return Err(anyhow::Error::from(
-                                        BenoStreamError::NullConstraintViolation {
-                                            column: pk_col.clone(),
-                                        },
-                                    ));
-                                }
-
-                                // Check against buffer
-                                for b_batch in &buffered_batches {
-                                    if let Some(b_col) = b_batch.column_by_name(pk_col) {
-                                        for j in 0..b_batch.num_rows() {
-                                            let b_val =
-                                                crate::core::manifest::ManifestValue::from_array(
-                                                    b_col, j,
-                                                );
-                                            if val == b_val {
-                                                return Err(anyhow::Error::from(
-                                                    BenoStreamError::PrimaryKeyViolation {
-                                                        key: val.to_string(),
-                                                    },
-                                                ));
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Check against other rows in the same batch (before index i)
-                                for j in 0..i {
-                                    let b_val =
-                                        crate::core::manifest::ManifestValue::from_array(col, j);
-                                    if val == b_val {
-                                        return Err(anyhow::Error::from(
-                                            BenoStreamError::PrimaryKeyViolation {
-                                                key: val.to_string(),
-                                            },
-                                        ));
-                                    }
-                                }
-                            }
-                        }
+                    if seen_keys.contains(&tuple_key) {
+                        return Err(anyhow::Error::from(BenoStreamError::PrimaryKeyViolation {
+                            key: tuple_key,
+                        }));
                     }
+
+                    if self
+                        ._check_composite_pk_in_storage_async(&pk_cols, &tuple_values)
+                        .await?
+                    {
+                        return Err(anyhow::Error::from(BenoStreamError::PrimaryKeyViolation {
+                            key: tuple_key,
+                        }));
+                    }
+
+                    seen_keys.insert(tuple_key);
                 }
             }
         }
@@ -672,7 +625,7 @@ impl Table {
             }
         }
 
-        let batches: Vec<Result<RecordBatch>> = batches
+        let batches: Vec<RecordBatch> = batches
             .into_iter()
             .map(|b| -> Result<RecordBatch> {
                 if b.schema() != target_schema {
@@ -698,18 +651,7 @@ impl Table {
                     Ok(b)
                 }
             })
-            .collect();
-
-        let batches: Vec<RecordBatch> = batches
-            .into_iter()
-            .filter_map(|r| match r {
-                Ok(b) => Some(b),
-                Err(e) => {
-                    tracing::warn!("Batch schema coercion failed during write: {}", e);
-                    None
-                }
-            })
-            .collect();
+            .collect::<Result<Vec<RecordBatch>>>()?;
 
         if is_empty_schema {
             // Schema was empty, now we have detected column types from the data
@@ -890,6 +832,7 @@ impl Table {
                     .map(|batch| PendingWrite { batch, tx_id }),
             );
         }
+        drop(_pk_validation_guard);
         self.bump_buffer_epoch();
 
         // Release the maintenance read guard now that the WAL, memory index, and

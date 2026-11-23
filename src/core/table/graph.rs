@@ -167,13 +167,27 @@ impl Table {
                                     cache.get_mmap(&edges_str).await,
                                     cache.get_mmap(&dict_str).await,
                                 ) {
-                                    col_segments.entry(col.to_string()).or_default().push(
-                                        MmapCsrGraph::from_mmaps(
-                                            offsets_mmap,
-                                            edges_mmap,
-                                            dict_mmap,
-                                        ),
-                                    );
+                                    match MmapCsrGraph::try_from_mmaps(
+                                        offsets_mmap,
+                                        edges_mmap,
+                                        dict_mmap,
+                                    ) {
+                                        Ok(graph) => {
+                                            col_segments
+                                                .entry(col.to_string())
+                                                .or_default()
+                                                .push(graph);
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                column = %col,
+                                                file = %idx.file_path,
+                                                error = %e,
+                                                "failed to validate loose CSR sidecars; \
+                                                 falling back to a relational scan"
+                                            );
+                                        }
+                                    }
                                 } else {
                                     tracing::warn!(
                                         column = %col,
@@ -288,7 +302,7 @@ impl Table {
         let offsets = offsets.context("Puffin CSR bundle is missing the offsets blob")?;
         let edges = edges.context("Puffin CSR bundle is missing the edges blob")?;
         let dict = dict.context("Puffin CSR bundle is missing the dict blob")?;
-        let graph = MmapCsrGraph::from_bytes(offsets, edges, dict);
+        let graph = MmapCsrGraph::try_from_bytes(offsets, edges, dict)?;
         tracing::debug!(
             file = %idx.file_path,
             column = %idx.column_name,

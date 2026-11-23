@@ -1,3 +1,15 @@
+## [0.17.2] - 2026-11-23
+
+### Fixed
+- **Lock Ownership Validation and Atomic Conditional Release**: Eliminated TOCTOU lease-stealing race in `LockGuard` by making release conditional on object `UpdateVersion` (ETag and version). Stale guards whose leases expired no longer delete newly acquired locks held by competing nodes.
+- **Write Coercion Error Propagation**: Propagated schema coercion errors with `?` across batch writes rather than silently discarding invalid record batches via `filter_map`.
+- **Composite Primary Key Enforcement**: Implemented tuple-level uniqueness validation for multi-column primary keys across committed storage, pending writes, and staged writes using `check_composite_value_exists`.
+- **Concurrent Primary Key Validation Serialization**: Introduced dedicated primary key validation mutex (`pk_validation_lock`) to serialize validation and reservation before appending to pending writes and WAL, eliminating concurrent insert duplicate key admission.
+- **Distributed Ingest Idempotency and Deduplication**: Enforced shared storage completion marker checks (`is_completed`) in work unit claim loops and before manifest publication. Tied segment identities deterministically to work unit hash slugs (`format!("seg_{}_{:04x}", slug, part_idx)`), preventing duplicate segment commits under OCC rebase.
+- **CSR Graph Storage Alignment and Structural Validation**: Replaced raw unaligned byte slicing with typed, aligned `GraphStorage<T>` (`offsets: GraphStorage<u64>`, `edges: GraphStorage<CsrEdge>`, `dict: GraphStorage<u64>`) with bounds and monotonicity validation (`offsets[0] == 0`, `offsets[i] <= offsets[i+1] <= num_edges`).
+- **SIMD Distance Kernel Dimension Guards**: Added length bounding (`a.len().min(b.len())`) and debug assertions across AVX2 L2, dot product, and Hamming kernels to prevent out-of-bounds reads on mismatched vector dimensions.
+- **Query Planner Compound Identifier Guard**: Rejected SQL compound identifiers with greater than four parts prior to DataFusion planner lowering, preventing panic during deep schema resolution fuzz testing.
+
 ## [0.17.1] - 2026-11-21
 
 ### Fixed

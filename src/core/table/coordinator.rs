@@ -64,7 +64,7 @@ impl WorkUnit {
     /// FNV-1a over the key: deterministic across machines and Rust versions
     /// (unlike `DefaultHasher`), and fixed-length so long paths don't overflow
     /// object-name limits.
-    fn slug(&self) -> String {
+    pub fn slug(&self) -> String {
         let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
         for b in self.key().as_bytes() {
             hash ^= *b as u64;
@@ -102,6 +102,9 @@ pub trait WorkCoordinator: Send + Sync {
 
     /// Units already marked complete (shared across machines).
     async fn completed(&self) -> Result<HashSet<String>>;
+
+    /// Check if a unit is already completed in shared storage.
+    async fn is_completed(&self, unit: &WorkUnit) -> Result<bool>;
 }
 
 /// Object-store lease backend: the default, zero-dependency coordinator.
@@ -157,6 +160,10 @@ impl WorkCoordinator for ObjectStoreCoordinator {
             if completed.contains(&unit.key()) {
                 continue;
             }
+            // Check if another worker marked this unit complete in shared storage
+            if self.is_completed(unit).await.unwrap_or(false) {
+                continue;
+            }
             // Clamp to a 1-second minimum: a 0-second TTL would make the
             // heartbeat spin and race its own CAS renewals.
             let lock = FileBasedLock::new(
@@ -166,6 +173,11 @@ impl WorkCoordinator for ObjectStoreCoordinator {
             )
             .with_clock_skew(self.clock_skew_ms);
             if let Some(guard) = lock.try_acquire().await? {
+                // Double-check the completion marker under the acquired lease
+                if self.is_completed(unit).await.unwrap_or(false) {
+                    drop(guard);
+                    continue;
+                }
                 return Ok(Some(Lease {
                     unit: unit.clone(),
                     guard,
@@ -187,6 +199,14 @@ impl WorkCoordinator for ObjectStoreCoordinator {
 
     fn release(&self, lease: Lease) {
         drop(lease.guard);
+    }
+
+    async fn is_completed(&self, unit: &WorkUnit) -> Result<bool> {
+        match self.store.head(&self.done_path(unit)).await {
+            Ok(_) => Ok(true),
+            Err(object_store::Error::NotFound { .. }) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn completed(&self) -> Result<HashSet<String>> {
@@ -273,6 +293,30 @@ mod tests {
         let c2 = ObjectStoreCoordinator::new(s.clone(), units(), Duration::from_secs(60));
         let l2 = c2.claim(&done).await.unwrap().unwrap();
         assert_ne!(l2.unit.key(), key);
+    }
+
+    #[tokio::test]
+    async fn completed_unit_is_skipped_even_with_stale_completed_set() {
+        let s = store();
+        let c1 = ObjectStoreCoordinator::new(s.clone(), units(), Duration::from_secs(60));
+        let c2 = ObjectStoreCoordinator::new(s.clone(), units(), Duration::from_secs(60));
+
+        // c1 and c2 both start with an empty completed set
+        let stale_done = HashSet::new();
+
+        // c1 claims unit 0 and completes it
+        let lease1 = c1.claim(&stale_done).await.unwrap().unwrap();
+        let key1 = lease1.unit.key();
+        c1.complete(lease1).await.unwrap();
+
+        // c2 now claims using its stale_done (which does NOT contain key1)
+        // c2 must skip key1 because the done marker exists in storage!
+        let lease2 = c2.claim(&stale_done).await.unwrap().unwrap();
+        assert_ne!(
+            lease2.unit.key(),
+            key1,
+            "c2 must not claim key1 even though its local completed set is stale"
+        );
     }
 
     #[tokio::test]

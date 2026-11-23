@@ -438,6 +438,7 @@ impl Table {
                             &index_configs,
                             default_device.as_deref(),
                             &pk,
+                            Some(&unit.slug()),
                         )
                         .await?;
                     Ok::<_, anyhow::Error>((unit, entries, rows))
@@ -452,6 +453,17 @@ impl Table {
                 let (unit, entries, rows) = build?;
                 let paths: Vec<String> = entries.iter().map(|e| e.file_path.clone()).collect();
                 if !entries.is_empty() {
+                    // Check if another worker completed this unit while we were building
+                    if coordinator.is_completed(&unit).await? {
+                        tracing::warn!(
+                            "Unit {} was completed by another worker; skipping redundant manifest commit.",
+                            unit.key()
+                        );
+                        completed.insert(unit.key());
+                        coordinator.complete(lease).await?;
+                        continue;
+                    }
+
                     manifest_manager
                         .commit(
                             &entries,
@@ -557,6 +569,7 @@ impl Table {
                             &index_configs,
                             default_device.as_deref(),
                             &pk,
+                            Some(&unit.slug()),
                         )
                         .await?;
                     Ok((unit, entries, rows))
@@ -627,6 +640,7 @@ impl Table {
         index_configs: &HashMap<String, ColumnIndexConfig>,
         default_device: Option<&str>,
         pk: &[String],
+        unit_slug: Option<&str>,
     ) -> Result<Vec<ManifestEntry>> {
         // Align to the table's evolved schema so every segment carries every
         // column (NULLs where absent), matching the flush path.
@@ -665,12 +679,15 @@ impl Table {
         let partitioned = spec.partition_batch(&sorted_batch)?;
 
         let mut entries = Vec::with_capacity(partitioned.len());
-        for (partition_values, part_batch) in partitioned {
+        for (part_idx, (partition_values, part_batch)) in partitioned.into_iter().enumerate() {
             if part_batch.num_rows() == 0 {
                 continue;
             }
             let hive_path = spec.partition_to_path(&partition_values);
-            let segment_id = format!("seg_{}", uuid::Uuid::new_v4());
+            let segment_id = match unit_slug {
+                Some(slug) => format!("seg_{}_{:04x}", slug, part_idx),
+                None => format!("seg_{}", uuid::Uuid::new_v4()),
+            };
             let full_base_path = if hive_path.is_empty() {
                 base_path.trim_end_matches('/').to_string()
             } else {

@@ -316,12 +316,12 @@ impl Table {
             }
             for row in 0..batch.num_rows() {
                 let mut key = String::new();
-                for column in &key_columns {
+                for (col_idx, column) in key_columns.iter().enumerate() {
                     let value = ManifestValue::from_array(column, row);
                     if matches!(value, ManifestValue::Null) {
                         return Err(anyhow::Error::from(
                             crate::core::error::BenoStreamError::NullConstraintViolation {
-                                column: pk_columns[0].clone(),
+                                column: pk_columns[col_idx].clone(),
                             },
                         ));
                     }
@@ -337,20 +337,29 @@ impl Table {
         }
 
         for batch in batches {
-            for name in &pk_columns {
-                let Some(column) = batch.column_by_name(name) else {
-                    continue;
-                };
-                for row in 0..batch.num_rows() {
+            let key_columns: Vec<_> = pk_columns
+                .iter()
+                .filter_map(|name| batch.column_by_name(name).cloned())
+                .collect();
+            if key_columns.len() != pk_columns.len() {
+                continue;
+            }
+            for row in 0..batch.num_rows() {
+                let mut key_str = String::new();
+                let mut jsons = Vec::with_capacity(pk_columns.len());
+                for column in &key_columns {
                     let value = ManifestValue::from_array(column, row);
-                    let json = serde_json::to_value(&value)?;
-                    if self._check_pk_in_storage_async(name, &json).await? {
-                        return Err(anyhow::Error::from(
-                            crate::core::error::BenoStreamError::PrimaryKeyViolation {
-                                key: value.to_string(),
-                            },
-                        ));
-                    }
+                    key_str.push_str(&value.to_string());
+                    key_str.push('\u{1f}');
+                    jsons.push(serde_json::to_value(&value)?);
+                }
+                if self
+                    ._check_composite_pk_in_storage_async(&pk_columns, &jsons)
+                    .await?
+                {
+                    return Err(anyhow::Error::from(
+                        crate::core::error::BenoStreamError::PrimaryKeyViolation { key: key_str },
+                    ));
                 }
             }
         }

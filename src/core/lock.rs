@@ -39,8 +39,68 @@ impl LockGuard {
         if let Some(tx) = self.abort_tx.take() {
             let _ = tx.send(());
         }
-        let _ = self.store.delete(&self.path).await;
         self.released = true;
+        Self::release_internal(self.store.clone(), self.path.clone(), self.owner.clone()).await;
+    }
+
+    async fn release_internal(store: Arc<dyn ObjectStore>, path: Path, owner: String) {
+        match store.get(&path).await {
+            Ok(res) => {
+                let meta = res.meta.clone();
+                if let Ok(bytes) = res.bytes().await {
+                    if let Ok(payload) = serde_json::from_slice::<LockPayload>(&bytes) {
+                        if payload.owner != owner {
+                            tracing::warn!(
+                                "Lock release skipped: lock is now owned by '{}', not '{}'.",
+                                payload.owner,
+                                owner
+                            );
+                            return;
+                        }
+
+                        // Ownership matches. Atomically mark as released/expired with
+                        // UpdateVersion to fence against any concurrent steal before deleting.
+                        let released_payload = LockPayload {
+                            owner: String::new(),
+                            expires_at: 0,
+                        };
+                        let update_opts = PutOptions {
+                            mode: PutMode::Update(UpdateVersion {
+                                e_tag: meta.e_tag,
+                                version: meta.version,
+                            }),
+                            ..Default::default()
+                        };
+
+                        match store
+                            .put_opts(
+                                &path,
+                                serde_json::to_vec(&released_payload).unwrap().into(),
+                                update_opts,
+                            )
+                            .await
+                        {
+                            Ok(_) => {
+                                // Successfully updated while still holding valid ownership/version.
+                                let _ = store.delete(&path).await;
+                            }
+                            Err(object_store::Error::NotImplemented)
+                            | Err(object_store::Error::NotSupported { .. }) => {
+                                // Fallback for stores lacking conditional update (e.g. local FS).
+                                let _ = store.delete(&path).await;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Conditional lock release aborted (lock stolen by another process): {}",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => {} // Already deleted
+        }
     }
 }
 
@@ -57,24 +117,7 @@ impl Drop for LockGuard {
         let owner = self.owner.clone();
 
         tokio::spawn(async move {
-            match store.get(&path).await {
-                Ok(res) => {
-                    if let Ok(bytes) = res.bytes().await {
-                        if let Ok(payload) = serde_json::from_slice::<LockPayload>(&bytes) {
-                            if payload.owner == owner {
-                                let _ = store.delete(&path).await;
-                            } else {
-                                tracing::warn!(
-                                    "Lock release skipped: lock is now owned by '{}', not '{}'.",
-                                    payload.owner,
-                                    owner
-                                );
-                            }
-                        }
-                    }
-                }
-                Err(_) => {} // Already deleted
-            }
+            Self::release_internal(store, path, owner).await;
         });
     }
 }
@@ -323,5 +366,35 @@ mod tests {
             lock2.try_acquire().await.unwrap().is_some(),
             "Should steal expired lock"
         );
+    }
+
+    #[tokio::test]
+    async fn test_stale_release_does_not_delete_stolen_lock() {
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let path = Path::from("stolen.lock");
+
+        // 1. Process A acquires lock with 0 TTL (expires immediately)
+        let lock_a = FileBasedLock::new(store.clone(), path.clone(), 0).with_clock_skew(0);
+        let guard_a = lock_a.try_acquire().await.unwrap().expect("A acquires");
+
+        // 2. Process B steals the expired lock
+        let lock_b = FileBasedLock::new(store.clone(), path.clone(), 30).with_clock_skew(0);
+        let _guard_b = lock_b.try_acquire().await.unwrap().expect("B steals");
+
+        // 3. Process A calls release on its stale guard
+        guard_a.release().await;
+
+        // 4. Assert that B's lock still exists and cannot be acquired by C
+        let lock_c = FileBasedLock::new(store.clone(), path.clone(), 30).with_clock_skew(0);
+        assert!(
+            lock_c.try_acquire().await.unwrap().is_none(),
+            "C should not acquire because B still holds the lock"
+        );
+
+        // Verify the payload in storage still has B as owner
+        let res = store.get(&path).await.unwrap();
+        let bytes = res.bytes().await.unwrap();
+        let payload: LockPayload = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(payload.owner, lock_b.owner);
     }
 }

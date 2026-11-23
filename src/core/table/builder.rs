@@ -531,6 +531,7 @@ impl TableBuilder {
                     .collect(),
             )),
             commit_lock: Arc::new(Mutex::new(())),
+            pk_validation_lock: Arc::new(tokio::sync::Mutex::new(())),
             pending_commit: Arc::new(parking_lot::Mutex::new(None)),
             committed_wal_txs: Arc::new(parking_lot::Mutex::new(committed_tx)),
             buffer_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
