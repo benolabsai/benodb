@@ -211,32 +211,7 @@ impl Table {
         };
 
         // Cross-process serialization lock for primary key validation and publication
-        let _cross_process_guard = if !pk_columns.is_empty() {
-            let lock_path = self.pk_lock_path();
-            let lock =
-                crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path.clone(), 30);
-            let mut acquired = None;
-            for _ in 0..100 {
-                if let Some(guard) = lock.try_acquire().await? {
-                    acquired = Some(guard);
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            match acquired {
-                Some(guard) => Some(guard),
-                None => {
-                    return Err(anyhow::Error::from(
-                        crate::core::error::BenoStreamError::LockAcquireFailed {
-                            resource: lock_path.to_string(),
-                            retries: 100,
-                        },
-                    ));
-                }
-            }
-        } else {
-            None
-        };
+        let _cross_process_guard = self.acquire_pk_publication_lock().await?;
 
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let root_prefix = self.uri.trim_end_matches('/');

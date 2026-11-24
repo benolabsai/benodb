@@ -27,16 +27,86 @@ impl Table {
     // Primary key setters / getters
     // -----------------------------------------------------------------------
 
-    /// Derive an isolated lock path for primary key publication.
-    /// Scoped by a stable SHA-256 hash of the normalized full table URI to guarantee
-    /// complete isolation across distinct tables sharing an object store namespace.
+    /// Derive a globally isolated lock path for primary key publication.
+    /// Scoped by the full 256-bit SHA-256 digest of the canonicalized table storage URI,
+    /// ensuring equivalent path representations map to the same lock while preventing
+    /// collisions across distinct tables sharing an object store namespace.
     pub fn pk_lock_path(&self) -> object_store::path::Path {
         use sha2::{Digest, Sha256};
-        let normalized = self.uri.trim().trim_end_matches('/');
+        let canonical_uri = Self::canonicalize_table_uri(&self.uri);
         let mut hasher = Sha256::new();
-        hasher.update(normalized.as_bytes());
+        hasher.update(canonical_uri.as_bytes());
         let hash = format!("{:x}", hasher.finalize());
-        object_store::path::Path::from(format!("_metadata/pk_commit_{}.lock", &hash[..16]))
+        object_store::path::Path::from(format!("_metadata/pk_commit_{}.lock", hash))
+    }
+
+    /// Normalize table URI to canonical storage identity.
+    pub fn canonicalize_table_uri(uri: &str) -> String {
+        let trimmed = uri.trim();
+        if trimmed.starts_with('/') || trimmed.starts_with("file://") || !trimmed.contains("://") {
+            let raw_path = trimmed.strip_prefix("file://").unwrap_or(trimmed);
+            let p = std::path::Path::new(raw_path);
+            let canonical_p = if let Ok(abs) = std::fs::canonicalize(p) {
+                abs
+            } else if let Ok(abs) = std::env::current_dir().map(|cwd| cwd.join(p)) {
+                let mut components = Vec::new();
+                for c in abs.components() {
+                    match c {
+                        std::path::Component::CurDir => {}
+                        std::path::Component::ParentDir => {
+                            components.pop();
+                        }
+                        _ => components.push(c.as_os_str().to_string_lossy().to_string()),
+                    }
+                }
+                std::path::PathBuf::from(components.join("/"))
+            } else {
+                p.to_path_buf()
+            };
+            format!(
+                "file://{}",
+                canonical_p.to_string_lossy().trim_end_matches('/')
+            )
+        } else if let Ok(url) = url::Url::parse(trimmed) {
+            let scheme = url.scheme().to_ascii_lowercase();
+            let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+            let path = url.path().trim_end_matches('/');
+            if let Some(port) = url.port() {
+                format!("{}://{}:{}{}", scheme, host, port, path)
+            } else if !host.is_empty() {
+                format!("{}://{}{}", scheme, host, path)
+            } else {
+                format!("{}://{}", scheme, path)
+            }
+        } else {
+            trimmed.trim_end_matches('/').to_string()
+        }
+    }
+
+    /// Acquire the cross-process primary key publication lock fail-closed.
+    /// Retries up to 100 times (50ms interval) before returning `LockAcquireFailed`.
+    /// Returns `Ok(None)` if no primary key is configured.
+    pub(crate) async fn acquire_pk_publication_lock(
+        &self,
+    ) -> Result<Option<crate::core::lock::LockGuard>> {
+        let pk_cols = self.primary_key.read().clone();
+        if pk_cols.is_empty() {
+            return Ok(None);
+        }
+        let lock_path = self.pk_lock_path();
+        let lock = crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path.clone(), 30);
+        for _ in 0..100 {
+            if let Some(guard) = lock.try_acquire().await? {
+                return Ok(Some(guard));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        Err(anyhow::Error::from(
+            crate::core::error::BenoStreamError::LockAcquireFailed {
+                resource: lock_path.to_string(),
+                retries: 100,
+            },
+        ))
     }
 
     pub fn set_primary_key(&self, columns: Vec<String>) {

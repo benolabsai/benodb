@@ -1239,32 +1239,7 @@ impl Table {
         }
 
         let pk_cols = self.primary_key.read().clone();
-        let _cross_process_guard = if !pk_cols.is_empty() {
-            let lock_path = self.pk_lock_path();
-            let lock =
-                crate::core::lock::FileBasedLock::new(self.store.clone(), lock_path.clone(), 30);
-            let mut acquired = None;
-            for _ in 0..100 {
-                if let Some(guard) = lock.try_acquire().await? {
-                    acquired = Some(guard);
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            match acquired {
-                Some(guard) => Some(guard),
-                None => {
-                    return Err(anyhow::Error::from(
-                        crate::core::error::BenoStreamError::LockAcquireFailed {
-                            resource: lock_path.to_string(),
-                            retries: 100,
-                        },
-                    ));
-                }
-            }
-        } else {
-            None
-        };
+        let _cross_process_guard = self.acquire_pk_publication_lock().await?;
 
         for v3_attempt in 0..MAX_V3_RETRIES {
             let (head_manifest, head_ver) = manifest_manager.load_latest_direct().await?;

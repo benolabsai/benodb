@@ -738,7 +738,7 @@ async fn test_pk_lock_path_full_uri_isolation() -> anyhow::Result<()> {
     let uri_prod = format!("file://{}/prod/customer_a", dir1.path().display());
     let uri_archive = format!("file://{}/archive/customer_a", dir2.path().display());
 
-    let table_prod = Table::create_async(uri_prod, schema.clone()).await?;
+    let table_prod = Table::create_async(uri_prod.clone(), schema.clone()).await?;
     let table_archive = Table::create_async(uri_archive, schema.clone()).await?;
 
     let lock_prod = table_prod.pk_lock_path();
@@ -747,6 +747,21 @@ async fn test_pk_lock_path_full_uri_isolation() -> anyhow::Result<()> {
     assert_ne!(
         lock_prod, lock_archive,
         "Tables with matching slug but distinct URI paths must not share pk_commit locks"
+    );
+
+    // Verify canonicalization equivalence for trailing slashes and relative segments
+    let uri_prod_slash = format!("{}/", uri_prod);
+    let uri_prod_dot = format!("{}/./", uri_prod);
+    let canon1 = Table::canonicalize_table_uri(&uri_prod);
+    let canon2 = Table::canonicalize_table_uri(&uri_prod_slash);
+    let canon3 = Table::canonicalize_table_uri(&uri_prod_dot);
+    assert_eq!(
+        canon1, canon2,
+        "Trailing slash must produce identical canonical URI"
+    );
+    assert_eq!(
+        canon1, canon3,
+        "Relative segment must produce identical canonical URI"
     );
 
     Ok(())
@@ -794,11 +809,24 @@ async fn test_simultaneous_buffered_and_staged_pk_collision() -> anyhow::Result<
     // Table B writes to write buffer (not yet flushed)
     table_b.write_async(vec![batch_b]).await?;
 
-    // Race staged commit and buffered flush concurrently across independent instances
-    let (res_a, res_b) = tokio::join!(
-        table_a.commit_staged_entries_async(staged_a),
-        table_b.flush_async()
-    );
+    // Barrier synchronization to release both commit attempts simultaneously
+    let barrier = Arc::new(tokio::sync::Barrier::new(2));
+    let b1 = barrier.clone();
+    let b2 = barrier.clone();
+
+    let handle_a = tokio::spawn(async move {
+        b1.wait().await;
+        table_a.commit_staged_entries_async(staged_a).await
+    });
+
+    let handle_b = tokio::spawn(async move {
+        b2.wait().await;
+        table_b.flush_async().await
+    });
+
+    let (res_a, res_b) = tokio::join!(handle_a, handle_b);
+    let res_a = res_a?;
+    let res_b = res_b?;
 
     let successes = [res_a.is_ok(), res_b.is_ok()]
         .iter()
@@ -865,6 +893,8 @@ async fn test_pk_publication_fenced_when_lease_lost() -> anyhow::Result<()> {
         ],
     )?;
 
+    let staged = table.stage_data_files_async(vec![batch]).await?;
+
     // Acquire lock and obtain fencing verifier
     let lock =
         benodb::core::lock::FileBasedLock::new(table.store.clone(), table.pk_lock_path(), 30);
@@ -874,19 +904,36 @@ async fn test_pk_publication_fenced_when_lease_lost() -> anyhow::Result<()> {
     // Release/steal lock externally before manifest commit
     guard.release().await;
 
-    // Direct invocation of the fencing verifier must fail
-    let fence_check = verifier().await;
+    // Check version before commit attempt
+    let manifest_manager =
+        benodb::core::manifest::ManifestManager::new(table.store.clone(), "", &uri);
+    let (_, initial_ver) = manifest_manager.load_latest_direct().await?;
+
+    // Construct commit metadata carrying the now-fenced verifier
+    let commit_metadata = benodb::core::manifest::CommitMetadata {
+        publication_fence: Some(verifier),
+        ..Default::default()
+    };
+
+    // Attempt manifest publication directly through ManifestManager: must be rejected
+    let commit_res = manifest_manager.commit(&staged, &[], commit_metadata).await;
     assert!(
-        fence_check.is_err(),
-        "Publication fencing verifier must reject when lock is no longer owned"
+        commit_res.is_err(),
+        "ManifestManager::commit must refuse publication when publication fence rejects"
+    );
+    let err_str = commit_res.unwrap_err().to_string();
+    assert!(
+        err_str.contains("Lease lost")
+            || err_str.contains("Lease fencing violation")
+            || err_str.contains("already been released"),
+        "Expected lease fencing error, got: {err_str}"
     );
 
-    // Staged data file commit must also be protected
-    let staged = table.stage_data_files_async(vec![batch]).await?;
-    let commit_res = table.commit_staged_entries_async(staged).await;
-    assert!(
-        commit_res.is_ok(),
-        "Subsequent staged commit re-acquires unheld lock cleanly"
+    // Verify durable storage was NOT updated
+    let (_, final_ver) = manifest_manager.load_latest_direct().await?;
+    assert_eq!(
+        final_ver, initial_ver,
+        "No new manifest version must be published when publication fencing fails"
     );
 
     Ok(())
