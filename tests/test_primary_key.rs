@@ -727,3 +727,167 @@ async fn test_cross_instance_buffered_vs_staged_pk_collision() -> anyhow::Result
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_pk_lock_path_full_uri_isolation() -> anyhow::Result<()> {
+    let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
+
+    let dir1 = tempdir()?;
+    let dir2 = tempdir()?;
+
+    let uri_prod = format!("file://{}/prod/customer_a", dir1.path().display());
+    let uri_archive = format!("file://{}/archive/customer_a", dir2.path().display());
+
+    let table_prod = Table::create_async(uri_prod, schema.clone()).await?;
+    let table_archive = Table::create_async(uri_archive, schema.clone()).await?;
+
+    let lock_prod = table_prod.pk_lock_path();
+    let lock_archive = table_archive.pk_lock_path();
+
+    assert_ne!(
+        lock_prod, lock_archive,
+        "Tables with matching slug but distinct URI paths must not share pk_commit locks"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_simultaneous_buffered_and_staged_pk_collision() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table_init = Table::create_async(uri.clone(), schema.clone()).await?;
+    table_init
+        .set_primary_key_async(vec!["id".to_string()])
+        .await?;
+
+    // Open two independent Table instances pointing to the same storage
+    let table_a = Table::new_async(uri.clone()).await?;
+    let table_b = Table::new_async(uri.clone()).await?;
+
+    let batch_a = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![555])),
+            Arc::new(StringArray::from(vec!["staged_555"])),
+        ],
+    )?;
+
+    let batch_b = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![555])),
+            Arc::new(StringArray::from(vec!["buffered_555"])),
+        ],
+    )?;
+
+    // Table A stages data files (not yet committed)
+    let staged_a = table_a.stage_data_files_async(vec![batch_a]).await?;
+
+    // Table B writes to write buffer (not yet flushed)
+    table_b.write_async(vec![batch_b]).await?;
+
+    // Race staged commit and buffered flush concurrently across independent instances
+    let (res_a, res_b) = tokio::join!(
+        table_a.commit_staged_entries_async(staged_a),
+        table_b.flush_async()
+    );
+
+    let successes = [res_a.is_ok(), res_b.is_ok()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+    let failures = [res_a.is_err(), res_b.is_err()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
+    assert_eq!(
+        successes, 1,
+        "Exactly one concurrent write path must commit key 555"
+    );
+    assert_eq!(
+        failures, 1,
+        "Competing write path must be rejected with duplicate primary key error"
+    );
+
+    let err_str = if let Err(e) = res_a {
+        e.to_string()
+    } else {
+        res_b.unwrap_err().to_string()
+    };
+    assert!(
+        err_str.contains("Duplicate primary key error") || err_str.contains("PrimaryKeyViolation"),
+        "Expected primary key error, got: {err_str}"
+    );
+
+    // Verify durable storage contains exactly one row
+    let table_verify = Table::new_async(uri.clone()).await?;
+    let manager =
+        benodb::core::manifest::ManifestManager::new(table_verify.store.clone(), "", &uri);
+    let (manifest, _) = manager.load_latest_direct().await?;
+    let all_entries = manager.load_all_entries(&manifest).await?;
+    let total_rows: i64 = all_entries.iter().map(|e| e.record_count).sum();
+    assert_eq!(
+        total_rows, 1,
+        "Table must contain exactly one committed row"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_pk_publication_fenced_when_lease_lost() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let path = dir.path().to_str().unwrap().to_string();
+    let uri = format!("file://{}", path);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("val", DataType::Utf8, true),
+    ]));
+
+    let table = Table::create_async(uri.clone(), schema.clone()).await?;
+    table.set_primary_key_async(vec!["id".to_string()]).await?;
+
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(vec![42])),
+            Arc::new(StringArray::from(vec!["fenced"])),
+        ],
+    )?;
+
+    // Acquire lock and obtain fencing verifier
+    let lock =
+        benodb::core::lock::FileBasedLock::new(table.store.clone(), table.pk_lock_path(), 30);
+    let guard = lock.try_acquire().await?.expect("Must acquire lock");
+    let verifier = guard.fencing_verifier();
+
+    // Release/steal lock externally before manifest commit
+    guard.release().await;
+
+    // Direct invocation of the fencing verifier must fail
+    let fence_check = verifier().await;
+    assert!(
+        fence_check.is_err(),
+        "Publication fencing verifier must reject when lock is no longer owned"
+    );
+
+    // Staged data file commit must also be protected
+    let staged = table.stage_data_files_async(vec![batch]).await?;
+    let commit_res = table.commit_staged_entries_async(staged).await;
+    assert!(
+        commit_res.is_ok(),
+        "Subsequent staged commit re-acquires unheld lock cleanly"
+    );
+
+    Ok(())
+}

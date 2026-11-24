@@ -288,12 +288,17 @@ impl Table {
                     .await?;
             }
 
+            if let Some(ref guard) = _cross_process_guard {
+                guard.verify_valid().await?;
+            }
+
             let commit_metadata = crate::core::manifest::CommitMetadata {
                 expected_version: if !pk_columns.is_empty() {
                     Some(latest_ver)
                 } else {
                     None
                 },
+                publication_fence: _cross_process_guard.as_ref().map(|g| g.fencing_verifier()),
                 ..Default::default()
             };
 

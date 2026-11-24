@@ -17,8 +17,10 @@
 //!   and steals transition atomically via tombstone payloads (`owner: ""`, `expires_at: 0`),
 //!   eliminating the read-then-delete race and guaranteeing monotonic lease generation progression.
 //! - **Local Filesystem & Non-CAS Stores:** Fall back to optimistic tombstone overwriting
-//!   with re-read verification. Generation numbers remain strictly monotonic across releases
-//!   and acquisitions, providing a development and local-testing baseline.
+//!   with re-read verification. The heartbeat renewal fallback performs an unconditional put when
+//!   conditional updates are unsupported by the underlying storage driver. Consequently, non-CAS
+//!   backends carry a documented race window and do not provide atomic CAS guarantees; they are
+//!   intended solely for local development and single-node integration testing.
 
 use anyhow::Result;
 use object_store::{path::Path, ObjectStore, PutMode, PutOptions, UpdateVersion};
@@ -445,20 +447,43 @@ impl FileBasedLock {
                             match store.get(&path).await {
                                 Ok(get_res) => {
                                     let meta = get_res.meta.clone();
-                                    if let Ok(current_bytes) = get_res.bytes().await {
-                                        if let Ok(current_payload) = serde_json::from_slice::<LockPayload>(&current_bytes) {
-                                            if current_payload.owner != owner || current_payload.generation != generation {
+                                    let current_bytes = match get_res.bytes().await {
+                                        Ok(b) => b,
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Lock heartbeat failed to read lock payload at {}: {}. Failing closed and marking lease lost.",
+                                                path,
+                                                e
+                                            );
+                                            lost_lease_worker.store(true, Ordering::SeqCst);
+                                            break;
+                                        }
+                                    };
+                                    let current_payload: LockPayload =
+                                        match serde_json::from_slice(&current_bytes) {
+                                            Ok(p) => p,
+                                            Err(e) => {
                                                 tracing::error!(
-                                                    "Lock heartbeat detected ownership/generation change! Current owner: '{}' (gen {}), our owner: '{}' (gen {}). Aborting heartbeat renewal.",
-                                                    current_payload.owner,
-                                                    current_payload.generation,
-                                                    owner,
-                                                    generation
+                                                    "Lock heartbeat encountered malformed payload at {}: {}. Failing closed and marking lease lost.",
+                                                    path,
+                                                    e
                                                 );
                                                 lost_lease_worker.store(true, Ordering::SeqCst);
                                                 break;
                                             }
-                                        }
+                                        };
+                                    if current_payload.owner != owner
+                                        || current_payload.generation != generation
+                                    {
+                                        tracing::error!(
+                                            "Lock heartbeat detected ownership/generation change! Current owner: '{}' (gen {}), our owner: '{}' (gen {}). Aborting heartbeat renewal.",
+                                            current_payload.owner,
+                                            current_payload.generation,
+                                            owner,
+                                            generation
+                                        );
+                                        lost_lease_worker.store(true, Ordering::SeqCst);
+                                        break;
                                     }
                                     let update_opts = PutOptions {
                                         mode: PutMode::Update(UpdateVersion {
@@ -752,5 +777,37 @@ mod tests {
         let verifier_res = verifier().await;
         assert!(verifier_res.is_err());
         assert!(verifier_res.unwrap_err().to_string().contains("Lease lost"));
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_fails_closed_on_malformed_payload() {
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let path = Path::from("heartbeat_malformed.lock");
+
+        // 1. Worker A acquires lock with 0 TTL (heartbeat polls at 50ms interval)
+        let lock_a = FileBasedLock::new(store.clone(), path.clone(), 0).with_clock_skew(0);
+        let guard_a = lock_a.try_acquire().await.unwrap().expect("A acquires");
+        assert!(guard_a.is_valid());
+
+        // 2. Corrupt lock payload with invalid JSON bytes
+        store
+            .put(&path, (&b"not-valid-json-payload"[..]).into())
+            .await
+            .unwrap();
+
+        // 3. Wait 120ms for heartbeat to attempt renewal, detect malformed JSON, and fail closed
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+
+        // 4. Guard must be marked invalid; verify_valid and fencing_verifier must fail
+        assert!(
+            !guard_a.is_valid(),
+            "Guard must be invalid after heartbeat encounters malformed lock payload"
+        );
+        let verify_res = guard_a.verify_valid().await;
+        assert!(verify_res.is_err());
+        assert!(verify_res.unwrap_err().to_string().contains("Lease lost"));
+
+        let verifier = guard_a.fencing_verifier();
+        assert!(verifier().await.is_err());
     }
 }

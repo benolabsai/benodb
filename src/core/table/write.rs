@@ -1697,6 +1697,7 @@ impl Table {
                 } else {
                     None
                 },
+                publication_fence: _cross_process_guard.as_ref().map(|g| g.fencing_verifier()),
                 append_committed_wal_tx,
                 ..Default::default()
             };
@@ -1712,6 +1713,13 @@ impl Table {
                     )
                     .await
                 {
+                    self.cleanup_staged_segment_files(&all_new_entries).await;
+                    return Err(e);
+                }
+            }
+
+            if let Some(ref guard) = _cross_process_guard {
+                if let Err(e) = guard.verify_valid().await {
                     self.cleanup_staged_segment_files(&all_new_entries).await;
                     return Err(e);
                 }
