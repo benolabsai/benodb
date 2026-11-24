@@ -96,13 +96,49 @@ fn is_write_request(method: &Method, path: &str) -> bool {
     match method.as_str() {
         "PUT" | "DELETE" | "PATCH" => true,
         "POST" => {
-            !(path.ends_with("_search")
-                || path.ends_with("/search")
-                || path.ends_with("/scroll")
-                || path.ends_with("_count")
-                || path.ends_with("/count")
-                || path.ends_with("/_msearch")
-                || path.ends_with("/_mget"))
+            // Strip query parameters
+            let clean_path = path.split('?').next().unwrap_or(path);
+            let segments: Vec<&str> = clean_path
+                .trim_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            // Any document mutation, update, or snapshot management route is always a write,
+            // regardless of trailing ID names (e.g. /:index/_doc/x_search or /:index/_update/count).
+            if segments
+                .iter()
+                .any(|&s| s == "_doc" || s == "_update" || s == "_snapshot")
+            {
+                return true;
+            }
+
+            let is_read_post = match segments.as_slice() {
+                // Elasticsearch read-shaped POST endpoints
+                ["_search"] | [_, "_search"] => true,
+                ["_search", "scroll"] | [_, "_search", "scroll"] | ["_search", "scroll", _] => true,
+                ["_count"] | [_, "_count"] => true,
+                ["_msearch"] | [_, "_msearch"] => true,
+                ["_mget"] | [_, "_mget"] => true,
+                ["_field_caps"] | [_, "_field_caps"] => true,
+                // Qdrant read-shaped POST endpoints
+                ["collections", _, "points"] => true,
+                ["collections", _, "points", "search"] | ["collections", "points", "search"] => {
+                    true
+                }
+                ["collections", _, "points", "query"] | ["collections", "points", "query"] => true,
+                ["collections", _, "points", "scroll"] | ["collections", "points", "scroll"] => {
+                    true
+                }
+                ["collections", _, "points", "count"] | ["collections", "points", "count"] => true,
+                ["collections", _, "points", "recommend"]
+                | ["collections", "points", "recommend"] => true,
+                ["collections", _, "points", "discover"]
+                | ["collections", "points", "discover"] => true,
+                _ => false,
+            };
+
+            !is_read_post
         }
         _ => false,
     }
@@ -207,6 +243,12 @@ mod tests {
         assert!(is_write_request(&Method::PATCH, "/idx/_doc/1"));
         assert!(is_write_request(&Method::POST, "/idx/_doc"));
         assert!(is_write_request(&Method::POST, "/collections/points"));
+        // Document mutations with suffix collision tricks MUST still be classified as writes.
+        assert!(is_write_request(&Method::POST, "/idx/_doc/x_search"));
+        assert!(is_write_request(&Method::POST, "/idx/_doc/count"));
+        assert!(is_write_request(&Method::POST, "/idx/_update/x_search"));
+        assert!(is_write_request(&Method::POST, "/idx/_update/count"));
+        assert!(is_write_request(&Method::POST, "/_snapshot/repo/x_search"));
         // Read-shaped POSTs.
         assert!(!is_write_request(&Method::POST, "/idx/_search"));
         assert!(!is_write_request(

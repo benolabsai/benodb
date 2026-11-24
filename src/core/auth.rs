@@ -186,7 +186,11 @@ impl AuthConfig {
             return Err("JWT expired".to_string());
         }
 
-        if let Some(nbf) = claims.get("nbf").and_then(|v| v.as_u64()) {
+        if let Some(nbf) = claims
+            .get("nbf")
+            .and_then(|v| v.as_f64().or_else(|| v.as_u64().map(|u| u as f64)))
+            .map(|f| f as u64)
+        {
             if now < nbf {
                 return Err("JWT not yet valid".to_string());
             }
@@ -225,10 +229,79 @@ fn verify_hs256(secret: &[u8], signing_input: &[u8], signature: &[u8]) -> Result
 /// RSA PKCS#1 v1.5 SHA-256 verification using a PEM public key.
 fn verify_rs256(pem: &[u8], signing_input: &[u8], signature: &[u8]) -> Result<(), String> {
     use ring::signature::{UnparsedPublicKey, RSA_PKCS1_2048_8192_SHA256};
-    let der = pem_to_der(pem)?;
+    let der = pem_to_pkcs1_der(pem)?;
     let key = UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, der);
     key.verify(signing_input, signature)
         .map_err(|_| "JWT signature mismatch".to_string())
+}
+
+/// Extract the DER bytes from a PEM `PUBLIC KEY` (SPKI) or `RSA PUBLIC KEY` (PKCS#1) block,
+/// unwrapping the outer SPKI ASN.1 envelope if present to yield raw PKCS#1 `RSAPublicKey` DER.
+fn pem_to_pkcs1_der(pem: &[u8]) -> Result<Vec<u8>, String> {
+    let raw_der = pem_to_der(pem)?;
+    Ok(extract_pkcs1_from_spki(&raw_der))
+}
+
+/// Unwrap X.509 SubjectPublicKeyInfo (SPKI) to extract the inner PKCS#1 `RSAPublicKey` DER.
+/// If the input is already PKCS#1 or not a valid SPKI sequence, returns the input bytes unmodified.
+fn extract_pkcs1_from_spki(der: &[u8]) -> Vec<u8> {
+    if der.is_empty() || der[0] != 0x30 {
+        return der.to_vec();
+    }
+    let mut idx = 1;
+    // Skip sequence length
+    if idx < der.len() && der[idx] & 0x80 != 0 {
+        let num_len_bytes = (der[idx] & 0x7F) as usize;
+        idx += 1 + num_len_bytes;
+    } else {
+        idx += 1;
+    }
+    if idx >= der.len() {
+        return der.to_vec();
+    }
+    // If the first element is INTEGER (0x02), this is already an RSAPublicKey (modulus)
+    if der[idx] == 0x02 {
+        return der.to_vec();
+    }
+    // If first element is SEQUENCE (0x30), this is the AlgorithmIdentifier in SPKI
+    if der[idx] == 0x30 {
+        idx += 1;
+        if idx < der.len() && der[idx] & 0x80 != 0 {
+            let alg_len_bytes = (der[idx] & 0x7F) as usize;
+            idx += 1;
+            if idx + alg_len_bytes <= der.len() {
+                let mut alg_len = 0usize;
+                for &b in &der[idx..idx + alg_len_bytes] {
+                    alg_len = (alg_len << 8) | (b as usize);
+                }
+                idx += alg_len_bytes + alg_len;
+            } else {
+                return der.to_vec();
+            }
+        } else if idx < der.len() {
+            let alg_len = der[idx] as usize;
+            idx += 1 + alg_len;
+        } else {
+            return der.to_vec();
+        }
+
+        // The next element in SPKI must be a BIT STRING (tag 0x03)
+        if idx < der.len() && der[idx] == 0x03 {
+            idx += 1;
+            if idx < der.len() && der[idx] & 0x80 != 0 {
+                let bs_len_bytes = (der[idx] & 0x7F) as usize;
+                idx += 1 + bs_len_bytes;
+            } else {
+                idx += 1;
+            }
+            // First byte of BIT STRING value is unused bits count (must be 0x00 for byte-aligned key)
+            if idx < der.len() && der[idx] == 0x00 {
+                idx += 1;
+                return der[idx..].to_vec();
+            }
+        }
+    }
+    der.to_vec()
 }
 
 /// Extract the DER bytes from a PEM `PUBLIC KEY` (SPKI) block.
@@ -355,5 +428,56 @@ mod tests {
             &format!(r#"{{"sub":"a","exp":{future},"aud":"other","iss":"https://idp.example"}}"#),
         );
         assert!(cfg.verify(&bad_aud).is_err());
+    }
+
+    #[test]
+    fn rs256_verification_spki_and_pkcs1_keys() {
+        let spki_pem = b"-----BEGIN PUBLIC KEY-----\n\
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0wcMWXsyIXuWgVrm/iaH\n\
+y+W1ivmdG/mnDKoUIHXywFk84EY4nj7BVorjnJDUz35+orQLJYzcSvOhbzLzkO/d\n\
+yWkzQfJ/PzAgK4fJ18ws2SJMRSNWDrrjeSH48Icb5J6sHVklj7hqb0z2fzHg32mM\n\
+F+GK1LNV0lHHb0VPar8mMNG6OFxPTY4sETQeDCt4dlE0xCoa6/Puh7TsPfTiuMJa\n\
+oicXxJN1YrIU/LnPEyL/JD4yKmc4hXoFkZY/RRDhogsL0akhT8hR0eJaLb5mbUHl\n\
+5TPDUNM1m4N9QNdqJxb8oiuqP60kLO2jTKnLDbCIHuK1633JiZHi18Ty8ziN3tIT\n\
+LwIDAQAB\n\
+-----END PUBLIC KEY-----\n";
+
+        let pkcs1_pem = b"-----BEGIN RSA PUBLIC KEY-----\n\
+MIIBCgKCAQEA0wcMWXsyIXuWgVrm/iaHy+W1ivmdG/mnDKoUIHXywFk84EY4nj7B\n\
+VorjnJDUz35+orQLJYzcSvOhbzLzkO/dyWkzQfJ/PzAgK4fJ18ws2SJMRSNWDrrj\n\
+eSH48Icb5J6sHVklj7hqb0z2fzHg32mMF+GK1LNV0lHHb0VPar8mMNG6OFxPTY4s\n\
+ETQeDCt4dlE0xCoa6/Puh7TsPfTiuMJaoicXxJN1YrIU/LnPEyL/JD4yKmc4hXoF\n\
+kZY/RRDhogsL0akhT8hR0eJaLb5mbUHl5TPDUNM1m4N9QNdqJxb8oiuqP60kLO2j\n\
+TKnLDbCIHuK1633JiZHi18Ty8ziN3tITLwIDAQAB\n\
+-----END RSA PUBLIC KEY-----\n";
+
+        let valid_token = "eyJhbGciOiAiUlMyNTYiLCAidHlwIjogIkpXVCJ9.\
+eyJzdWIiOiAiYWxpY2UtcnNhIiwgImV4cCI6IDE3OTU0OTExMjksICJyb2xlcyI6IFsiYWRtaW4iXX0.\
+BHgPYSZixWc6ek-AOMf7Sidcao1TaL9WvDbrc-g7sj-EKQjAhxFrRWXcMKBpbcOk_Ow14lAmZ5lNbbqqYsHk2EpjKwNsz7VJblNKdvM08d_TGppfmcQNhG2YM4avXGOS-98tMBrhCNCufdjxc28F0-vu6fKEzEQtXmo3EcGKkXDX1ZIEQ4xF8XbcK9Qr2HW0X08kJ-alRDR5QfRS5uMk1KBgNR54AZluX9ZdDSnm9VNiymTzT4aax3tIDE_rA52jERg21WRD9rX2Bs0BbpS8nUjJxImZMXIo_MZOIlgweCgisspfAgYPsMm8yH5VWKtaaLJCuWPNxMDXLYMyhEZ3nw";
+
+        // 1. Verify standard X.509 SPKI public key (as provided by IdPs / OpenSSL pubout)
+        let cfg_spki = AuthConfig {
+            jwt_public_key: Some(spki_pem.to_vec()),
+            ..Default::default()
+        };
+        let claims = cfg_spki
+            .verify(valid_token)
+            .expect("SPKI key must successfully verify token");
+        assert_eq!(claims.subject, "alice-rsa");
+        assert_eq!(claims.roles, vec!["admin"]);
+
+        // 2. Verify PKCS#1 RSA public key
+        let cfg_pkcs1 = AuthConfig {
+            jwt_public_key: Some(pkcs1_pem.to_vec()),
+            ..Default::default()
+        };
+        let claims = cfg_pkcs1
+            .verify(valid_token)
+            .expect("PKCS#1 key must successfully verify token");
+        assert_eq!(claims.subject, "alice-rsa");
+
+        // 3. Verify corrupted token fails closed
+        let tampered_token = format!("{valid_token}corrupted");
+        assert!(cfg_spki.verify(&tampered_token).is_err());
     }
 }

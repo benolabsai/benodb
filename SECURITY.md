@@ -77,7 +77,7 @@ PGP key will be published at [https://benodb.org/.well-known/security.txt](https
 - Malformed input (SQL vector literals, rewriter input, REST request bodies) that
   crashes or panics a server process. These surfaces are fuzzed on every push —
   see `fuzz/` — and a crash is the highest-severity class of finding we accept.
-  Production paths are under a no-panic policy (`NO_PANIC_POLICY.md`).
+  Production paths are under a no-panic policy (`docs/NO_PANIC_POLICY.md`).
 
 #### Out of Scope
 

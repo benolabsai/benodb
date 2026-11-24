@@ -1,6 +1,12 @@
 ## [0.17.2] - 2026-11-23
 
 ### Fixed
+- **Search Gateway Route-Level Write Authorization**: Replaced trailing substring matching with segment-aware path routing in `benodb-search`, guaranteeing that document IDs ending in `_search` or `count` cannot bypass `admin` role checks on `POST` requests.
+- **RS256 X.509 SPKI and PKCS#1 Key Support**: Extracted raw ASN.1 `RSAPublicKey` bitstrings from SubjectPublicKeyInfo (SPKI) PEM envelopes, enabling out-of-the-box JWT token verification using public keys from enterprise identity providers (Auth0, Okta, Keycloak) and standard OpenSSL exports.
+- **Consistent Floating-Point JWT `nbf` Parsing**: Aligned `nbf` claim parsing with `exp` to handle floating-point timestamps from Python runtime environments.
+- **Storage URI Scheme Alias Normalization**: Normalized cloud storage schemes (`s3a` $\rightarrow$ `s3`, `gcs` $\rightarrow$ `gs`, `abfs`/`abfss` $\rightarrow$ `az`) in `canonicalize_table_uri`, ensuring that clients accessing identical physical tables through different storage aliases share the same cross-process primary-key lock.
+- **Flight SQL Interceptor Error Sanitization**: Redacted detailed internal auth error strings in tonic gRPC responses to `"invalid credentials"`, logging granular failures to `tracing::warn!` to prevent internal configuration leakage.
+- **Container Quickstart & Toolchain Alignment**: Bumped Dockerfile builder to Rust 1.100 MSRV, included all workspace manifests (`benodb-gpu-ann`, `benodb-mcp`), mapped `BDB_*` environment variables with `0.0.0.0` container binds, and propagated child process exit codes in `quickstart-entrypoint.sh`.
 - **Lock Ownership Validation and Atomic Conditional Release**: Eliminated TOCTOU lease-stealing race in `LockGuard` by making release conditional on object `UpdateVersion` (ETag and version). Stale guards whose leases expired no longer delete newly acquired locks held by competing nodes.
 - **Write Coercion Error Propagation**: Propagated schema coercion errors with `?` across batch writes rather than silently discarding invalid record batches via `filter_map`.
 - **Composite Primary Key Enforcement**: Implemented tuple-level uniqueness validation for multi-column primary keys across committed storage, pending writes, and staged writes using `check_composite_value_exists`.

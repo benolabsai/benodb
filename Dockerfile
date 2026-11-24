@@ -11,7 +11,7 @@
 #   6333  — Qdrant compatible REST API
 #   50051 — Arrow Flight SQL gRPC (ADBC/JDBC/ODBC)
 # ---------------------------------------------------------------------------
-FROM rust:1.98-slim AS builder
+FROM rust:1.100-slim AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -25,16 +25,23 @@ WORKDIR /app
 
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
+COPY benodb-gpu-ann/Cargo.toml benodb-gpu-ann/Cargo.toml
 COPY contrib/benodb-search/Cargo.toml contrib/benodb-search/Cargo.toml
+COPY contrib/benodb-mcp/Cargo.toml contrib/benodb-mcp/Cargo.toml
 COPY server/flight_sql/Cargo.toml server/flight_sql/Cargo.toml
 
 # Create stub sources for dependency layer caching and manifest validation
 RUN mkdir -p src \
     && echo "pub fn stub() {}" > src/lib.rs \
     && echo "fn main() {}" > build.rs \
+    && mkdir -p benodb-gpu-ann/src \
+    && echo "pub fn stub() {}" > benodb-gpu-ann/src/lib.rs \
     && mkdir -p contrib/benodb-search/src \
     && echo "fn main() {}" > contrib/benodb-search/src/main.rs \
     && echo "pub fn stub() {}" > contrib/benodb-search/src/lib.rs \
+    && mkdir -p contrib/benodb-mcp/src \
+    && echo "pub fn stub() {}" > contrib/benodb-mcp/src/lib.rs \
+    && echo "fn main() {}" > contrib/benodb-mcp/src/main.rs \
     && mkdir -p server/flight_sql/src \
     && echo "fn main() {}" > server/flight_sql/src/main.rs \
     && mkdir -p tests/bin benches \
@@ -98,12 +105,13 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 USER benodb
 
 # Default environment
-ENV BSDB_SEARCH_BIND=127.0.0.1
-ENV BSDB_SEARCH_PORT=9200
-ENV BSDB_QDRANT_BIND=127.0.0.1
-ENV BSDB_QDRANT_PORT=6333
-ENV BSDB_FLIGHT_BIND=127.0.0.1
-ENV BSDB_SEARCH_AUTO_REFRESH_SECS=5
+ENV BDB_SEARCH_BIND=0.0.0.0
+ENV BDB_SEARCH_PORT=9200
+ENV BDB_QDRANT_BIND=0.0.0.0
+ENV BDB_QDRANT_PORT=6333
+ENV BDB_FLIGHT_BIND=0.0.0.0
+ENV BDB_FLIGHT_PORT=50051
+ENV BDB_SEARCH_AUTO_REFRESH_SECS=5
 ENV RUST_LOG=info
 
 ENTRYPOINT ["quickstart-entrypoint.sh"]

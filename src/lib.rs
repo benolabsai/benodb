@@ -10,7 +10,7 @@
     clippy::needless_late_init,
     clippy::collapsible_match
 )]
-// No-panic policy for production paths (see NO_PANIC_POLICY.md).
+// No-panic policy for production paths (see docs/NO_PANIC_POLICY.md).
 //
 // Staged behind the `no-panic` feature because `#![deny(warnings)]` above means
 // enabling these restriction lints as errors today would fail the build on every

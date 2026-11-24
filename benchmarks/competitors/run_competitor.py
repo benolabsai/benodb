@@ -209,19 +209,21 @@ class FaissAdapter(VectorAdapter):
             if metric in ("inner_product", "cosine")
             else faiss.METRIC_L2
         )
-        data = np.ascontiguousarray(train)
-        if data.dtype != np.float32:
-            data = data.astype(np.float32)
-        if metric == "cosine":
-            faiss.normalize_L2(data)
+        src = train
 
         if self.index_type in ("hnsw_sq", "sq"):
+            data = np.ascontiguousarray(src)
+            if data.dtype != np.float32:
+                data = data.astype(np.float32)
+            if metric == "cosine":
+                faiss.normalize_L2(data)
             # faiss' runtime signature is IndexHNSWSQ(d, qtype, M, metric); the stub
             # types the 4th positional as a ScalarQuantizer, which is the 2nd arg.
             index = faiss.IndexHNSWSQ(dim, faiss.ScalarQuantizer.QT_8bit, params["m"], faiss_metric)  # type: ignore[arg-type]
             index.hnsw.efConstruction = params["ef_construction"]
             index.train(data)
             index.add(data)
+            self._train = data
         elif self.index_type in ("ivf_sq8", "ivfpq"):
             nlist = int(params.get("nlist", 1024) or 1024)
             self._nprobe = int(params.get("nprobe", 0) or 0)
@@ -238,7 +240,20 @@ class FaissAdapter(VectorAdapter):
                 pq_m = int(params.get("pq_m", 16) or 16)
                 pq_nbits = int(params.get("pq_nbits", 8) or 8)
                 index = faiss.IndexIVFPQ(quantizer, dim, nlist, pq_m, pq_nbits, faiss_metric)
-            index.train(data)
+            n = src.shape[0]
+            train_n = n if n <= 10_000_000 else int(os.environ.get("FAISS_TRAIN_SAMPLE", "1000000") or 1000000)
+            if train_n >= n:
+                sample = np.ascontiguousarray(src)
+            else:
+                rng = np.random.RandomState(1234)
+                sample_idx = rng.choice(n, train_n, replace=False)
+                sample_idx.sort()
+                sample = np.ascontiguousarray(src[sample_idx])
+            if sample.dtype != np.float32:
+                sample = sample.astype(np.float32)
+            if metric == "cosine":
+                faiss.normalize_L2(sample)
+            index.train(sample)
             if params.get("mmap_invlists"):
                 base = ctx.get("path") or tempfile.mkdtemp(prefix="faiss_ivf_")
                 os.makedirs(base, exist_ok=True)
@@ -246,7 +261,15 @@ class FaissAdapter(VectorAdapter):
                     index.nlist, index.code_size, os.path.join(base, "invlists.dat")
                 )
                 index.replace_invlists(inv)
-            index.add(data)
+            chunk = int(os.environ.get("FAISS_ADD_CHUNK", "1000000") or 1000000)
+            for start in range(0, n, chunk):
+                c = np.ascontiguousarray(src[start:start + chunk])
+                if c.dtype != np.float32:
+                    c = c.astype(np.float32)
+                if metric == "cosine":
+                    faiss.normalize_L2(c)
+                index.add(c)
+            self._train = src
             self._ivf = index
             index.nprobe = (
                 self._nprobe
@@ -262,13 +285,18 @@ class FaissAdapter(VectorAdapter):
                 # uint8, so exact L2 refinement against the 1.28 GiB uint8 source
                 # is both lossless and four times smaller.
                 self._refine = True
-                self._base_u8 = train if train.dtype in (np.uint8, np.int8) else data
+                self._base_u8 = src
         else:
+            data = np.ascontiguousarray(src)
+            if data.dtype != np.float32:
+                data = data.astype(np.float32)
+            if metric == "cosine":
+                faiss.normalize_L2(data)
             index = faiss.IndexHNSWFlat(dim, params["m"], faiss_metric)
             index.hnsw.efConstruction = params["ef_construction"]
             index.add(data)
+            self._train = data
 
-        self._train = None if self._refine else data
         self._used_gpu = False
         if ctx.get("device") == "gpu":
             # Requires faiss-gpu; falls back to the CPU index when unavailable.
@@ -280,7 +308,7 @@ class FaissAdapter(VectorAdapter):
                 print(f"faiss: GPU unavailable, using CPU index ({exc})", flush=True)
         if self._refine:
             return (index, self._base_u8)
-        return (index, data)
+        return (index, self._train)
 
     def search(self, handle, queries, k, ef_search, metric):
         import faiss
@@ -1332,6 +1360,10 @@ def download(dataset: str) -> str:
 
 def load_dataset(path: str, data_dir: Optional[str] = None):
     if path.lower().startswith("bigann") or (data_dir and os.path.exists(os.path.join(data_dir, "base.10M.u8bin"))):
+        is_100m = "100m" in path.lower()
+        base_name = "base.100M.u8bin" if is_100m else "base.10M.u8bin"
+        gt_name = "GT.100M" if is_100m else "GT.10M"
+        n_vectors = 100_000_000 if is_100m else 10_000_000
         cands = [
             data_dir,
             os.environ.get("BENCH_DATA_DIR"),
@@ -1341,20 +1373,20 @@ def load_dataset(path: str, data_dir: Optional[str] = None):
         ]
         chosen_dir = None
         for c in cands:
-            if c and os.path.exists(os.path.join(c, "base.10M.u8bin")):
+            if c and os.path.exists(os.path.join(c, base_name)):
                 chosen_dir = c
                 break
         if not chosen_dir:
             raise FileNotFoundError(
-                f"Could not find BigANN dataset in any candidate directory: {cands}"
+                f"Could not find BigANN {base_name} in any candidate directory: {cands}"
             )
-        base_path = os.path.join(chosen_dir, "base.10M.u8bin")
+        base_path = os.path.join(chosen_dir, base_name)
         query_path = os.path.join(chosen_dir, "query.public.10K.u8bin")
-        gt_path = os.path.join(chosen_dir, "GT.10M")
+        gt_path = os.path.join(chosen_dir, gt_name)
         if not os.path.exists(gt_path):
             gt_path = os.path.join(chosen_dir, "bigann-10M")
 
-        train = np.memmap(base_path, dtype=np.uint8, mode="r", offset=8, shape=(10_000_000, 128))
+        train = np.memmap(base_path, dtype=np.uint8, mode="r", offset=8, shape=(n_vectors, 128))
         test = np.memmap(query_path, dtype=np.uint8, mode="r", offset=8, shape=(10_000, 128))
 
         with open(gt_path, "rb") as f:

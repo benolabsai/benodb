@@ -60,7 +60,7 @@ required-features = ["java"]
 [features]
 default = []
 # Turns the production-path no-panic restriction lints into hard errors (see
-# NO_PANIC_POLICY.md). Off during Phase 1 remediation; CI enables it once the
+# docs/NO_PANIC_POLICY.md). Off during Phase 1 remediation; CI enables it once the
 # `scripts/no_panic_check.sh` baseline reaches the documented invariant set.
 no-panic = []
 python = ["dep:pyo3", "pyo3/extension-module", "dep:numpy", "dep:pythonize", "arrow/pyarrow", "wgpu", "pollster", "cuda"]

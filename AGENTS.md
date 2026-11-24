@@ -14,7 +14,7 @@ All AI agents, pairing assistants, and contributors operating in this repository
 
 This script mirrors all required gates from `.github/workflows/ci.yml` and `.github/workflows/release.yml`:
 1. `cargo fmt --check` (Rust code style & formatting)
-2. `cargo clippy --all-targets` (Clippy zero-warning check under Rust 1.98.0)
+2. `cargo clippy --all-targets` (Clippy zero-warning check under Rust 1.100.0)
 3. `cargo check --all-targets` & `cargo check --bins` (Compilation of library, tests, and binaries)
 4. `cargo doc --no-deps --features java` (Documentation link integrity)
 5. `version-check` (Single-source version assertion across all connectors, POMs, and pyproject files)
@@ -40,7 +40,7 @@ The hook automatically intercepts `git push` (for both branches and tags) and bl
 ## 3. Rust Formatting & Lints
 
 - Always run `cargo fmt` after editing any Rust file in `src/`, `server/`, or `contrib/`.
-- Ensure Rust code compiles cleanly with Clippy on toolchain `1.98.0` (`rustup run 1.98.0 cargo clippy --all-targets`).
+- Ensure Rust code compiles cleanly with Clippy on toolchain `1.100.0` (`rustup run 1.100.0 cargo clippy --all-targets`).
 
 ---
 

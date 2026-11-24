@@ -152,9 +152,10 @@ impl tonic::service::Interceptor for AuthInterceptor {
                     req.extensions_mut().insert(claims);
                     Ok(req)
                 }
-                Err(e) => Err(tonic::Status::unauthenticated(format!(
-                    "invalid credentials: {e}"
-                ))),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Flight SQL authentication failed");
+                    Err(tonic::Status::unauthenticated("invalid credentials"))
+                }
             },
             None => Err(tonic::Status::unauthenticated("missing bearer token")),
         }

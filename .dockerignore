@@ -14,4 +14,4 @@ benchmarks/**/data/
 benchmarks/**/results/
 __pycache__/
 *.pyc
-!target/release/bsdb-search
+!target/release/bdb-search
