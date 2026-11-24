@@ -47,7 +47,7 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 > ## 🔒 Security & Warehouse Catalog Policy
 >
 > **1. Stateless Authentication & RBAC**:
-> Both `benodb-flight` and `bdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). JWT payloads are parsed to extract user roles (`"roles"` array) for native RBAC enforcement within the engine.
+> Both `benodb-flight` and `bdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). In `bdb-search`, JWT claims are parsed to enforce role-based access control (requiring the `admin` role for write mutations and allowing read tokens for queries). In `benodb-flight`, authentication verifies caller identity while server-level read-only gating is enforced via `BDB_FLIGHT_READ_ONLY`.
 >
 > **2. Authoritative Warehouse Catalog Policy (`.benodb-policy.json`)**:
 > Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benodb-policy.json`) and managed directly from the core database product:

@@ -4,7 +4,7 @@
 #
 # Usage:
 #   docker build -t benodb .
-#   docker run -p 9200:9200 -p 6333:6333 -p 50051:50051 benodb
+#   docker run -p 9200:9200 -p 6333:6333 -p 50051:50051 -e BDB_API_KEY="your-secret-key" benodb
 #
 # Ports:
 #   9200  — Elasticsearch 7.10 compatible REST API
@@ -61,6 +61,7 @@ RUN mkdir -p src \
 # Copy actual source
 COPY build.rs ./
 COPY src ./src
+COPY benodb-gpu-ann/src ./benodb-gpu-ann/src
 COPY contrib/benodb-search/src ./contrib/benodb-search/src
 COPY server/flight_sql/src ./server/flight_sql/src
 

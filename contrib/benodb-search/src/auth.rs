@@ -116,6 +116,7 @@ fn is_write_request(method: &Method, path: &str) -> bool {
             let is_read_post = match segments.as_slice() {
                 // Elasticsearch read-shaped POST endpoints
                 ["_search"] | [_, "_search"] => true,
+                ["_graph_search"] | [_, "_graph_search"] => true,
                 ["_search", "scroll"] | [_, "_search", "scroll"] | ["_search", "scroll", _] => true,
                 ["_count"] | [_, "_count"] => true,
                 ["_msearch"] | [_, "_msearch"] => true,
@@ -251,6 +252,7 @@ mod tests {
         assert!(is_write_request(&Method::POST, "/_snapshot/repo/x_search"));
         // Read-shaped POSTs.
         assert!(!is_write_request(&Method::POST, "/idx/_search"));
+        assert!(!is_write_request(&Method::POST, "/idx/_graph_search"));
         assert!(!is_write_request(
             &Method::POST,
             "/collections/points/search"

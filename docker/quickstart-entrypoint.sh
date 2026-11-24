@@ -35,8 +35,8 @@ cleanup() {
 trap 'cleanup 0' SIGTERM SIGINT
 
 # Wait for either process to exit
-wait -n $FLIGHT_PID $SEARCH_PID
-EXIT_STATUS=$?
+EXIT_STATUS=0
+wait -n $FLIGHT_PID $SEARCH_PID || EXIT_STATUS=$?
 
 echo "[quickstart] A service exited with status ${EXIT_STATUS}."
 cleanup "$EXIT_STATUS"

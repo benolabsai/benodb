@@ -252,7 +252,13 @@ fn extract_pkcs1_from_spki(der: &[u8]) -> Vec<u8> {
     // Skip sequence length
     if idx < der.len() && der[idx] & 0x80 != 0 {
         let num_len_bytes = (der[idx] & 0x7F) as usize;
-        idx += 1 + num_len_bytes;
+        if num_len_bytes > 4 {
+            return der.to_vec();
+        }
+        idx = match idx.checked_add(1 + num_len_bytes) {
+            Some(i) => i,
+            None => return der.to_vec(),
+        };
     } else {
         idx += 1;
     }
@@ -266,21 +272,33 @@ fn extract_pkcs1_from_spki(der: &[u8]) -> Vec<u8> {
     // If first element is SEQUENCE (0x30), this is the AlgorithmIdentifier in SPKI
     if der[idx] == 0x30 {
         idx += 1;
+        let mut alg_len = 0usize;
         if idx < der.len() && der[idx] & 0x80 != 0 {
             let alg_len_bytes = (der[idx] & 0x7F) as usize;
+            if alg_len_bytes > 4 {
+                return der.to_vec();
+            }
             idx += 1;
             if idx + alg_len_bytes <= der.len() {
-                let mut alg_len = 0usize;
                 for &b in &der[idx..idx + alg_len_bytes] {
                     alg_len = (alg_len << 8) | (b as usize);
                 }
-                idx += alg_len_bytes + alg_len;
+                idx = match idx
+                    .checked_add(alg_len_bytes)
+                    .and_then(|i| i.checked_add(alg_len))
+                {
+                    Some(i) => i,
+                    None => return der.to_vec(),
+                };
             } else {
                 return der.to_vec();
             }
         } else if idx < der.len() {
-            let alg_len = der[idx] as usize;
-            idx += 1 + alg_len;
+            alg_len = der[idx] as usize;
+            idx = match idx.checked_add(1).and_then(|i| i.checked_add(alg_len)) {
+                Some(i) => i,
+                None => return der.to_vec(),
+            };
         } else {
             return der.to_vec();
         }
@@ -290,14 +308,23 @@ fn extract_pkcs1_from_spki(der: &[u8]) -> Vec<u8> {
             idx += 1;
             if idx < der.len() && der[idx] & 0x80 != 0 {
                 let bs_len_bytes = (der[idx] & 0x7F) as usize;
-                idx += 1 + bs_len_bytes;
+                if bs_len_bytes > 4 {
+                    return der.to_vec();
+                }
+                idx = match idx.checked_add(1 + bs_len_bytes) {
+                    Some(i) => i,
+                    None => return der.to_vec(),
+                };
             } else {
                 idx += 1;
             }
             // First byte of BIT STRING value is unused bits count (must be 0x00 for byte-aligned key)
             if idx < der.len() && der[idx] == 0x00 {
                 idx += 1;
-                return der[idx..].to_vec();
+                // Verify inner byte stream starts with SEQUENCE (0x30) of RSAPublicKey
+                if idx < der.len() && der[idx] == 0x30 {
+                    return der[idx..].to_vec();
+                }
             }
         }
     }
