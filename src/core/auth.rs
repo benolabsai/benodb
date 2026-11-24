@@ -433,27 +433,31 @@ mod tests {
     #[test]
     fn rs256_verification_spki_and_pkcs1_keys() {
         let spki_pem = b"-----BEGIN PUBLIC KEY-----\n\
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0wcMWXsyIXuWgVrm/iaH\n\
-y+W1ivmdG/mnDKoUIHXywFk84EY4nj7BVorjnJDUz35+orQLJYzcSvOhbzLzkO/d\n\
-yWkzQfJ/PzAgK4fJ18ws2SJMRSNWDrrjeSH48Icb5J6sHVklj7hqb0z2fzHg32mM\n\
-F+GK1LNV0lHHb0VPar8mMNG6OFxPTY4sETQeDCt4dlE0xCoa6/Puh7TsPfTiuMJa\n\
-oicXxJN1YrIU/LnPEyL/JD4yKmc4hXoFkZY/RRDhogsL0akhT8hR0eJaLb5mbUHl\n\
-5TPDUNM1m4N9QNdqJxb8oiuqP60kLO2jTKnLDbCIHuK1633JiZHi18Ty8ziN3tIT\n\
-LwIDAQAB\n\
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApwD4V/nSZ7h22ivXgav+\n\
+KAFw0WNoCHiW1K66ExAiaFpyyCXtQSxnQOf3cgWggOgbNad69ou+vTVkM2TI2yAR\n\
+tuvh5kuKVUgVlUZpG8p9B1mxMrkFNrNTvHFx98Tcw9/UA+oCkakakwat28X4/r2c\n\
+agNRklk3GUph2mjrc9Vjc62IPaz+Flvr3/2NmrlNAYXvXZmD+EvNhAC1oc4LlNKA\n\
+TuOyptwcywscb9AtxLiS+flk2g4N79bJFEJmLdaKIWBCP6wzE/564wZ0DXPm4sfP\n\
+nvdYaYCgIUf8CTjx9+eUNy+Vxyf6nJ86sVz+FVfUQ1HEXpUNshKRwUyPwf1YAqA0\n\
+AQIDAQAB\n\
 -----END PUBLIC KEY-----\n";
 
         let pkcs1_pem = b"-----BEGIN RSA PUBLIC KEY-----\n\
-MIIBCgKCAQEA0wcMWXsyIXuWgVrm/iaHy+W1ivmdG/mnDKoUIHXywFk84EY4nj7B\n\
-VorjnJDUz35+orQLJYzcSvOhbzLzkO/dyWkzQfJ/PzAgK4fJ18ws2SJMRSNWDrrj\n\
-eSH48Icb5J6sHVklj7hqb0z2fzHg32mMF+GK1LNV0lHHb0VPar8mMNG6OFxPTY4s\n\
-ETQeDCt4dlE0xCoa6/Puh7TsPfTiuMJaoicXxJN1YrIU/LnPEyL/JD4yKmc4hXoF\n\
-kZY/RRDhogsL0akhT8hR0eJaLb5mbUHl5TPDUNM1m4N9QNdqJxb8oiuqP60kLO2j\n\
-TKnLDbCIHuK1633JiZHi18Ty8ziN3tITLwIDAQAB\n\
+MIIBCgKCAQEApwD4V/nSZ7h22ivXgav+KAFw0WNoCHiW1K66ExAiaFpyyCXtQSxn\n\
+QOf3cgWggOgbNad69ou+vTVkM2TI2yARtuvh5kuKVUgVlUZpG8p9B1mxMrkFNrNT\n\
+vHFx98Tcw9/UA+oCkakakwat28X4/r2cagNRklk3GUph2mjrc9Vjc62IPaz+Flvr\n\
+3/2NmrlNAYXvXZmD+EvNhAC1oc4LlNKATuOyptwcywscb9AtxLiS+flk2g4N79bJ\n\
+FEJmLdaKIWBCP6wzE/564wZ0DXPm4sfPnvdYaYCgIUf8CTjx9+eUNy+Vxyf6nJ86\n\
+sVz+FVfUQ1HEXpUNshKRwUyPwf1YAqA0AQIDAQAB\n\
 -----END RSA PUBLIC KEY-----\n";
 
         let valid_token = "eyJhbGciOiAiUlMyNTYiLCAidHlwIjogIkpXVCJ9.\
-eyJzdWIiOiAiYWxpY2UtcnNhIiwgImV4cCI6IDE3OTU0OTExMjksICJyb2xlcyI6IFsiYWRtaW4iXX0.\
-BHgPYSZixWc6ek-AOMf7Sidcao1TaL9WvDbrc-g7sj-EKQjAhxFrRWXcMKBpbcOk_Ow14lAmZ5lNbbqqYsHk2EpjKwNsz7VJblNKdvM08d_TGppfmcQNhG2YM4avXGOS-98tMBrhCNCufdjxc28F0-vu6fKEzEQtXmo3EcGKkXDX1ZIEQ4xF8XbcK9Qr2HW0X08kJ-alRDR5QfRS5uMk1KBgNR54AZluX9ZdDSnm9VNiymTzT4aax3tIDE_rA52jERg21WRD9rX2Bs0BbpS8nUjJxImZMXIo_MZOIlgweCgisspfAgYPsMm8yH5VWKtaaLJCuWPNxMDXLYMyhEZ3nw";
+eyJzdWIiOiAiYWxpY2UtcnNhIiwgImV4cCI6IDQxMDI0NDQ4MDAsICJyb2xlcyI6IFsiYWRtaW4iXX0.\
+oPiXHM58B6WxeX--wnOJgykcfvJv5gud2NDVKvP_9T2c3d8ppehGt6fwdIKr9c62sKycpUsuEc-q4HNakLEjhs-Vk2eZ-7aDAZX3qQwc-d-ZyCgjSBcBfOf8HJX7Ut_U0kYQ5AEQR_FlHQTtGvncatJx4wGsn_lpWVeNc9DkVYRAW_oDnSvmGvrLG3iP0eEXu81kLVxkbYwJ-vUJjkn0wTQA_X9mIKhZvsReoWyHGpeo9DCecOh6vzMhyWGSvpMLqcDP0rrkIXGgZODoL9Zoljcu_3sEpEacrszWnzrrna0oEBAAHGprCmkB-I9W9FK0BPgij3APpUeNvKmnsr_2ew";
+
+        let expired_token = "eyJhbGciOiAiUlMyNTYiLCAidHlwIjogIkpXVCJ9.\
+eyJzdWIiOiAiYWxpY2UtcnNhIiwgImV4cCI6IDEwMDAwMDAwMDAsICJyb2xlcyI6IFsiYWRtaW4iXX0.\
+gWlhp7n9xsFp60wNoai9RDrn9ObsC5EF8qTljz10qC3VhjcAGrNMHLLRwGlR17dlEr2zERHJcl83Rh4yJz9oQ-7vQQrJT-sTzHwWc4ozM3iyfh-J_Qrw44jtJ6OOS6aeIEsZCF96Y_m6cifAgJSCr5MYfQ08OUJviktcFYXeMLY015dCwjIRuwCj1Zu2ID9-5zeAtVgqiYezEqAT-c1_iqMCmEx7JPCMueCKNaakxKL44-dCQyROzGN2_xU5rwsJ--8zKkGgRECBKXrJLXH8dS5gumcziA34OToEVAF4HN7eX_lhSeNKY0peMWeMP345mo-PvTt8kcRG6x8y241DnA";
 
         // 1. Verify standard X.509 SPKI public key (as provided by IdPs / OpenSSL pubout)
         let cfg_spki = AuthConfig {
@@ -479,5 +483,8 @@ BHgPYSZixWc6ek-AOMf7Sidcao1TaL9WvDbrc-g7sj-EKQjAhxFrRWXcMKBpbcOk_Ow14lAmZ5lNbbqq
         // 3. Verify corrupted token fails closed
         let tampered_token = format!("{valid_token}corrupted");
         assert!(cfg_spki.verify(&tampered_token).is_err());
+
+        // 4. Verify expired token fails closed
+        assert!(cfg_spki.verify(expired_token).is_err());
     }
 }
