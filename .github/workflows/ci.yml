@@ -349,7 +349,7 @@ jobs:
 
       - name: Warm the AWS Emulator cache
         if: matrix.shard == 'catalog'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Reused across runs so the 176 MB AWS Emulator package is unpacked once.
           path: ${{ runner.temp }}/aws-emulator-cache
@@ -556,7 +556,7 @@ jobs:
           shared-key: "ci-v2"
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -566,7 +566,7 @@ jobs:
       # repository hiccup. The Trino bands share the key because they differ only
       # in the `trino.version` property, not in the dependency set.
       - name: Cache Maven dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: m2-${{ runner.os }}-${{ matrix.connector }}-${{ hashFiles('trino-benodb/pom.xml', 'spark-benodb/pom.xml') }}
@@ -608,17 +608,17 @@ jobs:
           # test failure still fails fast instead of being retried three times.
           set -o pipefail
           log="${RUNNER_TEMP}/mvn-trino.log"
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4; do
             if mvn -B -U \
                  -Dmaven.wagon.http.retryHandler.count=5 \
                  -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
                  test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
               exit 0
             fi
-            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension" "$log"; then
+            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|HTTP Status: 429" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
               rm -rf ~/.m2/repository/io/trino ~/.m2/repository/io/airlift ~/.m2/repository/io/opentelemetry
-              sleep 20
+              sleep $((attempt * 30))
               continue
             fi
             echo "mvn failed for a non-resolution reason; not retrying"
@@ -635,17 +635,17 @@ jobs:
           # resolution failure, fail fast on a real build or test failure.
           set -o pipefail
           log="${RUNNER_TEMP}/mvn-spark.log"
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4; do
             if mvn -B -U \
                  -Dmaven.wagon.http.retryHandler.count=5 \
                  -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
                  clean test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
               exit 0
             fi
-            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension" "$log"; then
+            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|HTTP Status: 429" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
               rm -rf ~/.m2/repository/org/apache/spark ~/.m2/repository/org/apache/iceberg
-              sleep 20
+              sleep $((attempt * 30))
               continue
             fi
             echo "mvn failed for a non-resolution reason; not retrying"
