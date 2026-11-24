@@ -211,7 +211,7 @@ impl Table {
         };
 
         // Cross-process serialization lock for primary key validation and publication
-        let _cross_process_guard = self.acquire_pk_publication_lock().await?;
+        let _cross_process_guard = self.acquire_pk_publication_lock(&pk_columns).await?;
 
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let root_prefix = self.uri.trim_end_matches('/');

@@ -1239,7 +1239,7 @@ impl Table {
         }
 
         let pk_cols = self.primary_key.read().clone();
-        let _cross_process_guard = self.acquire_pk_publication_lock().await?;
+        let _cross_process_guard = self.acquire_pk_publication_lock(&pk_cols).await?;
 
         for v3_attempt in 0..MAX_V3_RETRIES {
             let (head_manifest, head_ver) = manifest_manager.load_latest_direct().await?;

@@ -768,6 +768,100 @@ async fn test_pk_lock_path_full_uri_isolation() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_pk_lock_path_cloud_uri_scheme_aliases() -> anyhow::Result<()> {
+    // 1. S3 and S3A scheme aliases
+    let s3_uri = "s3://production-lakehouse/finance/transactions";
+    let s3a_uri = "s3a://production-lakehouse/finance/transactions";
+    let s3_case_uri = "S3A://PRODUCTION-LAKEHOUSE/finance/transactions/";
+    assert_eq!(
+        Table::canonicalize_table_uri(s3_uri),
+        Table::canonicalize_table_uri(s3a_uri),
+        "s3:// and s3a:// must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::canonicalize_table_uri(s3_uri),
+        Table::canonicalize_table_uri(s3_case_uri),
+        "Mixed case and trailing slash must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(s3_uri),
+        Table::pk_lock_path_for_uri(s3a_uri),
+        "s3:// and s3a:// must derive identical pk_commit lock paths"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(s3_uri),
+        Table::pk_lock_path_for_uri(s3_case_uri),
+        "Case-variant S3 URIs must derive identical pk_commit lock paths"
+    );
+
+    // 2. GS and GCS scheme aliases
+    let gs_uri = "gs://analytics-bucket/warehouse/events";
+    let gcs_uri = "gcs://analytics-bucket/warehouse/events";
+    let gcs_slash_uri = "gcs://ANALYTICS-BUCKET/warehouse/events/";
+    assert_eq!(
+        Table::canonicalize_table_uri(gs_uri),
+        Table::canonicalize_table_uri(gcs_uri),
+        "gs:// and gcs:// must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::canonicalize_table_uri(gs_uri),
+        Table::canonicalize_table_uri(gcs_slash_uri),
+        "Case-variant GCS URIs must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(gs_uri),
+        Table::pk_lock_path_for_uri(gcs_uri),
+        "gs:// and gcs:// must derive identical pk_commit lock paths"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(gs_uri),
+        Table::pk_lock_path_for_uri(gcs_slash_uri),
+        "Case-variant GCS URIs must derive identical pk_commit lock paths"
+    );
+
+    // 3. Azure: AZ, ABFS, and ABFSS scheme aliases
+    let az_uri = "az://blob-container/core/customers";
+    let abfs_uri = "abfs://blob-container/core/customers";
+    let abfss_uri = "abfss://BLOB-CONTAINER/core/customers/";
+    assert_eq!(
+        Table::canonicalize_table_uri(az_uri),
+        Table::canonicalize_table_uri(abfs_uri),
+        "az:// and abfs:// must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::canonicalize_table_uri(az_uri),
+        Table::canonicalize_table_uri(abfss_uri),
+        "az:// and abfss:// must canonicalize to identical storage URI"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(az_uri),
+        Table::pk_lock_path_for_uri(abfs_uri),
+        "az:// and abfs:// must derive identical pk_commit lock paths"
+    );
+    assert_eq!(
+        Table::pk_lock_path_for_uri(az_uri),
+        Table::pk_lock_path_for_uri(abfss_uri),
+        "az:// and abfss:// must derive identical pk_commit lock paths"
+    );
+
+    // 4. Distinct tables and buckets must produce isolated lock paths
+    let s3_other_table = "s3://production-lakehouse/finance/accounts";
+    let s3_other_bucket = "s3://staging-lakehouse/finance/transactions";
+    assert_ne!(
+        Table::pk_lock_path_for_uri(s3_uri),
+        Table::pk_lock_path_for_uri(s3_other_table),
+        "Distinct table paths within the same bucket must have isolated lock paths"
+    );
+    assert_ne!(
+        Table::pk_lock_path_for_uri(s3_uri),
+        Table::pk_lock_path_for_uri(s3_other_bucket),
+        "Matching table paths in different buckets must have isolated lock paths"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_simultaneous_buffered_and_staged_pk_collision() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let path = dir.path().to_str().unwrap().to_string();
@@ -903,6 +997,12 @@ async fn test_pk_publication_fenced_when_lease_lost() -> anyhow::Result<()> {
 
     // Release/steal lock externally before manifest commit
     guard.release().await;
+
+    // Verify fencing verifier closure fails closed immediately on released/lost lease
+    assert!(
+        (verifier)().await.is_err(),
+        "verifier().await must fail closed when lock lease is released or lost"
+    );
 
     // Check version before commit attempt
     let manifest_manager =

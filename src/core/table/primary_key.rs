@@ -32,8 +32,13 @@ impl Table {
     /// ensuring equivalent path representations map to the same lock while preventing
     /// collisions across distinct tables sharing an object store namespace.
     pub fn pk_lock_path(&self) -> object_store::path::Path {
+        Self::pk_lock_path_for_uri(&self.uri)
+    }
+
+    /// Derive a globally isolated lock path for primary key publication from any table URI.
+    pub fn pk_lock_path_for_uri(uri: &str) -> object_store::path::Path {
         use sha2::{Digest, Sha256};
-        let canonical_uri = Self::canonicalize_table_uri(&self.uri);
+        let canonical_uri = Self::canonicalize_table_uri(uri);
         let mut hasher = Sha256::new();
         hasher.update(canonical_uri.as_bytes());
         let hash = format!("{:x}", hasher.finalize());
@@ -41,6 +46,8 @@ impl Table {
     }
 
     /// Normalize table URI to canonical storage identity.
+    /// Normalizes storage provider scheme aliases (`s3a://` -> `s3://`, `gcs://` -> `gs://`,
+    /// `abfs://`/`abfss://` -> `az://`), lowercase hosts, trailing slashes, and relative path segments.
     pub fn canonicalize_table_uri(uri: &str) -> String {
         let trimmed = uri.trim();
         if trimmed.starts_with('/') || trimmed.starts_with("file://") || !trimmed.contains("://") {
@@ -68,7 +75,13 @@ impl Table {
                 canonical_p.to_string_lossy().trim_end_matches('/')
             )
         } else if let Ok(url) = url::Url::parse(trimmed) {
-            let scheme = url.scheme().to_ascii_lowercase();
+            let raw_scheme = url.scheme().to_ascii_lowercase();
+            let scheme = match raw_scheme.as_str() {
+                "s3" | "s3a" => "s3",
+                "gs" | "gcs" => "gs",
+                "az" | "abfs" | "abfss" => "az",
+                other => other,
+            };
             let host = url.host_str().unwrap_or("").to_ascii_lowercase();
             let path = url.path().trim_end_matches('/');
             if let Some(port) = url.port() {
@@ -86,11 +99,12 @@ impl Table {
     /// Acquire the cross-process primary key publication lock fail-closed.
     /// Retries up to 100 times (50ms interval) before returning `LockAcquireFailed`.
     /// Returns `Ok(None)` if no primary key is configured.
+    /// Uses caller-provided `pk_columns` to avoid configuration skew between validation and publication.
     pub(crate) async fn acquire_pk_publication_lock(
         &self,
+        pk_columns: &[String],
     ) -> Result<Option<crate::core::lock::LockGuard>> {
-        let pk_cols = self.primary_key.read().clone();
-        if pk_cols.is_empty() {
+        if pk_columns.is_empty() {
             return Ok(None);
         }
         let lock_path = self.pk_lock_path();

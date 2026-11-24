@@ -615,7 +615,7 @@ jobs:
                  test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
               exit 0
             fi
-            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|HTTP Status: 429" "$log"; then
+            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|[Ss]tatus:? 429|[Ss]tatus code:? 429|Too [Mm]any [Rr]equests" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
               rm -rf ~/.m2/repository/io/trino ~/.m2/repository/io/airlift ~/.m2/repository/io/opentelemetry
               sleep $((attempt * 30))
@@ -642,7 +642,7 @@ jobs:
                  clean test ${{ matrix.mvn-args }} 2>&1 | tee "$log"; then
               exit 0
             fi
-            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|HTTP Status: 429" "$log"; then
+            if grep -qE "Could not (find|transfer|resolve) artifact|Non-resolvable|Unresolveable build extension|[Ss]tatus:? 429|[Ss]tatus code:? 429|Too [Mm]any [Rr]equests" "$log"; then
               echo "::warning::Maven repository resolution failed (attempt ${attempt}); retrying"
               rm -rf ~/.m2/repository/org/apache/spark ~/.m2/repository/org/apache/iceberg
               sleep $((attempt * 30))
