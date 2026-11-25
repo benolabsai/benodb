@@ -144,8 +144,8 @@ impl tonic::service::Interceptor for AuthInterceptor {
             .metadata()
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .map(|s| s.trim().to_string());
+            .and_then(|v| benodb::core::auth::extract_auth_token(v, &["Bearer"]))
+            .map(|s| s.to_string());
         match token {
             Some(t) => match self.auth.verify(&t) {
                 Ok(claims) => {

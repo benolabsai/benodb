@@ -11,15 +11,14 @@
 > BenoDB is an early-stage database engine intended for evaluation, benchmarking, and community feedback. 
 > - **API & Storage Mutability:** APIs, configuration schemas, and secondary index sidecar on-disk layouts may evolve between preview releases.
 > - **Workload Suitability:** Not yet recommended for irreplaceable production data or mission-critical workloads requiring enterprise high-availability SLAs. Always back up authoritative data and pin versions.
-> - **Integrity Invariant:** Operations will not silently corrupt state or lose acknowledged writes. If an advisory index sidecar is missing or damaged, queries gracefully fall back to direct Parquet scans while the overlay rebuilds.
+> - **Durability Scope:** Under default `WalDurability::Sync`, acknowledged writes survive **process crashes** (`RPO = 0`). For `s3://`, `gs://`, or `az://` tables, surviving **host or container loss** prior to an Iceberg snapshot commit requires setting `BDB_WAL_DIR` (or `TableBuilder::with_wal_dir()`) to a persistent volume rather than the default `/tmp/benostream_wal/` directory (see [Recovery Runbook](https://benolabsai.com/docs/guides/recovery_runbook.html)). If an advisory index sidecar is missing or damaged, queries fall back to direct Parquet scans while the overlay rebuilds.
 
 ### 📋 Feature Classification & Preview Scope
 
 | Tier | Capabilities | Status |
 | :--- | :--- | :--- |
-| **Preview-Ready** | Embedded Python & Rust engine, Apache Iceberg (V2/V3) Parquet read/write, HNSW (Float32, BQ8, BQ4, SQ8) vector search, Voronoi Puffin sharding compaction, in-process CSR graph analytics (PageRank, shortest path), DuckDB/DataFusion SQL compatibility, Puffin sidecar management | ✅ Fully supported & tested for evaluation |
-| **Connectors** | [Apache Spark](https://benolabsai.com/docs/integrations/spark.html) (3.5 & 4.x, exactly-once writes), [Trino](https://benolabsai.com/docs/integrations/trino.html) (bands 482–483 and 484+), [dbt](https://benolabsai.com/docs/integrations/dbt.html) adapter, [MCP](https://benolabsai.com/docs/integrations/mcp.html) server (stdio + HTTP/SSE), [Flight SQL](https://benolabsai.com/docs/integrations/flight_sql.html) | ⚠️ Functional; each guide lists the supported versions |
-| **Experimental** | OpenSearch 7.10 & Qdrant REST gateway compatibility, Arrow Flight SQL server | ⚠️ Functional; APIs and performance tuning are actively evolving |
+| **Supported Core (Preview)** | Embedded Python & Rust engine, Apache Iceberg V2 & bounded V3 (`format_version = 3` row lineage, `deletion-vector-v1` Puffin blobs, fields `143–145`; cross-engine reads verified in CI by `iceberg-rust`, Spark 3.5/4.0, and Trino 482/484), HNSW/IVF/TurboQuant vector search, Voronoi Puffin compaction, in-process CSR graph analytics, DataFusion SQL, [dbt](https://benolabsai.com/docs/integrations/dbt.html) adapter, [Arrow Flight SQL](https://benolabsai.com/docs/integrations/flight_sql.html) (single-process), [MCP](https://benolabsai.com/docs/integrations/mcp.html) server, OpenSearch/Qdrant REST gateway (`bdb-search`) | ✅ Covered by CI for developer evaluation (see [`SUPPORT_MATRIX.md`](https://benolabsai.com/docs/guides/support_matrix.html)) |
+| **Experimental / Optional** | Bespoke Java connectors ([Apache Spark](https://benolabsai.com/docs/integrations/spark.html) `spark-benodb` 3.5 & 4.x; [Trino](https://benolabsai.com/docs/integrations/trino.html) `trino-benodb` 482–483 & 484+), batch GPU acceleration (`benodb-gpu-ann`), live Snowflake External Volume / Open Catalog integration (**untested** against live Snowflake accounts) | ⚠️ Functional/experimental; excluded from supported-core guarantee (`trino-benodb` typed UDTFs remain open; Snowflake live-account testing pending) |
 
 > **Serverless by default.** BenoDB runs directly against object storage and does not require a database server or always-on cluster. For applications that prefer a network-accessible database endpoint, BenoDB also provides an optional Arrow Flight SQL server interface.
 >
@@ -47,7 +46,7 @@ An **index-overlay engine for the lakehouse**. BenoDB layers reconstructible, pe
 > ## 🔒 Security & Warehouse Catalog Policy
 >
 > **1. Stateless Authentication & RBAC**:
-> Both `benodb-flight` and `bdb-search` support stateless authentication via static API keys (`BDB_API_KEY`) and JWTs (HS256/RS256). In `bdb-search`, JWT claims are parsed to enforce role-based access control (requiring the `admin` role for write mutations and allowing read tokens for queries). In `benodb-flight`, authentication verifies caller identity while server-level read-only gating is enforced via `BDB_FLIGHT_READ_ONLY`.
+> Both `benodb-flight` and `bdb-search` support stateless authentication via static API keys (`BDB_API_KEY`, mapped to `admin`) and JWTs (HS256/RS256), enforcing role-based access control on write mutations (`admin` role required for writes/DDL/DML/ingest; read tokens allowed for queries). `benodb-flight` additionally supports process-wide read-only gating via `BDB_FLIGHT_READ_ONLY`.
 >
 > **2. Authoritative Warehouse Catalog Policy (`.benodb-policy.json`)**:
 > Warehouse read/write permissions are durably stored on storage root (`s3://bucket/warehouse/.benodb-policy.json`) and managed directly from the core database product:
@@ -97,7 +96,7 @@ Authoritative Storage        Advisory Index Overlay
 > 2. **Publication Invariant**: A published manifest may reference only immutable artifacts that have already been successfully uploaded and verified to storage.
 > 3. **Durability Invariant**: WAL truncation is permitted only after the corresponding data is durably represented by a committed manifest snapshot.
 > 4. **Maintenance Invariant**: Maintenance operations may delete an artifact only if it is neither referenced by any active snapshot nor currently in-flight.
-> 5. **Resource Invariant**: Index builds are gated to a memory-scaled concurrency budget, and production paths follow a no-panic policy — malformed input degrades to an error, never a crash.
+> 5. **Resource Invariant**: Index builds are gated to a memory-scaled concurrency budget, and library production paths enforce a CI `--features no-panic` gate (see [`NO_PANIC_POLICY.md`](https://benolabsai.com/docs/guides/no_panic_policy.html) for documented `hnswio` file-decode and binary exemptions).
 
 BenoDB sits between two categories of system that do not overlap. Vector/graph databases own your data and cannot do general SQL analytics over a lakehouse; lakehouse query engines do SQL over Iceberg/Parquet but have no native vector, full-text, or graph indexing. BenoDB fills that seam:
 
@@ -120,6 +119,8 @@ BenoDB sits between two categories of system that do not overlap. Vector/graph d
 ## ⚡ Iceberg V2/V3 Compatibility
 
 BenoDB implements the core Apache Iceberg table format V2 and V3 features required for its indexed-lakehouse model:
+
+> **Bounded V3 Scope:** BenoDB implements and tests the V3 subset below (row lineage, `deletion-vector-v1` Puffin deletion vectors, manifest fields `143–145`, nanosecond timestamps, and schema default metadata). Other V3 features such as the `variant` semi-structured type are deferred (see [`ICEBERG_COMPATIBILITY.md`](https://benolabsai.com/docs/guides/iceberg_compatibility.html) and [`SUPPORT_MATRIX.md`](https://benolabsai.com/docs/guides/support_matrix.html)).
 
 | Feature | V1 | V2 | V3 | BenoDB |
 |---------|----|----|----|--------------| 
@@ -394,16 +395,16 @@ the engine and the catalog (direct Parquet/object-store mutation) remain outside
 
 ## 🚀 Quick Start
 
-### 🔌 Core Connectors (3 Minutes to First Query)
+### 🔌 Core & Optional Lakehouse Connectors
 
-BenoDB's primary integration surface is the lakehouse stack — **Arrow Flight SQL**, **Trino**, **Apache Spark**, and **dbt**. Every connector reads and writes the same Apache Iceberg tables through the Rust engine, with no export step and no second copy of the data.
+BenoDB's supported network and analytics connectors are **Arrow Flight SQL** (`benodb-flight`) and **dbt** (`dbt-benodb`). Optional bespoke Java plugins (**Apache Spark** `spark-benodb` and **Trino** `trino-benodb`, classified as experimental/optional in [`SUPPORT_MATRIX.md`](https://benolabsai.com/docs/guides/support_matrix.html)) add pushdown and custom UDFs, while standard Spark 3.5/4.0 and Trino 482/484 Iceberg connectors read BenoDB's on-disk V2/V3 tables directly without installing any plugin.
 
-| Connector | Artifact | Entry point |
-| :--- | :--- | :--- |
-| **Arrow Flight SQL** | `benodb-flight` | `cargo run --release -p benodb-flight` (gRPC `:50051`) |
-| **Trino** | `trino-benodb` | `mvn clean install -DskipTests` → plugin ZIP |
-| **Apache Spark** | `spark-benodb` | `mvn clean package -Pspark-4.0` |
-| **dbt** | `pip install dbt-benodb` | `~/.dbt/profiles.yml` |
+| Connector | Artifact | Support Tier | Entry point |
+| :--- | :--- | :--- | :--- |
+| **Arrow Flight SQL** | `benodb-flight` | Supported Core (single-process) | `cargo run --release -p benodb-flight` (gRPC `:50051`) |
+| **dbt** | `pip install dbt-benodb` | Supported Core | `~/.dbt/profiles.yml` |
+| **Trino** | `trino-benodb` | Experimental / Optional | `mvn clean install -DskipTests` → plugin ZIP |
+| **Apache Spark** | `spark-benodb` | Experimental / Optional | `mvn clean package -Pspark-4.0` |
 
 Build and start the connectors:
 

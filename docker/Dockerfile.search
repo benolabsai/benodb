@@ -2,7 +2,7 @@
 # BenoStreamDB Search Service
 # Elasticsearch 7.10 (Port 9200) + Qdrant (Port 6333) compatible REST API
 # ---------------------------------------------------------------------------
-FROM rust:1.98-slim AS builder
+FROM rust:1.100-slim AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -16,16 +16,23 @@ WORKDIR /app
 
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
+COPY benodb-gpu-ann/Cargo.toml benodb-gpu-ann/Cargo.toml
 COPY contrib/benodb-search/Cargo.toml contrib/benodb-search/Cargo.toml
+COPY contrib/benodb-mcp/Cargo.toml contrib/benodb-mcp/Cargo.toml
 COPY server/flight_sql/Cargo.toml server/flight_sql/Cargo.toml
 
 # Create stub sources for dependency layer caching and manifest validation
 RUN mkdir -p src \
     && echo "pub fn stub() {}" > src/lib.rs \
     && echo "fn main() {}" > build.rs \
+    && mkdir -p benodb-gpu-ann/src \
+    && echo "pub fn stub() {}" > benodb-gpu-ann/src/lib.rs \
     && mkdir -p contrib/benodb-search/src \
     && echo "fn main() {}" > contrib/benodb-search/src/main.rs \
     && echo "pub fn stub() {}" > contrib/benodb-search/src/lib.rs \
+    && mkdir -p contrib/benodb-mcp/src \
+    && echo "pub fn stub() {}" > contrib/benodb-mcp/src/lib.rs \
+    && echo "fn main() {}" > contrib/benodb-mcp/src/main.rs \
     && mkdir -p server/flight_sql/src \
     && echo "fn main() {}" > server/flight_sql/src/main.rs \
     && mkdir -p tests/bin benches \
@@ -44,6 +51,7 @@ RUN mkdir -p src \
 # Copy actual source
 COPY build.rs ./
 COPY src ./src
+COPY benodb-gpu-ann/src ./benodb-gpu-ann/src
 COPY contrib/benodb-search/src ./contrib/benodb-search/src
 
 # Build the bdb-search binary

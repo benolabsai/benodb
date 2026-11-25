@@ -26,6 +26,29 @@ fn next_wal_filename(dir: &Path) -> PathBuf {
     dir.join(format!("log_{:020}_{:06}_{:08}.arrow", ts, pid, seq))
 }
 
+/// Flush directory metadata so preceding renames and unlinks survive host power loss.
+pub(crate) fn sync_dir(dir: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        match File::open(dir) {
+            Ok(d) => {
+                if let Err(e) = d.sync_all() {
+                    if e.kind() != std::io::ErrorKind::InvalidInput {
+                        return Err(e.into());
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct WalSegmentEntry {
     path: PathBuf,
@@ -576,6 +599,7 @@ fn compact_wal_directory(
             Err(e) => return Err(e.into()),
         }
     }
+    sync_dir(dir)?;
 
     {
         let mut reg = segments.lock();
@@ -1259,8 +1283,13 @@ impl WriteAheadLog {
     /// Compact WAL by consolidating all batches into one (synchronous mode).
     pub fn compact(&mut self) -> Result<()> {
         if let Some(mut writer) = self.writer.take() {
-            let _ = writer.finish();
-            let _ = writer.get_ref().sync_data();
+            writer
+                .finish()
+                .context("Failed to finish WAL writer before compaction")?;
+            writer
+                .get_ref()
+                .sync_all()
+                .context("Failed to sync WAL writer before compaction")?;
         }
         self.schema = None;
 
@@ -1275,13 +1304,19 @@ impl WriteAheadLog {
         let consolidated = arrow::compute::concat_batches(&schema, &batches)
             .context("Failed to concatenate batches during WAL compaction")?;
 
-        // 3. Write to temp file
+        // 3. Write to temp file and fsync before atomic rename
         let temp_path = self.path.with_extension("arrow.tmp");
-        let temp_file = File::create(&temp_path).context("Failed to create temp WAL file")?;
-        let mut temp_writer = StreamWriter::try_new(temp_file, &schema)?;
-        temp_writer.write(&consolidated)?;
-        temp_writer.finish()?;
-        drop(temp_writer);
+        {
+            let temp_file = File::create(&temp_path).context("Failed to create temp WAL file")?;
+            let mut temp_writer = StreamWriter::try_new(temp_file, &schema)?;
+            temp_writer.write(&consolidated)?;
+            temp_writer.finish()?;
+            temp_writer
+                .into_inner()
+                .map_err(|e| anyhow::anyhow!("WAL compaction flush error: {e}"))?
+                .sync_all()
+                .context("Failed to sync compacted WAL temp file")?;
+        }
 
         // 4. Atomic replace
         std::fs::rename(&temp_path, &self.path).context("Failed to replace WAL file")?;
@@ -1298,6 +1333,7 @@ impl WriteAheadLog {
                 std::fs::remove_file(&stale_path)?;
             }
         }
+        sync_dir(&self.dir)?;
 
         self.writer = None;
 

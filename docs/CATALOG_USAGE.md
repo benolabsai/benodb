@@ -181,6 +181,8 @@ unity_tables = bdb.create_catalog(
 
 ## 4. Iceberg REST Catalog (Snowflake / Apache Polaris & Lakekeeper)
 
+> **Validation scope:** The Iceberg REST OAuth2 client is verified in CI against open-source **Apache Polaris** (`tests/python/test_catalog_real_services.py`). **End-to-end execution against live Snowflake Enterprise accounts and Snowflake External Volumes is untested** and follows the Iceberg REST specification in developer preview (see [`docs/integrations/SNOWFLAKE.md`](https://benolabsai.com/docs/integrations/snowflake.html)).
+
 The vendor-neutral REST catalog is the most interoperable way to manage Iceberg tables across different engines (Trino, Spark, Snowflake, BenoDB). BenoDB natively supports the official Iceberg REST OpenAPI specification, including OAuth2 client credentials (`credential` / `client_id` + `client_secret`), static Bearer tokens (`token`), AWS SigV4 signing (`auth = "sigv4"`), and `/v1/config?warehouse=...` auto-discovery.
 
 ### Snowflake / Apache Polaris with OAuth2 Client Credentials
@@ -218,6 +220,7 @@ table = catalog.load_table("marketing", "campaign_results")
 
 _(merged from the former `catalog_usage.md`)_
 
+> **Untested against live Snowflake accounts:** Apache Polaris REST synchronization is tested via containerized integration tests; live Snowflake Enterprise account and External Volume queries are untested reference examples (see [`docs/integrations/SNOWFLAKE.md`](https://benolabsai.com/docs/integrations/snowflake.html)).
 
 This guide walks through configuring a **Zero-Copy Open Data Lakehouse** connecting **BenoDB**, **Apache Polaris**, and **Snowflake**. 
 

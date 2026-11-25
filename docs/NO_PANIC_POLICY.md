@@ -34,31 +34,20 @@ Prefer, in order:
 
 ## Enforcement
 
-### Ratchet (`scripts/no_panic_check.sh`)
+CI runs [`scripts/no_panic_check.sh`](https://github.com/benolabsai/benodb/blob/main/scripts/no_panic_check.sh) as the `no-panic` job in `.github/workflows/ci.yml`. It combines two checks:
 
-Because `src/lib.rs` and `benodb-search/src/lib.rs` already carry
-`#![deny(warnings)]`, flipping the restriction lints to hard errors immediately
-would fail the build on every not-yet-remediated site. Until remediation
-completes, enforcement is a **ratchet**:
+### 1. Ratchet (`scripts/no_panic_check.sh`)
 
 ```bash
-bash scripts/no_panic_check.sh           # fail if production panic sites grew
+bash scripts/no_panic_check.sh           # fail if production panic sites grew, then run hard gate
 bash scripts/no_panic_check.sh --write   # lower the baseline after a fix
 ```
 
-The script runs `cargo clippy --no-deps --lib` with
-`-D clippy::unwrap_used -D clippy::expect_used -D clippy::panic`. Using `--lib`
-(not `--all-targets`) compiles the crate with `cfg(test)` **off**, so test-only
-unwraps are excluded automatically. It compares the diagnostic count against
-`scripts/no_panic_baseline.txt` and fails on an increase.
+The script compiles with `-D clippy::unwrap_used -D clippy::expect_used -D clippy::panic` across `benodb` (`--lib`), `benodb-search` (`--lib`), `benodb-flight` (`--bin benodb-flight`), and `benodb-mcp` (`--bin benodb-mcp`). Using explicit non-test targets leaves `#[cfg(test)]` tests out while comparing the total un-exempted site count against `scripts/no_panic_baseline.txt`.
 
-Run it in CI as the `no-panic` job in `.github/workflows/ci.yml`.
+### 2. Library hard gate (`--features no-panic`)
 
-### Hard gate (staged)
-
-Once the baseline reaches the residual-invariant set below, the ratchet is
-replaced by a hard lint gate. The attributes are already in place, staged behind
-the `no-panic` cargo feature:
+Both `src/lib.rs` and `benodb-search/src/lib.rs` carry:
 
 ```rust
 #![cfg_attr(
@@ -67,38 +56,35 @@ the `no-panic` cargo feature:
 )]
 ```
 
-At that point CI adds `--features no-panic` and the feature becomes the
-permanent enforcement mechanism; the ratchet script can be retired.
+After the ratchet passes, `scripts/no_panic_check.sh` runs `cargo clippy --no-deps --lib --features no-panic` so any new un-exempted `unwrap()`, `expect()`, or `panic!` in the core library fails CI directly.
 
 ## Baseline and inventory
 
 Initial production baseline (measured before remediation): **289** sites
-(247 core library + 42 search library). **Current baseline: 0** — the library
-surfaces of both crates are clean and the hard gate is enforced in CI.
+(247 core library + 42 search library). **Current baseline: 0** — the `no-panic` job enforces both the `0`-site ratchet and the `--lib --features no-panic` hard gate in CI.
 
 Two module-scoped exemptions remain, both justified in source:
 
 | Exemption | Sites | Why |
 | --- | ---: | --- |
-| `src/core/index/hnsw_rs/**` | 69 | Vendored `hnsw_rs` (dual MIT/Apache-2.0). `unwrap`/`expect`/`panic` here assert graph invariants that hold by construction in the builder and the inner search loop, where threading `Result` would add a branch to the innermost distance comparison. `src/core/index/hnsw_rs/mod.rs` carries `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` with the rationale. |
+| `src/core/index/hnsw_rs/**` | 69 | Vendored `hnsw_rs` (dual MIT/Apache-2.0). `unwrap`/`expect`/`panic` here assert graph invariants in the builder and inner search loop, plus `hnswio` file dump/load paths. `src/core/index/hnsw_rs/mod.rs` carries `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`. |
 | `src/telemetry/metrics.rs` | 13 | `prometheus` metric constructors for static definitions; the crate has no infallible API. See the allowlist below. |
 
-Everything else — the search crate, graph UDFs, the storage/read path, the
-ingest and index-build path, merge/compaction/catalog, the algorithms, the GPU
-backends, the Python/FFI bindings, and `src/lib.rs` — was converted to `?`, made
-total, or narrowly allowlisted at function scope (see the allowlist section).
+Everything else in the core and search library crates — graph UDFs, the storage/read path, the ingest and index-build path, merge/compaction/catalog, the algorithms, the GPU backends, the Python/FFI bindings, and `src/lib.rs` — is clean under the `--lib --features no-panic` gate (with the narrowly scoped startup invariants in the allowlist below).
 
-### Deferred
+### Remaining gaps (not panic-free end to end)
 
-- **`hnswio` file I/O.** A truncated or corrupt index file can fail a
+- **`hnswio` file I/O.** A truncated or corrupt index file can panic in
   `read_exact`/`write_all` inside the vendored dump/load path, which the
-  module-level exemption therefore still covers. Converting those entry points to
-  `Result` changes upstream signatures; it is tracked here as the only
-  user-reachable panic path left in the library.
-- **Binary targets.** `src/bin/*` and `benodb-search/src/main.rs` are not
-  covered by this ratchet: `cargo clippy --bin <name>` re-lints the same-package
-  lib and does not reliably emit the bin's own diagnostics. They are remediated
-  directly and are covered by the staged feature once bin-root attributes land.
+  `hnsw_rs` module-level exemption still covers. Converting those entry points to
+  `Result` changes upstream signatures; it remains a **user-reachable panic path**
+  when loading corrupt HNSW sidecars.
+- **Root binary targets.** `scripts/no_panic_check.sh` ratchets `benodb-flight`
+  and `benodb-mcp` binary targets, while root-crate binaries (`src/bin/*`) and
+  `benodb-search/src/main.rs` are not yet compiled with `--features no-panic`
+  by the CI hard gate (which invokes `--lib` only). Consequently, the library
+  gate is enforced, not whole-application panic freedom across every binary entry
+  point.
 
 ## Residual-invariant allowlist
 

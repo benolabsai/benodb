@@ -35,16 +35,19 @@ any tag is published. Writes are byte-reproducible for a given revision because
 
 These surfaces are covered by CI and are the ones we stand behind:
 
-- **Engine** — Iceberg-format tables (V2/V3 subset), WAL + MVCC commits, indexes
+- **Engine** — Iceberg-format tables (V2 and implemented V3 subset: row lineage,
+  `deletion-vector-v1` Puffin deletion vectors, and manifest fields `143–145`;
+  per-PR validation against `apache/iceberg-rust` plus weekly/release-tag cross-engine reads via Spark 3.5/4.0 and Trino 482/484 in `.github/workflows/iceberg-interop.yml`),
+  WAL + MVCC commits (`WalDurability::Sync` guarantees RPO=0 across process crashes; host/container loss on remote object stores requires a persistent `BDB_WAL_DIR`), indexes
   (HNSW/IVF, TurboQuant variants, inverted/BM25, bitmap, CSR graph), compaction,
   vacuum, snapshot rollback, pinned read views, schema evolution, multi-writer OCC, and Iceberg catalogs
   ([`docs/CATALOG_USAGE.md`](CATALOG_USAGE.md) — `TableRequirement` validation + HTTP-409 CAS retry across `rest` [Bearer/OAuth2/SigV4], `s3tables`, `memory`, `jdbc` [PostgreSQL/SQLite], `glue` [SDK `version_id` & `mode="rest"`], `hive` [`expected_parameter`], `unity` [Unity Tables & Iceberg REST], and `nessie` [`expectedHash`]).
 - **SQL** — the full DataFusion surface plus the engine's UDFs (vector distance,
   pgvector operators, JSON path, graph UDAFs) and the catalog DDL layer
   (`CREATE INDEX`, `ALTER TABLE`, `OPTIMIZE`, `VACUUM`, `ALTER … EXECUTE`).
-- **Python** — `benodb.Table` / `Session`, `FlightClient`, `SearchClient`
-  (see [`docs/integrations/PYTHON.md`](https://benolabsai.com/docs/integrations/python.html)).
-- **Flight SQL** — trusted server-mode surface (see §4).
+- **Python & dbt** — `benodb.Table` / `Session`, `FlightClient`, `SearchClient`
+  (see [`docs/integrations/PYTHON.md`](https://benolabsai.com/docs/integrations/python.html)), plus the [`dbt-benodb`](https://benolabsai.com/docs/integrations/dbt.html) adapter.
+- **Flight SQL** — trusted single-process server-mode surface (see §4).
 - **Untrusted connectors** — MCP server ([`contrib/benodb-mcp`](https://github.com/benolabsai/benodb/tree/main/contrib/benodb-mcp))
   and the OpenSearch/Qdrant-compatible search gateway
   ([`contrib/benodb-search`](https://github.com/benolabsai/benodb/tree/main/contrib/benodb-search)). Both enforce
@@ -58,8 +61,9 @@ Not part of the supported-core guarantee:
 
 | Surface | Where | Status |
 |---|---|---|
-| Spark connector (`spark-benodb`) | subproject | Native (Iceberg-free) path; see [ADR-007](https://benolabsai.com/docs/guides/adr_007.html) |
-| Trino connector (`trino-benodb`) | subproject | Native path; typed set-returning table functions still open |
+| Spark connector (`spark-benodb`) | subproject | Experimental / optional native JNI path; see [ADR-007](https://benolabsai.com/docs/guides/adr_007.html) (standard Spark Iceberg reads of BenoDB tables are verified separately via `iceberg-interop.yml`) |
+| Trino connector (`trino-benodb`) | subproject | Experimental / optional native JNI path; typed set-returning table functions still open (standard Trino Iceberg reads of BenoDB tables are verified separately via `iceberg-interop.yml`) |
+| Snowflake integration (External Volumes / Open Catalog) | docs / REST | **Untested** against live Snowflake Enterprise accounts; architecture matches Iceberg REST + External Volume specs (`docs/integrations/SNOWFLAKE.md`) |
 | Flink | — | **No bespoke connector.** Integrate via the Iceberg Flink connector + Flight SQL/JDBC |
 | GPU backends (CUDA / ROCm / Metal / Intel) | feature-gated + `benodb-gpu-ann` | Batch-oriented acceleration only; not end-to-end resident GPU search ([`docs/GPU_SETUP_GUIDE.md`](GPU_SETUP_GUIDE.md)) |
 | Broker event adapters (Kafka/NATS/RabbitMQ) | planned `contrib/benodb-ingest` | Deferred — see [`docs/ROADMAP.md`](ROADMAP.md) (Theme 6) |

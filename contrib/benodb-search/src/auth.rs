@@ -59,11 +59,7 @@ pub async fn auth_middleware(
     let token = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| {
-            v.strip_prefix("Bearer ")
-                .or_else(|| v.strip_prefix("ApiKey "))
-                .or_else(|| v.strip_prefix("Api-Key "))
-        })
+        .and_then(|v| benodb::core::auth::extract_auth_token(v, &["Bearer", "ApiKey", "Api-Key"]))
         .or_else(|| headers.get("api-key").and_then(|v| v.to_str().ok()))
         .map(|s| s.trim().to_string());
 

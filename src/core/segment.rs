@@ -906,8 +906,17 @@ impl HybridSegmentWriter {
         // Extract and Merge Parquet Stats
         self.merge_parquet_stats(&metadata, vec_stats)?;
 
+        // Sync temp segment before atomic rename so data + footer are durable
+        File::open(&tmp_path)
+            .context("Failed to open temp segment file for sync")?
+            .sync_all()
+            .context("Failed to sync temp segment file")?;
+
         // Atomic rename
         std::fs::rename(&tmp_path, &path).context("Failed to atomically rename segment file")?;
+        if let Some(parent) = path.parent() {
+            crate::core::wal::sync_dir(parent)?;
+        }
 
         // Compute File Checksum
         let mut hasher = sha2::Sha256::new();

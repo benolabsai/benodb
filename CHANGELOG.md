@@ -1,3 +1,16 @@
+## [0.17.3] - Unreleased
+
+### Security & Hardening
+- **Flight SQL RBAC, `DoGet` Mutation Guard, and Identifier Validation**: Enforced `"admin"` role checks via `require_write_access` across `GetFlightInfo` DDL/DML, `DoGet` (`do_get_statement`, `do_get_prepared_statement`), `DoPut` updates/ingest, transactions, and `do_action_fallback` maintenance actions (`SetAutocommit`, `rebuild_cluster_index`, `warmup`) in `server/flight_sql/src/server.rs`. Added `validate_sql_identifier` to reject SQL injection payloads in Flight ingest descriptors and JSON maintenance actions.
+- **RFC 9110 Case-Insensitive Auth Schemes & JWT Config Warning**: Extracted shared `extract_auth_token` in `src/core/auth.rs` matching `Bearer` / `ApiKey` / `Api-Key` case-insensitively across `benodb-flight` and `benodb-search`, and added a startup warning when JWT verification is enabled without both `BDB_JWT_AUDIENCE` and `BDB_JWT_ISSUER`.
+- **HNSW IPC Bounds Checks**: Hardened `ArrowHnsw::load_from_mmap` and `ArrowHnsw::load_from_buffer` (`src/core/index/hnsw_rs/arrow_hnsw.rs`) with checked trailer/footer bounds, `checked_ipc_slice` block validation, and typed downcast errors so corrupt IPC sidecars return `Err` instead of panicking; hardened legacy `hnswio.rs` `load_point` reads and capped unchecked allocations.
+
+### Fixed
+- **WAL & Segment Rename Durability**: Added `sync_dir` parent-directory fsyncs on Unix renames/unlinks (`src/core/wal.rs`, `src/core/segment.rs`), propagated `finish()`/`sync_all()` errors and synced the temp WAL file in `WriteAheadLog::compact()`, synced temp Parquet segment files before rename in `segment.rs`, and wired `if wal_lock.should_compact()? { wal_lock.compact_async().await?; }` in `src/core/table/write.rs`.
+- **Service Dockerfiles MSRV Alignment**: Updated `docker/Dockerfile.{flight,search,cuda,gpu}` from `rust:1.98-slim` to `rust:1.100-slim`, added `benodb-gpu-ann` and `contrib/benodb-mcp` manifests/sources to the build layers, and aligned `BDB_FLIGHT_BIND`/`BDB_FLIGHT_PORT` in the GPU Dockerfiles.
+- **Iceberg Interop & CI Hygiene**: Added caching and Maven Central 429 retry/checksum verification for the PostgreSQL JDBC driver in `.github/workflows/iceberg-interop.yml`, and added `helpers:pinGitHubActionDigests` to `.github/renovate.json`.
+- **Documentation Credibility Alignment**: Reconciled `README.md`, `docs/PRODUCTION_READINESS_ASSESSMENT.md`, `docs/SUPPORT_MATRIX.md`, `docs/NO_PANIC_POLICY.md`, `docs/CATALOG_USAGE.md`, and `docs/PYTHON_VECTOR_API.md` (explicit process-crash vs. host-loss WAL durability, bounded Iceberg V3 scope, CI-verified Iceberg cross-engine reads vs. experimental `spark-benodb`/`trino-benodb` connectors, `--lib --features no-panic` coverage scope, and untested-against-live-Snowflake notices).
+
 ## [0.17.2] - 2026-11-23
 
 ### Fixed

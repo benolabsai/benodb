@@ -770,7 +770,9 @@ impl Table {
                 }
             }
         }
-        wal_lock.should_compact()?;
+        if wal_lock.should_compact()? {
+            wal_lock.compact_async().await?;
+        }
         drop(wal_lock);
         let t_wal_total = t_wal_task.elapsed().as_millis();
         tracing::debug!(

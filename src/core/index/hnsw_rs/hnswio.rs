@@ -317,14 +317,14 @@ fn load_point<T: 'static + DeserializeOwned + Clone + Sized + Send + Sync>(
     //
     // read and check magic
     let mut it_slice = [0u8; std::mem::size_of::<u32>()];
-    graph_in.read_exact(&mut it_slice).unwrap();
+    graph_in.read_exact(&mut it_slice)?;
     let magic = u32::from_ne_bytes(it_slice);
     if magic != MAGICPOINT {
         log::debug!("got instead of MAGICPOINT {:x}", magic);
         return Err(io::Error::other("bad magic at point beginning"));
     }
     let mut it_slice = [0u8; std::mem::size_of::<DataId>()];
-    graph_in.read_exact(&mut it_slice).unwrap();
+    graph_in.read_exact(&mut it_slice)?;
     let origin_id = DataId::from_ne_bytes(it_slice);
     // read point_id
     let mut it_slice = [0u8; std::mem::size_of::<u8>()];
@@ -345,7 +345,7 @@ fn load_point<T: 'static + DeserializeOwned + Clone + Sized + Send + Sync>(
         let mut it_slice = [0u8; std::mem::size_of::<usize>()];
         graph_in.read_exact(&mut it_slice)?;
         let nb_neighbours = usize::from_ne_bytes(it_slice);
-        let mut neighborhood_l: Vec<Neighbour> = Vec::with_capacity(nb_neighbours);
+        let mut neighborhood_l: Vec<Neighbour> = Vec::with_capacity(nb_neighbours.min(4096));
         for _j in 0..nb_neighbours {
             let mut it_slice = [0u8; std::mem::size_of::<DataId>()];
             graph_in.read_exact(&mut it_slice)?;
@@ -400,8 +400,17 @@ fn load_point<T: 'static + DeserializeOwned + Clone + Sized + Send + Sync>(
     let mut it_slice = [0u8; std::mem::size_of::<u64>()];
     data_in.read_exact(&mut it_slice)?;
     let serialized_len = u64::from_ne_bytes(it_slice);
+    const MAX_POINT_SERIALIZED_BYTES: u64 = 64 * 1024 * 1024;
+    if serialized_len > MAX_POINT_SERIALIZED_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("serialized vector length {serialized_len} exceeds cap"),
+        ));
+    }
+    let serialized_len = usize::try_from(serialized_len)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "serialized length overflow"))?;
     //    log::debug!("serialized len to reload {:?}", serialized_len);
-    let mut v_serialized = vec![0u8; serialized_len as usize];
+    let mut v_serialized = vec![0u8; serialized_len];
     data_in.read_exact(&mut v_serialized)?;
     let v: Vec<T> = if std::any::TypeId::of::<T>() != std::any::TypeId::of::<NoData>() {
         let (decoded, _): (Vec<T>, usize) =
@@ -525,7 +534,7 @@ fn load_point_indexation<
         graph_in.read_exact(&mut it_slice)?;
         let nbpoints = usize::from_ne_bytes(it_slice);
         log::debug!(" layer {:?} , nb points {:?}", l, nbpoints);
-        let mut vlayer: Vec<Arc<Point<T>>> = Vec::with_capacity(nbpoints);
+        let mut vlayer: Vec<Arc<Point<T>>> = Vec::with_capacity(nbpoints.min(65_536));
         for r in 0..nbpoints {
             // load graph and data part of point. Points are dumped in the same order.
             let load_point_res = load_point(graph_in, descr, data_in);

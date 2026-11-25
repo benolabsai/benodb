@@ -55,6 +55,48 @@ fn flight_read_only() -> bool {
         .unwrap_or(false)
 }
 
+/// Enforce write authorization for Flight SQL mutations (DDL, DML, ingest,
+/// transactions, and maintenance actions).
+///
+/// Always rejects writes when `BDB_FLIGHT_READ_ONLY` is set. When the auth
+/// interceptor attached [`benodb::core::auth::AuthClaims`], the caller must
+/// also carry the `"admin"` role (matching `bdb-search`).
+fn require_write_access<T>(request: &Request<T>) -> Result<(), Status> {
+    if flight_read_only() {
+        return Err(Status::permission_denied("Server is in read-only mode"));
+    }
+    if let Some(claims) = request.extensions().get::<benodb::core::auth::AuthClaims>() {
+        if !claims.roles.iter().any(|r| r == "admin") {
+            return Err(Status::permission_denied("admin role required for writes"));
+        }
+    }
+    Ok(())
+}
+
+/// Reject SQL injection payloads when building internal `ALTER TABLE` /
+/// `INSERT INTO` strings from Flight metadata or JSON action bodies.
+fn validate_sql_identifier(ident: &str, kind: &str) -> Result<(), Status> {
+    if ident.is_empty() {
+        return Err(Status::invalid_argument(format!("{kind} cannot be empty")));
+    }
+    for part in ident.split('.') {
+        let mut chars = part.chars();
+        let Some(first) = chars.next() else {
+            return Err(Status::invalid_argument(format!(
+                "invalid {kind} identifier '{ident}'"
+            )));
+        };
+        if !(first.is_ascii_alphabetic() || first == '_')
+            || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(Status::invalid_argument(format!(
+                "invalid {kind} identifier '{ident}'"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Marker used to translate the streaming row cap into `RESOURCE_EXHAUSTED`.
 const ROW_LIMIT_MARKER: &str = "Query exceeded row limit of";
 
@@ -333,7 +375,16 @@ impl FlightSqlService for BenoStreamFlightSqlService {
 
         // When autocommit is off, stage the statement and return an empty
         // result set; it runs as part of the transaction on COMMIT.
-        {
+        let can_stage = {
+            let tx = self.tx.lock().await;
+            !tx.autocommit
+        };
+        if can_stage {
+            if self.session.is_ddl(&sql).await.unwrap_or(true)
+                || self.session.is_dml(&sql).await.unwrap_or(true)
+            {
+                require_write_access(&request)?;
+            }
             let mut tx = self.tx.lock().await;
             if !tx.autocommit {
                 tx.staged.push(sql.clone());
@@ -364,9 +415,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         if self.session.is_ddl(&sql).await.unwrap_or(true)
             || self.session.is_dml(&sql).await.unwrap_or(true)
         {
-            if flight_read_only() {
-                return Err(Status::permission_denied("Server is in read-only mode"));
-            }
+            require_write_access(&request)?;
             self.execute_statement(&sql).await?;
             let options = datafusion::arrow::ipc::writer::IpcWriteOptions::default();
             let empty = datafusion::arrow::datatypes::Schema::empty();
@@ -436,9 +485,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         if self.session.is_ddl(&sql).await.unwrap_or(true)
             || self.session.is_dml(&sql).await.unwrap_or(true)
         {
-            if flight_read_only() {
-                return Err(Status::permission_denied("Server is in read-only mode"));
-            }
+            require_write_access(&request)?;
             self.execute_statement(&sql).await?;
             let options = datafusion::arrow::ipc::writer::IpcWriteOptions::default();
             let empty = datafusion::arrow::datatypes::Schema::empty();
@@ -623,10 +670,16 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_get_statement(
         &self,
         ticket: TicketStatementQuery,
-        _request: Request<Ticket>,
+        request: Request<Ticket>,
     ) -> Result<Response<BoxStream<'static, Result<FlightData, Status>>>, Status> {
         let sql = String::from_utf8(ticket.statement_handle.to_vec())
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        if self.session.is_ddl(&sql).await.unwrap_or(true)
+            || self.session.is_dml(&sql).await.unwrap_or(true)
+        {
+            require_write_access(&request)?;
+        }
 
         let mut df = self
             .session
@@ -666,9 +719,14 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_get_prepared_statement(
         &self,
         query: CommandPreparedStatementQuery,
-        _request: Request<Ticket>,
+        request: Request<Ticket>,
     ) -> Result<Response<BoxStream<'static, Result<FlightData, Status>>>, Status> {
         let sql = self.prepared_sql(&query.prepared_statement_handle).await?;
+        if self.session.is_ddl(&sql).await.unwrap_or(true)
+            || self.session.is_dml(&sql).await.unwrap_or(true)
+        {
+            require_write_access(&request)?;
+        }
         let mut df = self
             .session
             .sql_to_df(&sql)
@@ -905,11 +963,9 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_put_statement_update(
         &self,
         query: CommandStatementUpdate,
-        _request: Request<arrow_flight::sql::server::PeekableFlightDataStream>,
+        request: Request<arrow_flight::sql::server::PeekableFlightDataStream>,
     ) -> Result<i64, Status> {
-        if flight_read_only() {
-            return Err(Status::permission_denied("Server is in read-only mode"));
-        }
+        require_write_access(&request)?;
         let sql = query.query;
         {
             let mut tx = self.tx.lock().await;
@@ -937,11 +993,9 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_put_prepared_statement_update(
         &self,
         query: CommandPreparedStatementUpdate,
-        _request: Request<arrow_flight::sql::server::PeekableFlightDataStream>,
+        request: Request<arrow_flight::sql::server::PeekableFlightDataStream>,
     ) -> Result<i64, Status> {
-        if flight_read_only() {
-            return Err(Status::permission_denied("Server is in read-only mode"));
-        }
+        require_write_access(&request)?;
         let sql = self.prepared_sql(&query.prepared_statement_handle).await?;
         let batches = self.execute_statement(&sql).await?;
         Ok(batches.iter().map(|b| b.num_rows() as i64).sum())
@@ -1002,6 +1056,13 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         // honour it: enabling autocommit commits any staged statements.
         if action_type.to_ascii_lowercase().contains("autocommit") {
             let enabled = parse_autocommit_body(&request.get_ref().body);
+            let will_commit = {
+                let tx = self.tx.lock().await;
+                enabled && !tx.autocommit && !tx.staged.is_empty()
+            };
+            if will_commit {
+                require_write_access(&request)?;
+            }
             let mut tx = self.tx.lock().await;
             if enabled && !tx.autocommit {
                 let staged = std::mem::take(&mut tx.staged);
@@ -1017,6 +1078,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         }
         let lower = action_type.to_ascii_lowercase();
         if lower == "rebuild_cluster_index" || lower == "rebuildclusterindex" {
+            require_write_access(&request)?;
             let body_str = String::from_utf8_lossy(&request.get_ref().body);
             let json: serde_json::Value =
                 serde_json::from_str(&body_str).unwrap_or_else(|_| serde_json::json!({}));
@@ -1026,10 +1088,12 @@ impl FlightSqlService for BenoStreamFlightSqlService {
                     "rebuild_cluster_index action requires 'table' in body",
                 ));
             }
+            validate_sql_identifier(table, "table")?;
             let col = json
                 .get("column")
                 .and_then(|v| v.as_str())
                 .unwrap_or("embedding");
+            validate_sql_identifier(col, "column")?;
             let k = json.get("k").and_then(|v| v.as_i64()).unwrap_or(1024);
             let m = json.get("m").and_then(|v| v.as_i64()).unwrap_or(16);
             let ef_c = json
@@ -1053,6 +1117,7 @@ impl FlightSqlService for BenoStreamFlightSqlService {
             }))));
         }
         if lower == "warmup" {
+            require_write_access(&request)?;
             let body_str = String::from_utf8_lossy(&request.get_ref().body);
             let json: serde_json::Value =
                 serde_json::from_str(&body_str).unwrap_or_else(|_| serde_json::json!({}));
@@ -1062,11 +1127,15 @@ impl FlightSqlService for BenoStreamFlightSqlService {
                     "warmup action requires 'table' in body",
                 ));
             }
+            validate_sql_identifier(table, "table")?;
             let n_probes = json.get("n_probes").and_then(|v| v.as_i64()).unwrap_or(100);
             let max_mem = json
                 .get("max_memory_gb")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(8.0);
+            if !max_mem.is_finite() || max_mem < 0.0 {
+                return Err(Status::invalid_argument("invalid max_memory_gb"));
+            }
             let sql = format!(
                 "ALTER TABLE {} EXECUTE warmup(n_probes => {}, max_memory_gb => {})",
                 table, n_probes, max_mem
@@ -1088,8 +1157,9 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_action_begin_transaction(
         &self,
         _query: ActionBeginTransactionRequest,
-        _request: Request<Action>,
+        request: Request<Action>,
     ) -> Result<ActionBeginTransactionResult, Status> {
+        require_write_access(&request)?;
         let mut tx = self.tx.lock().await;
         tx.autocommit = false;
         tx.staged.clear();
@@ -1101,9 +1171,12 @@ impl FlightSqlService for BenoStreamFlightSqlService {
     async fn do_action_end_transaction(
         &self,
         query: ActionEndTransactionRequest,
-        _request: Request<Action>,
+        request: Request<Action>,
     ) -> Result<(), Status> {
         let commit = query.action == arrow_flight::sql::EndTransaction::Commit as i32;
+        if commit {
+            require_write_access(&request)?;
+        }
         let mut tx = self.tx.lock().await;
         let staged = std::mem::take(&mut tx.staged);
         tx.autocommit = true;
@@ -1157,9 +1230,8 @@ impl FlightSqlService for BenoStreamFlightSqlService {
         ticket: CommandStatementIngest,
         request: Request<arrow_flight::sql::server::PeekableFlightDataStream>,
     ) -> Result<i64, Status> {
-        if flight_read_only() {
-            return Err(Status::permission_denied("Server is in read-only mode"));
-        }
+        require_write_access(&request)?;
+        validate_sql_identifier(&ticket.table, "table")?;
         // Decode the incoming Arrow stream and append it to the target table.
         let mut stream = request.into_inner();
         let mut schema: Option<arrow::datatypes::SchemaRef> = None;
@@ -1311,5 +1383,86 @@ mod stream_tests {
             "unexpected message: {}",
             status.message()
         );
+    }
+
+    #[tokio::test]
+    async fn flight_rbac_blocks_non_admin_mutations_and_allows_reads() {
+        let session = benodb::core::sql::session::BenoStreamSession::new(None);
+        let service = BenoStreamFlightSqlService::new(session);
+
+        let reader_claims = benodb::core::auth::AuthClaims {
+            subject: "viewer-user".to_string(),
+            roles: vec!["viewer".to_string()],
+        };
+        let admin_claims = benodb::core::auth::AuthClaims {
+            subject: "admin-user".to_string(),
+            roles: vec!["admin".to_string()],
+        };
+
+        // Read query allowed for viewer role
+        let read_cmd = CommandStatementQuery {
+            query: "SELECT 1 AS ok".to_string(),
+            transaction_id: None,
+        };
+        let mut read_req = Request::new(FlightDescriptor::new_cmd(vec![]));
+        read_req.extensions_mut().insert(reader_claims.clone());
+        assert!(service
+            .get_flight_info_statement(read_cmd, read_req)
+            .await
+            .is_ok());
+
+        // DDL via GetFlightInfo denied for viewer role
+        let ddl_cmd = CommandStatementQuery {
+            query: "CREATE TABLE t (id INT)".to_string(),
+            transaction_id: None,
+        };
+        let mut ddl_req = Request::new(FlightDescriptor::new_cmd(vec![]));
+        ddl_req.extensions_mut().insert(reader_claims.clone());
+        let err = service
+            .get_flight_info_statement(ddl_cmd, ddl_req)
+            .await
+            .expect_err("viewer must be denied DDL");
+        assert_eq!(err.code(), tonic::Code::PermissionDenied);
+
+        // Crafted DDL in DoGet ticket denied for viewer role
+        let mut doget_ddl_req = Request::new(Ticket::new(vec![]));
+        doget_ddl_req.extensions_mut().insert(reader_claims.clone());
+        let err = service
+            .do_get_statement(
+                TicketStatementQuery {
+                    statement_handle: b"CREATE TABLE t2 (id INT)".to_vec().into(),
+                },
+                doget_ddl_req,
+            )
+            .await
+            .err()
+            .expect("viewer must be denied DDL via DoGet");
+        assert_eq!(err.code(), tonic::Code::PermissionDenied);
+
+        // DoAction warmup denied for viewer role
+        let mut action_req = Request::new(Action {
+            r#type: "warmup".to_string(),
+            body: br#"{"table":"t"}"#.to_vec().into(),
+        });
+        action_req.extensions_mut().insert(reader_claims);
+        let err = service
+            .do_action_fallback(action_req)
+            .await
+            .err()
+            .expect("viewer must be denied warmup action");
+        assert_eq!(err.code(), tonic::Code::PermissionDenied);
+
+        // SQL injection identifier rejected even for admin
+        let mut bad_action_req = Request::new(Action {
+            r#type: "warmup".to_string(),
+            body: br#"{"table":"t; DROP TABLE t"}"#.to_vec().into(),
+        });
+        bad_action_req.extensions_mut().insert(admin_claims);
+        let err = service
+            .do_action_fallback(bad_action_req)
+            .await
+            .err()
+            .expect("invalid identifier must be rejected");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 }

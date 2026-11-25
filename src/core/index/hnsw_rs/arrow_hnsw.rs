@@ -68,13 +68,9 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
     }
 
     pub fn load_from_mmap(mmap: Arc<memmap2::Mmap>, distance: D) -> Result<Self, String> {
-        let buffer = unsafe {
-            Buffer::from_custom_allocation(
-                std::ptr::NonNull::new_unchecked(mmap.as_ptr() as *mut u8),
-                mmap.len(),
-                mmap.clone(),
-            )
-        };
+        let ptr = std::ptr::NonNull::new(mmap.as_ptr() as *mut u8)
+            .ok_or_else(|| "Empty mmap".to_string())?;
+        let buffer = unsafe { Buffer::from_custom_allocation(ptr, mmap.len(), mmap.clone()) };
         Self::load_from_buffer(buffer, distance)
     }
 
@@ -93,16 +89,54 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
         Self::load_from_buffer(buffer, distance)
     }
 
+    fn checked_ipc_slice(
+        buffer: &Buffer,
+        block: &arrow_ipc::Block,
+        limit: usize,
+    ) -> Result<Buffer, String> {
+        let offset = usize::try_from(block.offset())
+            .map_err(|_| format!("Negative IPC block offset: {}", block.offset()))?;
+        let meta_len = usize::try_from(block.metaDataLength()).map_err(|_| {
+            format!(
+                "Negative IPC block metadata length: {}",
+                block.metaDataLength()
+            )
+        })?;
+        let body_len = usize::try_from(block.bodyLength())
+            .map_err(|_| format!("Negative IPC block body length: {}", block.bodyLength()))?;
+        let block_len = meta_len
+            .checked_add(body_len)
+            .ok_or_else(|| "IPC block length overflow".to_string())?;
+        let block_end = offset
+            .checked_add(block_len)
+            .ok_or_else(|| "IPC block range overflow".to_string())?;
+        if block_end > limit {
+            return Err(format!(
+                "IPC block [{offset}..{block_end}) exceeds data region {limit}"
+            ));
+        }
+        Ok(buffer.slice_with_length(offset, block_len))
+    }
+
     fn load_from_buffer(buffer: Buffer, distance: D) -> Result<Self, String> {
         if buffer.len() < 10 {
             return Err("IPC file too small".to_string());
         }
         let trailer_start = buffer.len() - 10;
-        let footer_len = read_footer_length(buffer[trailer_start..].try_into().unwrap())
+        let trailer_bytes: [u8; 10] = buffer[trailer_start..]
+            .try_into()
+            .map_err(|_| "Invalid IPC trailer slice".to_string())?;
+        let footer_len = read_footer_length(trailer_bytes)
             .map_err(|e: arrow::error::ArrowError| e.to_string())?;
+        if footer_len > trailer_start {
+            return Err(format!(
+                "Invalid IPC footer length {footer_len} exceeds payload size {trailer_start}"
+            ));
+        }
 
-        let footer = root_as_footer(&buffer[trailer_start - footer_len..trailer_start])
-            .map_err(|e| e.to_string())?;
+        let footer_start = trailer_start - footer_len;
+        let footer =
+            root_as_footer(&buffer[footer_start..trailer_start]).map_err(|e| e.to_string())?;
 
         let schema = fb_to_schema(footer.schema().ok_or("No schema")?);
 
@@ -110,8 +144,7 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
 
         if let Some(dicts) = footer.dictionaries() {
             for block in dicts.iter() {
-                let block_len = block.bodyLength() as usize + block.metaDataLength() as usize;
-                let data = buffer.slice_with_length(block.offset() as _, block_len);
+                let data = Self::checked_ipc_slice(&buffer, block, footer_start)?;
                 decoder
                     .read_dictionary(block, &data)
                     .map_err(|e| e.to_string())?;
@@ -129,12 +162,18 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
         }
 
         let block = &batches[0];
-        let block_len = block.bodyLength() as usize + block.metaDataLength() as usize;
-        let data = buffer.slice_with_length(block.offset() as _, block_len);
+        let data = Self::checked_ipc_slice(&buffer, block, footer_start)?;
         let batch = decoder
             .read_record_batch(block, &data)
             .map_err(|e| e.to_string())?
             .ok_or("Failed to read record batch")?;
+
+        if batch.num_columns() < 4 {
+            return Err(format!(
+                "Expected at least 4 columns in HNSW IPC batch, got {}",
+                batch.num_columns()
+            ));
+        }
 
         tracing::debug!("Schema of loaded batch: {:#?}", batch.schema());
         let data_id_array = Arc::new(
@@ -200,18 +239,24 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
 
         let l0_offsets = neighbors_array.offsets().clone();
         let l1 = neighbors_array.values();
-        let l1 = l1.as_any().downcast_ref::<ListArray>().unwrap();
+        let l1 = l1
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .ok_or("Failed to downcast neighbors level-1 values to ListArray")?;
         let l1_offsets = l1.offsets().clone();
         let s = l1.values();
         let s = s
             .as_any()
             .downcast_ref::<arrow::array::StructArray>()
-            .unwrap();
+            .ok_or("Failed to downcast neighbors leaf values to StructArray")?;
+        if s.num_columns() < 1 {
+            return Err("Neighbors StructArray has no columns".to_string());
+        }
         let neighbors_flat = Arc::new(
             s.column(0)
                 .as_any()
                 .downcast_ref::<UInt32Array>()
-                .unwrap()
+                .ok_or("Failed to downcast neighbor IDs to UInt32Array")?
                 .clone(),
         );
 
@@ -458,5 +503,43 @@ impl<T: ArrowType, D: Distance<T>> ArrowHnsw<T, D> {
         filter: Option<&roaring::RoaringBitmap>,
     ) -> Vec<crate::core::index::hnsw_rs::hnsw::Neighbour> {
         self.search_with_scorer(knbn, ef_s, filter, |v| self.distance.eval(query, v))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::index::hnsw_rs::dist::DistL2;
+
+    #[test]
+    fn corrupt_ipc_buffers_return_err_without_panicking() {
+        // 1. Empty / too short
+        assert!(ArrowHnsw::<f32, DistL2>::load_from_bytes(&[], DistL2).is_err());
+        assert!(ArrowHnsw::<f32, DistL2>::load_from_bytes(&[0u8; 9], DistL2).is_err());
+
+        // 2. Oversized footer length in 10-byte IPC trailer (len = u32::MAX, magic = ARROW1)
+        let mut bad_footer = vec![0u8; 16];
+        let trailer_start = bad_footer.len() - 10;
+        bad_footer[trailer_start..trailer_start + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+        bad_footer[trailer_start + 4..].copy_from_slice(b"ARROW1");
+        let err = ArrowHnsw::<f32, DistL2>::load_from_bytes(&bad_footer, DistL2)
+            .err()
+            .expect("oversized footer_len must return Err");
+        assert!(err.contains("footer length"), "unexpected err: {err}");
+    }
+
+    #[test]
+    fn checked_ipc_slice_rejects_out_of_bounds_and_negative_blocks() {
+        let neg_block = arrow_ipc::Block::new(-1, 10, 10);
+        let buf = Buffer::from([0u8; 32]);
+        assert!(ArrowHnsw::<f32, DistL2>::checked_ipc_slice(&buf, &neg_block, 32).is_err());
+
+        let oob_block = arrow_ipc::Block::new(24, 16, 8);
+        assert!(ArrowHnsw::<f32, DistL2>::checked_ipc_slice(&buf, &oob_block, 32).is_err());
+
+        let ok_block = arrow_ipc::Block::new(8, 8, 8);
+        let sliced = ArrowHnsw::<f32, DistL2>::checked_ipc_slice(&buf, &ok_block, 32)
+            .expect("in-bounds block must succeed");
+        assert_eq!(sliced.len(), 16);
     }
 }

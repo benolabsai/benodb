@@ -17,6 +17,19 @@ use base64::Engine as _;
 use serde_json::Value;
 use subtle::ConstantTimeEq;
 
+/// Extract a credential from an `Authorization` header using RFC 9110
+/// case-insensitive auth scheme matching (e.g. `Bearer`, `ApiKey`).
+pub fn extract_auth_token<'a>(header_value: &'a str, schemes: &[&str]) -> Option<&'a str> {
+    let (scheme, token) = header_value.trim_start().split_once(char::is_whitespace)?;
+    if schemes.iter().any(|s| scheme.eq_ignore_ascii_case(s)) {
+        let trimmed = token.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    None
+}
+
 /// Extracted claims from an authenticated token.
 #[derive(Clone, Debug, Default)]
 pub struct AuthClaims {
@@ -44,7 +57,7 @@ impl AuthConfig {
         let env_get = |name: &str| std::env::var(format!("BDB_{name}"));
         let truthy =
             |name: &str| matches!(env_get(name).as_deref(), Ok("1") | Ok("true") | Ok("yes"));
-        Self {
+        let cfg = Self {
             api_key: env_get("API_KEY").ok().filter(|s| !s.is_empty()),
             jwt_secret: env_get("JWT_SECRET")
                 .ok()
@@ -58,7 +71,17 @@ impl AuthConfig {
             jwt_issuer: env_get("JWT_ISSUER").ok().filter(|s| !s.is_empty()),
             required: truthy("AUTH_REQUIRED"),
             metrics_public: truthy("METRICS_PUBLIC"),
+        };
+        if (cfg.jwt_secret.is_some() || cfg.jwt_public_key.is_some())
+            && (cfg.jwt_audience.is_none() || cfg.jwt_issuer.is_none())
+        {
+            tracing::warn!(
+                audience_set = cfg.jwt_audience.is_some(),
+                issuer_set = cfg.jwt_issuer.is_some(),
+                "JWT authentication enabled without both BDB_JWT_AUDIENCE and BDB_JWT_ISSUER; any token signed by the configured key will be accepted regardless of audience/issuer"
+            );
         }
+        cfg
     }
 
     /// Whether any credential source is configured.
@@ -513,5 +536,27 @@ gWlhp7n9xsFp60wNoai9RDrn9ObsC5EF8qTljz10qC3VhjcAGrNMHLLRwGlR17dlEr2zERHJcl83Rh4y
 
         // 4. Verify expired token fails closed
         assert!(cfg_spki.verify(expired_token).is_err());
+    }
+
+    #[test]
+    fn extract_auth_token_matches_scheme_case_insensitively() {
+        assert_eq!(
+            extract_auth_token("Bearer abc.def", &["Bearer"]),
+            Some("abc.def")
+        );
+        assert_eq!(
+            extract_auth_token("bearer   abc.def  ", &["Bearer"]),
+            Some("abc.def")
+        );
+        assert_eq!(
+            extract_auth_token("BEARER xyz", &["Bearer", "ApiKey"]),
+            Some("xyz")
+        );
+        assert_eq!(
+            extract_auth_token("apikey my-secret", &["Bearer", "ApiKey"]),
+            Some("my-secret")
+        );
+        assert_eq!(extract_auth_token("Bearer   ", &["Bearer"]), None);
+        assert_eq!(extract_auth_token("Basic dXNlcjpwYXNz", &["Bearer"]), None);
     }
 }

@@ -976,7 +976,7 @@ cargo run -p benodb-search --bin bdb-search
 | `GET` | `/metrics` | Prometheus metrics scrape endpoint. |
 
 > [!NOTE]
-> **Data Lake Catalog Synchronization**: Every search index created via `PUT /{index}` or auto-created on ingest is stored as an Apache Iceberg (v2) table. When an external catalog is configured (e.g. **Snowflake / Apache Polaris**, Project Nessie, AWS Glue, Hive Metastore, Unity Catalog), document ingestion via `_bulk` and `_doc` automatically commits snapshots to the catalog via Iceberg Atomic Swap, keeping Spark, Trino, and Snowflake in sync with real-time updates.
+> **Data Lake Catalog Synchronization**: Every search index created via `PUT /{index}` or auto-created on ingest is stored as an Apache Iceberg table. When an external catalog is configured (e.g., **Apache Polaris**, Project Nessie, AWS Glue, Hive Metastore, Unity Catalog), document ingestion via `_bulk` and `_doc` commits snapshots to the catalog via Iceberg atomic compare-and-swap. (Integration against **Apache Polaris** is tested in CI; live **Snowflake** Enterprise accounts remain untested — see [`docs/integrations/SNOWFLAKE.md`](https://benolabsai.com/docs/integrations/snowflake.html).)
 
 
 ### Qdrant Vector Endpoints (Port 6333)
