@@ -783,14 +783,7 @@ pub static POSITION_DELETE_CACHE: Lazy<Cache<String, Arc<std::collections::HashS
             .build()
     });
 
-pub static FULL_DELETE_FILE_CACHE: Lazy<
-    Cache<String, Arc<std::collections::HashMap<String, std::collections::HashSet<i64>>>>,
-> = Lazy::new(|| {
-    Cache::builder()
-        .max_capacity(50_000)
-        .time_to_idle(Duration::from_secs(60 * 10)) // 10 mins idle
-        .build()
-});
+pub use benodb_iceberg::FULL_DELETE_FILE_CACHE;
 
 /// Global cache for parsed equality-delete values, keyed by the segment's
 /// delete-file set (same key as the merged position-delete cache).

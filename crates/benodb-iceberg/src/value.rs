@@ -31,8 +31,8 @@ pub fn avro_to_json(val: AvroValue) -> serde_json::Value {
 pub fn decode_iceberg_value(
     type_json: &serde_json::Value,
     bytes: &[u8],
-) -> crate::core::manifest::ManifestValue {
-    use crate::core::manifest::ManifestValue;
+) -> crate::manifest_types::ManifestValue {
+    use crate::manifest_types::ManifestValue;
 
     let type_str = if let Some(s) = type_json.as_str() {
         s
@@ -117,7 +117,7 @@ pub fn decode_iceberg_value(
 }
 
 /// Parse Avro serialized bytes without type hint (best-effort inference)
-pub fn parse_avro_value_bytes(bytes: &[u8]) -> crate::core::manifest::ManifestValue {
+pub fn parse_avro_value_bytes(bytes: &[u8]) -> crate::manifest_types::ManifestValue {
     // Iceberg stores min/max bounds as the serialized binary of the type.
     // Without strict type info, we attempt best-effort inference from byte length.
     parse_avro_value_bytes_with_type(bytes, None)
@@ -128,8 +128,8 @@ pub fn parse_avro_value_bytes(bytes: &[u8]) -> crate::core::manifest::ManifestVa
 pub fn parse_avro_value_bytes_with_type(
     bytes: &[u8],
     type_hint: Option<&str>,
-) -> crate::core::manifest::ManifestValue {
-    use crate::core::manifest::ManifestValue;
+) -> crate::manifest_types::ManifestValue {
+    use crate::manifest_types::ManifestValue;
 
     // If a type hint is available, use the typed decoder for correctness
     if let Some(type_name) = type_hint {
@@ -179,15 +179,15 @@ pub fn json_to_avro_value(v: &serde_json::Value) -> AvroValue {
     }
 }
 
-/// Encode a [`ManifestValue`](crate::core::manifest::ManifestValue) into
+/// Encode a [`ManifestValue`](crate::manifest_types::ManifestValue) into
 /// Iceberg's single-value binary form — the exact inverse of
 /// [`decode_iceberg_value`].
 ///
 /// Used to populate the manifest's `lower_bounds` / `upper_bounds`, which the
 /// reader turns back into `column_stats`. Returns `None` for values with no
 /// binary representation (e.g. `Null`).
-pub fn encode_iceberg_value(value: &crate::core::manifest::ManifestValue) -> Option<Vec<u8>> {
-    use crate::core::manifest::ManifestValue;
+pub fn encode_iceberg_value(value: &crate::manifest_types::ManifestValue) -> Option<Vec<u8>> {
+    use crate::manifest_types::ManifestValue;
     match value {
         ManifestValue::Boolean(b) => Some(vec![u8::from(*b)]),
         // Little-endian, matching `decode_iceberg_value` and the Iceberg spec.
@@ -203,7 +203,7 @@ pub fn encode_iceberg_value(value: &crate::core::manifest::ManifestValue) -> Opt
 #[cfg(test)]
 mod binary_bounds_tests {
     use super::*;
-    use crate::core::manifest::ManifestValue;
+    use crate::manifest_types::ManifestValue;
 
     /// `encode_iceberg_value` writes raw bytes, so decoding a binary column's
     /// bounds must return those same bytes as a UTF-8 string — otherwise the

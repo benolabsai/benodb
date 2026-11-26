@@ -52,8 +52,8 @@ pub const MANIFEST_LIST_SCHEMA_V2: &str = r#"
 /// manifest at all, even though the Avro schema itself is correct.
 fn attach_manifest_metadata<W: std::io::Write>(
     writer: &mut apache_avro::Writer<W>,
-    spec: &crate::core::manifest::PartitionSpec,
-    schema: &crate::core::manifest::Schema,
+    spec: &crate::manifest_types::PartitionSpec,
+    schema: &crate::manifest_types::Schema,
     content: &str,
     format_version: u8,
 ) -> Result<()> {
@@ -150,9 +150,9 @@ impl Default for IcebergWriter {
 fn append_delete_record<W: std::io::Write>(
     writer: &mut apache_avro::Writer<W>,
     avro_schema: &apache_avro::Schema,
-    partition_spec: &crate::core::manifest::PartitionSpec,
-    schema: &crate::core::manifest::Schema,
-    del_file: &crate::core::manifest::DeleteFile,
+    partition_spec: &crate::manifest_types::PartitionSpec,
+    schema: &crate::manifest_types::Schema,
+    del_file: &crate::manifest_types::DeleteFile,
     status: i32,
     snapshot_id: Option<i64>,
     seq_num: i64,
@@ -194,16 +194,16 @@ fn append_delete_record<W: std::io::Write>(
     // Iceberg V3 codes a Deletion Vector as a POSITION_DELETES entry (`content = 1`)
     // whose `file_format` is `PUFFIN` and whose fields 143-145 locate the blob inside
     // the Puffin container. The custom `content = 3` code is only accepted on read now
-    // (see `crate::core::iceberg::manifest`) so tables written by earlier builds still
+    // (see `crate::manifest`) so tables written by earlier builds still
     // resolve.
     let (content_id, delete_format) = match &del_file.content {
-        crate::core::manifest::DeleteContent::Position => {
+        crate::manifest_types::DeleteContent::Position => {
             (1, container_format_of(&del_file.file_path))
         }
-        crate::core::manifest::DeleteContent::Equality { .. } => {
+        crate::manifest_types::DeleteContent::Equality { .. } => {
             (2, container_format_of(&del_file.file_path))
         }
-        crate::core::manifest::DeleteContent::DeletionVector { .. } => (1, "PUFFIN".to_string()),
+        crate::manifest_types::DeleteContent::DeletionVector { .. } => (1, "PUFFIN".to_string()),
     };
 
     data_file.put("content", apache_avro::types::Value::Int(content_id));
@@ -259,7 +259,7 @@ fn append_delete_record<W: std::io::Write>(
         apache_avro::types::Value::Record(partition_record_values),
     );
 
-    if let crate::core::manifest::DeleteContent::Equality { equality_ids } = &del_file.content {
+    if let crate::manifest_types::DeleteContent::Equality { equality_ids } = &del_file.content {
         let avro_ids: Vec<apache_avro::types::Value> = equality_ids
             .iter()
             .map(|&i| apache_avro::types::Value::Int(i))
@@ -281,7 +281,7 @@ fn append_delete_record<W: std::io::Write>(
     // V3 deletion-vector coordinates (fields 143-145). Always written so the
     // record resolves; null for every non-DV delete type.
     match &del_file.content {
-        crate::core::manifest::DeleteContent::DeletionVector {
+        crate::manifest_types::DeleteContent::DeletionVector {
             puffin_file_path: _,
             referenced_data_file,
             content_offset,
@@ -336,7 +336,7 @@ impl IcebergWriter {
     /// Write a Manifest List (snap-*.avro)
     pub fn write_manifest_list(
         &self,
-        entries: &[crate::core::manifest::ManifestListEntry],
+        entries: &[crate::manifest_types::ManifestListEntry],
     ) -> Result<Vec<u8>> {
         let schema = apache_avro::Schema::parse_str(MANIFEST_LIST_SCHEMA_V2)?;
         let mut writer = apache_avro::Writer::new(&schema, Vec::new());
@@ -363,7 +363,7 @@ impl IcebergWriter {
                 .partition_stats
                 .values()
                 .map(|stats| {
-                    use crate::core::manifest::ManifestValue;
+                    use crate::manifest_types::ManifestValue;
                     let lower_bound = match &stats.min {
                         None | Some(ManifestValue::Null) => apache_avro::types::Value::Null,
                         Some(val) => {
@@ -418,9 +418,9 @@ impl IcebergWriter {
     /// Write a Manifest File (*.avro)
     pub fn write_manifest_file(
         &self,
-        entries: &[crate::core::manifest::ManifestEntry],
-        partition_spec: &crate::core::manifest::PartitionSpec,
-        schema: &crate::core::manifest::Schema,
+        entries: &[crate::manifest_types::ManifestEntry],
+        partition_spec: &crate::manifest_types::PartitionSpec,
+        schema: &crate::manifest_types::Schema,
         snapshot_id: i64,
         seq_num: i64,
     ) -> Result<Vec<u8>> {
@@ -630,9 +630,9 @@ impl IcebergWriter {
                     .ok_or_else(|| anyhow::anyhow!("Failed to create Record"))?;
 
                 let content_id = match del_file.content {
-                    crate::core::manifest::DeleteContent::Position => 1,
-                    crate::core::manifest::DeleteContent::Equality { .. } => 2,
-                    crate::core::manifest::DeleteContent::DeletionVector { .. } => 3,
+                    crate::manifest_types::DeleteContent::Position => 1,
+                    crate::manifest_types::DeleteContent::Equality { .. } => 2,
+                    crate::manifest_types::DeleteContent::DeletionVector { .. } => 3,
                 };
 
                 data_file.put("content", apache_avro::types::Value::Int(content_id));
@@ -703,7 +703,7 @@ impl IcebergWriter {
                 );
 
                 // Equality IDs
-                if let crate::core::manifest::DeleteContent::Equality { equality_ids } =
+                if let crate::manifest_types::DeleteContent::Equality { equality_ids } =
                     &del_file.content
                 {
                     let avro_ids: Vec<apache_avro::types::Value> = equality_ids
@@ -742,9 +742,9 @@ impl IcebergWriter {
     /// manifest to contain a single content type.
     pub fn write_manifest_chunks(
         &self,
-        entries: &[crate::core::manifest::ManifestEntry],
-        partition_spec: &crate::core::manifest::PartitionSpec,
-        schema: &crate::core::manifest::Schema,
+        entries: &[crate::manifest_types::ManifestEntry],
+        partition_spec: &crate::manifest_types::PartitionSpec,
+        schema: &crate::manifest_types::Schema,
         snapshot_id: i64,
         seq_num: i64,
         target_size_bytes: usize,
@@ -985,10 +985,10 @@ impl IcebergWriter {
     /// each commit would claim the same file was added by multiple snapshots.
     pub fn write_delete_manifest(
         &self,
-        delete_files: &[crate::core::manifest::DeleteFile],
+        delete_files: &[crate::manifest_types::DeleteFile],
         previous_paths: &std::collections::HashSet<String>,
-        partition_spec: &crate::core::manifest::PartitionSpec,
-        schema: &crate::core::manifest::Schema,
+        partition_spec: &crate::manifest_types::PartitionSpec,
+        schema: &crate::manifest_types::Schema,
         snapshot_id: i64,
         seq_num: i64,
     ) -> Result<Option<(Vec<u8>, usize, usize)>> {
@@ -1034,8 +1034,8 @@ impl IcebergWriter {
 
     fn generate_manifest_schema(
         &self,
-        spec: &crate::core::manifest::PartitionSpec,
-        schema: &crate::core::manifest::Schema,
+        spec: &crate::manifest_types::PartitionSpec,
+        schema: &crate::manifest_types::Schema,
     ) -> String {
         let mut partition_fields = Vec::new();
         for (idx, field) in spec.fields.iter().enumerate() {
@@ -1103,17 +1103,17 @@ impl IcebergWriter {
 /// Avro values from a segment's `column_stats`, keyed by Iceberg field id.
 ///
 /// This is the write side of the pair that
-/// [`crate::core::iceberg::manifest`] reads: it reconstructs `column_stats`
+/// [`crate::manifest`] reads: it reconstructs `column_stats`
 /// from exactly these three maps, and only when all three are present.
 fn bounds_avro_values(
-    stats: &std::collections::HashMap<String, crate::core::manifest::ColumnStats>,
-    schema: &crate::core::manifest::Schema,
+    stats: &std::collections::HashMap<String, crate::manifest_types::ColumnStats>,
+    schema: &crate::manifest_types::Schema,
 ) -> (
     apache_avro::types::Value,
     apache_avro::types::Value,
     apache_avro::types::Value,
 ) {
-    use crate::core::iceberg::value::encode_iceberg_value;
+    use crate::value::encode_iceberg_value;
     use apache_avro::types::Value as AvroValue;
 
     let mut nulls: Vec<AvroValue> = Vec::new();
@@ -1239,8 +1239,8 @@ impl PartitionAvroKind {
 }
 
 fn partition_field_avro_kind(
-    field: &crate::core::manifest::PartitionField,
-    schema: &crate::core::manifest::Schema,
+    field: &crate::manifest_types::PartitionField,
+    schema: &crate::manifest_types::Schema,
 ) -> PartitionAvroKind {
     let t = field.transform.trim().to_ascii_lowercase();
 
@@ -1294,16 +1294,16 @@ fn partition_field_avro_kind(
 /// `day` produces a `date` (`int` with `logicalType: "date"`), and `identity`,
 /// `void`, and `truncate` preserve the source column's type.
 fn partition_field_avro_type(
-    field: &crate::core::manifest::PartitionField,
-    schema: &crate::core::manifest::Schema,
+    field: &crate::manifest_types::PartitionField,
+    schema: &crate::manifest_types::Schema,
 ) -> &'static str {
     partition_field_avro_kind(field, schema).avro_type_str()
 }
 
 fn build_partition_avro_record(
     partition_values: &std::collections::HashMap<String, serde_json::Value>,
-    partition_spec: &crate::core::manifest::PartitionSpec,
-    schema: &crate::core::manifest::Schema,
+    partition_spec: &crate::manifest_types::PartitionSpec,
+    schema: &crate::manifest_types::Schema,
 ) -> Vec<(String, apache_avro::types::Value)> {
     partition_spec
         .fields
@@ -1343,7 +1343,7 @@ impl GpuPuffinWriter {
 #[cfg(test)]
 mod bounds_roundtrip_tests {
     use super::*;
-    use crate::core::manifest::{
+    use crate::manifest_types::{
         ColumnStats, ManifestEntry, ManifestValue, PartitionSpec, Schema, SchemaField,
     };
 

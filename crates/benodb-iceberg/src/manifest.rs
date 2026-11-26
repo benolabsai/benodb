@@ -409,10 +409,10 @@ fn parse_map_int_bytes(val: AvroValue) -> Option<std::collections::HashMap<i32, 
 /// Convert Iceberg Manifest Entry to BenoStream Manifest Entry or Delete File
 pub fn convert_iceberg_to_object(
     iceberg_entry: &IcebergManifestEntry,
-    schema: &crate::core::manifest::Schema,
-    partition_spec: &crate::core::manifest::PartitionSpec,
+    schema: &crate::manifest_types::Schema,
+    partition_spec: &crate::manifest_types::PartitionSpec,
 ) -> Result<IcebergManifestObject> {
-    use crate::core::manifest::{ColumnStats, DeleteContent, DeleteFile, ManifestEntry};
+    use crate::manifest_types::{ColumnStats, DeleteContent, DeleteFile, ManifestEntry};
     use std::collections::HashMap;
 
     let df = &iceberg_entry.data_file;
@@ -428,7 +428,7 @@ pub fn convert_iceberg_to_object(
     if df.content == 0 {
         // Data File
         let mut column_stats = HashMap::new();
-        let field_map: HashMap<i32, &crate::core::manifest::SchemaField> =
+        let field_map: HashMap<i32, &crate::manifest_types::SchemaField> =
             schema.fields.iter().map(|f| (f.id, f)).collect();
 
         if let (Some(lowers), Some(uppers), Some(nulls)) =

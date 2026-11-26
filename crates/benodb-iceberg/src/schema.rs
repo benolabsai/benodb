@@ -202,8 +202,8 @@ fn convert_iceberg_type_to_arrow(type_json: &serde_json::Value) -> Result<DataTy
 /// Convert Iceberg partition spec to BenoStream PartitionSpec
 pub fn iceberg_partition_spec_to_benodb(
     spec_json: &serde_json::Value,
-) -> Result<crate::core::manifest::PartitionSpec> {
-    use crate::core::manifest::{PartitionField, PartitionSpec};
+) -> Result<crate::manifest_types::PartitionSpec> {
+    use crate::manifest_types::{PartitionField, PartitionSpec};
 
     let spec_id = spec_json
         .get("spec-id")

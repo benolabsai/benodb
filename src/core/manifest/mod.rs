@@ -1,5 +1,5 @@
 pub mod manager;
-pub mod types;
+pub use benodb_iceberg::manifest_types as types;
 
 pub use manager::*;
 pub use types::*;

@@ -1248,6 +1248,7 @@ dependencies = [
  "axum 0.7.9",
  "base64 0.22.1",
  "benodb-gpu-ann",
+ "benodb-iceberg",
  "bincode",
  "bytemuck",
  "bytes",
@@ -1367,6 +1368,36 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "wgpu",
+]
+
+[[package]]
+name = "benodb-iceberg"
+version = "0.17.3"
+dependencies = [
+ "anyhow",
+ "apache-avro",
+ "arrow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "datafusion",
+ "futures",
+ "lazy_static",
+ "moka",
+ "murmur3",
+ "object_store",
+ "once_cell",
+ "parquet",
+ "prometheus",
+ "roaring",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "zstd",
 ]
 
 [[package]]

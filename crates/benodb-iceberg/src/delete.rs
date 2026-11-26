@@ -32,21 +32,21 @@ impl PositionDeleteReader {
 
         // Probe the cache first so hit/miss is observable, then fall back to
         // `try_get_with` (which coalesces concurrent misses) on a miss.
-        let full_map = match crate::core::cache::FULL_DELETE_FILE_CACHE
+        let full_map = match crate::FULL_DELETE_FILE_CACHE
             .get(&cache_key)
             .await
         {
             Some(v) => {
-                crate::telemetry::metrics::DELETE_FILE_CACHE_TOTAL
+                crate::metrics::DELETE_FILE_CACHE_TOTAL
                     .with_label_values(&["hit"])
                     .inc();
                 v
             }
             None => {
-                crate::telemetry::metrics::DELETE_FILE_CACHE_TOTAL
+                crate::metrics::DELETE_FILE_CACHE_TOTAL
                     .with_label_values(&["miss"])
                     .inc();
-                crate::core::cache::FULL_DELETE_FILE_CACHE
+                crate::FULL_DELETE_FILE_CACHE
                     .try_get_with(cache_key.clone(), async {
                         let is_avro = path.ends_with(".avro");
                         let path_obj = object_store::path::Path::from(path);
@@ -234,7 +234,7 @@ impl EqualityDeleteReader {
         &self,
         path: &str,
         equality_ids: &[i32],
-        schema: &crate::core::manifest::Schema,
+        schema: &crate::manifest_types::Schema,
     ) -> Result<Vec<arrow::record_batch::RecordBatch>> {
         let is_avro = path.ends_with(".avro");
         let path_obj = object_store::path::Path::from(path);
@@ -252,7 +252,7 @@ impl EqualityDeleteReader {
         &self,
         bytes: bytes::Bytes,
         equality_ids: &[i32],
-        schema: &crate::core::manifest::Schema,
+        schema: &crate::manifest_types::Schema,
     ) -> Result<Vec<arrow::record_batch::RecordBatch>> {
         use arrow::datatypes::{Field, Schema as ArrowSchema};
         use std::collections::HashMap;
@@ -261,7 +261,7 @@ impl EqualityDeleteReader {
         let reader = apache_avro::Reader::new(&bytes[..])?;
 
         let mut column_names = Vec::new();
-        let field_map: HashMap<i32, &crate::core::manifest::SchemaField> =
+        let field_map: HashMap<i32, &crate::manifest_types::SchemaField> =
             schema.fields.iter().map(|f| (f.id, f)).collect();
 
         for &id in equality_ids {
@@ -325,7 +325,7 @@ impl EqualityDeleteReader {
         &self,
         bytes: bytes::Bytes,
         equality_ids: &[i32],
-        schema: &crate::core::manifest::Schema,
+        schema: &crate::manifest_types::Schema,
     ) -> Result<Vec<arrow::record_batch::RecordBatch>> {
         use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
         use std::collections::HashMap;
@@ -334,7 +334,7 @@ impl EqualityDeleteReader {
 
         // 1. Resolve column names from IDs
         let mut column_names = Vec::new();
-        let field_map: HashMap<i32, &crate::core::manifest::SchemaField> =
+        let field_map: HashMap<i32, &crate::manifest_types::SchemaField> =
             schema.fields.iter().map(|f| (f.id, f)).collect();
 
         for &id in equality_ids {
@@ -493,8 +493,8 @@ pub async fn write_deletion_vector_puffin(
     rel_parent: &str,
     positions: &[i64],
     partition_values: &HashMap<String, serde_json::Value>,
-) -> Result<crate::core::manifest::DeleteFile> {
-    use crate::core::manifest::{DeleteContent, DeleteFile};
+) -> Result<crate::manifest_types::DeleteFile> {
+    use crate::manifest_types::{DeleteContent, DeleteFile};
 
     let absolute = |path: &str| -> String {
         if path.contains("://") || path.starts_with('/') {
@@ -516,7 +516,7 @@ pub async fn write_deletion_vector_puffin(
         })?;
         bitmap.insert(pos_u32);
     }
-    let payload = crate::core::puffin::encode_deletion_vector_v1(&bitmap)?;
+    let payload = crate::puffin::encode_deletion_vector_v1(&bitmap)?;
 
     let mut properties = HashMap::new();
     properties.insert(
@@ -525,9 +525,9 @@ pub async fn write_deletion_vector_puffin(
     );
     properties.insert("cardinality".to_string(), bitmap.len().to_string());
 
-    let mut writer = crate::core::puffin::PuffinWriter::new(std::io::Cursor::new(Vec::new()))?;
+    let mut writer = crate::puffin::PuffinWriter::new(std::io::Cursor::new(Vec::new()))?;
     let (content_offset, content_size_in_bytes) = writer.add_blob(
-        crate::core::puffin::DELETION_VECTOR_TYPE.to_string(),
+        crate::puffin::DELETION_VECTOR_TYPE.to_string(),
         Vec::new(),
         0, // snapshot id: the surrounding manifest carries the real one
         0, // sequence number: likewise
@@ -623,7 +623,7 @@ impl IcebergDeleteWriter {
         partition_data: Option<(String, std::collections::HashMap<String, serde_json::Value>)>,
         file_path_column: &arrow::array::StringArray,
         pos_column: &arrow::array::Int64Array,
-    ) -> Result<crate::core::manifest::DeleteFile> {
+    ) -> Result<crate::manifest_types::DeleteFile> {
         if file_path_column.len() != pos_column.len() {
             return Err(anyhow::anyhow!(
                 "Mismatch in file_path and pos column lengths"
@@ -698,9 +698,9 @@ impl IcebergDeleteWriter {
 
         let partition_values = partition_data.map(|(_, map)| map).unwrap_or_default();
 
-        Ok(crate::core::manifest::DeleteFile {
+        Ok(crate::manifest_types::DeleteFile {
             file_path: metadata_path,
-            content: crate::core::manifest::DeleteContent::Position,
+            content: crate::manifest_types::DeleteContent::Position,
             file_size_bytes: len as i64,
             record_count: file_path_column.len() as i64,
             partition_values,
@@ -713,8 +713,8 @@ impl IcebergDeleteWriter {
         partition_value: Option<&str>,
         batch: &arrow::record_batch::RecordBatch,
         equality_ids: &[i32],
-        table_schema: &crate::core::manifest::Schema,
-    ) -> Result<crate::core::manifest::DeleteFile> {
+        table_schema: &crate::manifest_types::Schema,
+    ) -> Result<crate::manifest_types::DeleteFile> {
         let file_name = format!(
             "del-eq-{}-{}.avro",
             uuid::Uuid::new_v4(),
@@ -803,9 +803,9 @@ impl IcebergDeleteWriter {
         // The manifest records the full URI; the reader relativizes it.
         let metadata_path = self.metadata_uri(&object_path);
 
-        Ok(crate::core::manifest::DeleteFile {
+        Ok(crate::manifest_types::DeleteFile {
             file_path: metadata_path,
-            content: crate::core::manifest::DeleteContent::Equality {
+            content: crate::manifest_types::DeleteContent::Equality {
                 equality_ids: equality_ids.to_vec(),
             },
             file_size_bytes: len as i64,

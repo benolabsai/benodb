@@ -175,14 +175,6 @@ lazy_static! {
         &["result"]
     ).unwrap();
 
-    /// Outcome of the per-file parsed-delete cache lookup. Label `result`
-    /// is `hit` or `miss`.
-    pub static ref DELETE_FILE_CACHE_TOTAL: IntCounterVec = register_int_counter_vec!(
-        "bdb_delete_file_cache_total",
-        "Per-file parsed-delete cache lookups by outcome",
-        &["result"]
-    ).unwrap();
-
     /// Number of delete files merged in a single `load_merged_deletes_inner`
     /// call, by content kind. Label `kind` is `position`, `deletion_vector`,
     /// or `equality`.
@@ -221,6 +213,8 @@ lazy_static! {
         &["result"]
     ).unwrap();
 }
+
+pub use benodb_iceberg::metrics::DELETE_FILE_CACHE_TOTAL;
 
 /// Render the merge-on-read delete-path metrics as a human-readable per-phase
 /// breakdown. Used by the randomized workload to print where the delete-merge

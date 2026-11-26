@@ -39,6 +39,7 @@ crate-type = ["cdylib", "rlib"]
 members = [
     ".",
     "benodb-gpu-ann",
+    "crates/benodb-iceberg",
     "server/flight_sql",
     "contrib/benodb-search",
     "contrib/benodb-mcp",
@@ -80,6 +81,7 @@ metrics-exporter-prometheus = ["dep:metrics-exporter-prometheus"]
 
 [dependencies]
 benodb-gpu-ann = { version = "0.2.0", path = "benodb-gpu-ann", default-features = false }
+benodb-iceberg = { version = "0.17.3", path = "crates/benodb-iceberg" }
 libc = "0.2"
 # core columnar memory format
 # `pyarrow` (which pulls pyo3 → libpython) is only needed for the Python

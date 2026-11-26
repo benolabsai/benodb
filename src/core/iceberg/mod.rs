@@ -1,67 +1,16 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
-//! Iceberg integration module for BenoStreamDB.
+//! Iceberg integration module for BenoDB.
 //!
-//! Provides reading, writing, and conversion of Iceberg table metadata,
-//! manifests, schemas, delete files, and partition transforms.
+//! The implementation lives in the standalone `benodb-iceberg` crate; this
+//! module re-exports it so every `crate::core::iceberg::` path in the engine
+//! keeps resolving while the crate extraction proceeds.
 
-pub mod delete;
-pub mod manifest;
-pub mod schema;
-pub mod transform;
-pub mod types;
-pub mod value;
-pub mod writer;
+pub use benodb_iceberg::*;
 
 // Re-export `iceberg_delete` for backward compatibility with existing callers
 // that reference `crate::core::iceberg::iceberg_delete::IcebergDeleteWriter`.
 // The actual implementation lives in `delete` module.
 pub mod iceberg_delete {
     pub use super::delete::IcebergDeleteWriter;
-}
-
-// ── Types ──────────────────────────────────────────────────────────────────
-pub use types::{
-    DeleteContent, IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry,
-    IcebergManifestObject, IcebergSnapshot, IcebergTableMetadata,
-};
-
-// ── Manifest reading & conversion ─────────────────────────────────────────
-pub use manifest::{convert_iceberg_to_object, read_manifest, read_manifest_list};
-
-// ── Schema ─────────────────────────────────────────────────────────────────
-pub use schema::{iceberg_json_to_arrow_schema, iceberg_partition_spec_to_benodb};
-
-// ── Delete readers ────────────────────────────────────────────────────────
-pub use delete::{EqualityDeleteReader, PositionDeleteReader};
-
-// ── Writers ────────────────────────────────────────────────────────────────
-pub use writer::{GpuPuffinWriter, IcebergWriter, MANIFEST_LIST_SCHEMA_V2};
-
-// ── Transforms ─────────────────────────────────────────────────────────────
-pub use transform::{murmur3_32_x86, IcebergTransform};
-
-// ── Value conversion ──────────────────────────────────────────────────────
-pub use value::{
-    avro_to_json, decode_iceberg_value, json_to_avro_value, parse_avro_value_bytes,
-    parse_avro_value_bytes_with_type,
-};
-
-/// Qualify a manifest-relative data-file path to the absolute URI that Iceberg
-/// manifests record.
-///
-/// Position-delete rows must reference exactly the data-file path declared by
-/// the data manifests (absolute). The engine keeps paths store-relative
-/// internally, so deletes need this conversion at write time; otherwise readers
-/// cannot match a delete to its file and silently return the deleted row.
-pub fn qualify_data_file_path(root_uri: &str, path: &str) -> String {
-    if path.contains("://") || path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!(
-            "{}/{}",
-            root_uri.trim_end_matches('/'),
-            path.trim_start_matches('/')
-        )
-    }
 }
