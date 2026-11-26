@@ -12,13 +12,9 @@
 //! Hive, Unity, Nessie, and JDBC catalogs) and no scan planning (the engine's
 //! reader owns data file reads). The crate is consumed by the BenoDB engine
 //! through facade re-exports in `core::iceberg`, `core::manifest::types`,
-//! `core::puffin`, `core::cache`, and `core::error`, so engine paths are
-//! unchanged.
-//!
-//! Lodging note: `error` carries the engine-wide `BenoStreamError` enum
-//! temporarily, because `puffin`'s typed `DeletionVectorDeserialize` contract
-//! references it. The Goal B type surgery re-homes error types so the crate's
-//! public API speaks only Iceberg spec concepts.
+//! `core::puffin`, and `core::cache`, so engine paths are unchanged. The
+//! engine's own error type lives in the engine; this crate's `error` module
+//! carries only format-level failures.
 #![deny(warnings)]
 
 pub mod delete;
