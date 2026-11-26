@@ -124,7 +124,11 @@ pub trait Catalog: Send + Sync {
     async fn list_tables(&self, namespace: &str) -> anyhow::Result<Vec<String>>;
 
     /// Load a table's current metadata.
-    async fn load_table(&self, namespace: &str, table: &str) -> anyhow::Result<IcebergTableMetadata>;
+    async fn load_table(
+        &self,
+        namespace: &str,
+        table: &str,
+    ) -> anyhow::Result<IcebergTableMetadata>;
 
     /// Whether the table exists.
     async fn table_exists(&self, namespace: &str, table: &str) -> anyhow::Result<bool>;
@@ -171,7 +175,10 @@ mod tests {
         let r: TableRequirement = serde_json::from_value(json).unwrap();
         assert_eq!(
             r,
-            TableRequirement::AssertRefSnapshotId { r#ref: "main".into(), snapshot_id: None }
+            TableRequirement::AssertRefSnapshotId {
+                r#ref: "main".into(),
+                snapshot_id: None
+            }
         );
     }
 

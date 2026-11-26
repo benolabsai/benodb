@@ -282,9 +282,8 @@ fn parse_search_mode(raw: Option<&str>) -> ClusterSearchMode {
 /// an environment read and string compare from every search.
 fn configured_search_mode() -> ClusterSearchMode {
     static CACHED: std::sync::OnceLock<ClusterSearchMode> = std::sync::OnceLock::new();
-    *CACHED.get_or_init(|| {
-        parse_search_mode(std::env::var("BDB_CLUSTER_SEARCH_MODE").ok().as_deref())
-    })
+    *CACHED
+        .get_or_init(|| parse_search_mode(std::env::var("BDB_CLUSTER_SEARCH_MODE").ok().as_deref()))
 }
 
 /// Byte slices of one cluster's blobs inside a Puffin container.

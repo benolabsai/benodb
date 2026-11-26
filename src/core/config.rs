@@ -101,8 +101,7 @@ pub(crate) fn disk_cache_enabled() -> bool {
 /// Pure parser for `BDB_TARGET_PARTITIONS`. `None` when unset, non numeric, or
 /// zero, so the caller falls back to detected parallelism.
 fn parse_target_partitions(raw: Option<&str>) -> Option<usize> {
-    raw.and_then(|n| n.parse::<usize>().ok())
-        .filter(|n| *n > 0)
+    raw.and_then(|n| n.parse::<usize>().ok()).filter(|n| *n > 0)
 }
 
 /// Effective DataFusion `target_partitions`: the `BDB_TARGET_PARTITIONS`
@@ -113,13 +112,11 @@ pub(crate) fn target_partitions() -> usize {
     static CACHED: OnceLock<usize> = OnceLock::new();
     *CACHED.get_or_init(|| {
         parse_target_partitions(std::env::var("BDB_TARGET_PARTITIONS").ok().as_deref())
-            .unwrap_or_else(
-            || {
+            .unwrap_or_else(|| {
                 std::thread::available_parallelism()
                     .map(|p| p.get())
                     .unwrap_or(4)
-            },
-        )
+            })
     })
 }
 
@@ -145,7 +142,11 @@ fn parse_vacuum_min_file_age_secs(raw: Option<&str>) -> i64 {
 pub(crate) fn vacuum_min_file_age_secs() -> i64 {
     static CACHED: OnceLock<i64> = OnceLock::new();
     *CACHED.get_or_init(|| {
-        parse_vacuum_min_file_age_secs(std::env::var("BDB_VACUUM_MIN_FILE_AGE_SECS").ok().as_deref())
+        parse_vacuum_min_file_age_secs(
+            std::env::var("BDB_VACUUM_MIN_FILE_AGE_SECS")
+                .ok()
+                .as_deref(),
+        )
     })
 }
 
@@ -216,8 +217,7 @@ pub(crate) fn ingest_backpressure_grace_secs() -> f64 {
 /// Pure parser for the `BDB_INGEST_MEMORY_BUDGET_GB` override. `None` when
 /// unset, non numeric, or non positive.
 fn parse_ingest_memory_budget_gb(raw: Option<&str>) -> Option<f64> {
-    raw.and_then(|s| s.parse::<f64>().ok())
-        .filter(|g| *g > 0.0)
+    raw.and_then(|s| s.parse::<f64>().ok()).filter(|g| *g > 0.0)
 }
 
 /// The `BDB_INGEST_MEMORY_BUDGET_GB` override in GiB, or `None` when unset or

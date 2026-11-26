@@ -92,9 +92,9 @@ impl<W: Write + Seek> PuffinIndexWriter<W> {
         };
 
         self.entries.push(entry);
-        self.entries.last().ok_or_else(|| {
-            anyhow::anyhow!("entry was just pushed")
-        })
+        self.entries
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("entry was just pushed"))
     }
 
     /// Add an index artifact from an on-disk file, streaming its payload directly
@@ -138,9 +138,9 @@ impl<W: Write + Seek> PuffinIndexWriter<W> {
         };
 
         self.entries.push(entry);
-        self.entries.last().ok_or_else(|| {
-            anyhow::anyhow!("entry was just pushed")
-        })
+        self.entries
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("entry was just pushed"))
     }
 
     /// Stream an existing uncompressed blob range from `store` into this Puffin
@@ -192,9 +192,9 @@ impl<W: Write + Seek> PuffinIndexWriter<W> {
         };
 
         self.entries.push(entry);
-        self.entries.last().ok_or_else(|| {
-            anyhow::anyhow!("entry was just pushed")
-        })
+        self.entries
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("entry was just pushed"))
     }
 
     pub fn entries(&self) -> &[IndexFile] {

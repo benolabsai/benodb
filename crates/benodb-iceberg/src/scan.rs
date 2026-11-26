@@ -175,7 +175,10 @@ fn transform_literals(expr: Expression, partition_spec: &PartitionSpec) -> Expre
         Expression::Predicate(Predicate::Binary { op, term, literal }) => {
             let transformed = match &term {
                 Term::ByFieldId(id) => {
-                    let pf = partition_spec.fields.iter().find(|pf| pf.source_id == Some(*id));
+                    let pf = partition_spec
+                        .fields
+                        .iter()
+                        .find(|pf| pf.source_id == Some(*id));
                     match pf {
                         Some(pf) => {
                             let t = IcebergTransform::parse(&pf.transform);
@@ -191,7 +194,10 @@ fn transform_literals(expr: Expression, partition_spec: &PartitionSpec) -> Expre
         Expression::Predicate(Predicate::Set { op, term, literals }) => {
             let transformed: Vec<Literal> = match &term {
                 Term::ByFieldId(id) => {
-                    let pf = partition_spec.fields.iter().find(|pf| pf.source_id == Some(*id));
+                    let pf = partition_spec
+                        .fields
+                        .iter()
+                        .find(|pf| pf.source_id == Some(*id));
                     match pf {
                         Some(pf) => {
                             let t = IcebergTransform::parse(&pf.transform);
@@ -204,9 +210,15 @@ fn transform_literals(expr: Expression, partition_spec: &PartitionSpec) -> Expre
                     }
                 }
             };
-            Expression::Predicate(Predicate::Set { op, term, literals: transformed })
+            Expression::Predicate(Predicate::Set {
+                op,
+                term,
+                literals: transformed,
+            })
         }
-        Expression::Not(inner) => Expression::Not(Box::new(transform_literals(*inner, partition_spec))),
+        Expression::Not(inner) => {
+            Expression::Not(Box::new(transform_literals(*inner, partition_spec)))
+        }
         Expression::And(a, b) => Expression::And(
             Box::new(transform_literals(*a, partition_spec)),
             Box::new(transform_literals(*b, partition_spec)),
@@ -306,7 +318,10 @@ mod tests {
     fn bucket_transform_applies_to_literals() {
         let t = IcebergTransform::parse("bucket[8]");
         let out = transform_literal(&t, &Literal::String("abc".to_string()));
-        assert!(out.is_some(), "bucket transform applies to a string literal");
+        assert!(
+            out.is_some(),
+            "bucket transform applies to a string literal"
+        );
     }
 
     #[test]

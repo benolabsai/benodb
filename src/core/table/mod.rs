@@ -137,8 +137,7 @@ pub(crate) struct PendingWrite {
 pub(crate) struct CommitBufferState {
     pub(crate) pending_writes: Arc<parking_lot::RwLock<Vec<PendingWrite>>>,
     pub(crate) pending_commit: Arc<parking_lot::Mutex<Option<PendingCommit>>>,
-    pub(crate) committed_wal_txs:
-        Arc<parking_lot::Mutex<std::collections::HashSet<uuid::Uuid>>>,
+    pub(crate) committed_wal_txs: Arc<parking_lot::Mutex<std::collections::HashSet<uuid::Uuid>>>,
     pub(crate) buffer_epoch: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -706,14 +705,16 @@ impl Table {
     /// lets the caller declare its footprint so the engine back-pressures on its
     /// own memory instead. Pass `0` to clear.
     pub fn set_caller_reserved_bytes(&self, bytes: u64) {
-        self.resource_limits.caller_reserved_bytes
+        self.resource_limits
+            .caller_reserved_bytes
             .store(bytes, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Bytes the caller has declared as its own (see
     /// [`Table::set_caller_reserved_bytes`]).
     pub fn caller_reserved_bytes(&self) -> u64 {
-        self.resource_limits.caller_reserved_bytes
+        self.resource_limits
+            .caller_reserved_bytes
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
@@ -774,7 +775,8 @@ impl Table {
         let mut guard = self.schema_state.sort_order.write();
         *guard = Some(order);
 
-        self.schema_state.sort_order_columns
+        self.schema_state
+            .sort_order_columns
             .write()
             .replace(columns.iter().map(|s| s.to_string()).collect());
 
@@ -787,7 +789,8 @@ impl Table {
 
     /// Iceberg table format version (1, 2, or 3).
     pub fn get_format_version(&self) -> i32 {
-        self.schema_state.format_version
+        self.schema_state
+            .format_version
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
@@ -795,7 +798,8 @@ impl Table {
     /// (`_row_id` / `_last_updated_sequence_number`). The change is persisted on
     /// the next commit.
     pub fn set_format_version(&self, version: i32) {
-        self.schema_state.format_version
+        self.schema_state
+            .format_version
             .store(version, std::sync::atomic::Ordering::Relaxed);
     }
 

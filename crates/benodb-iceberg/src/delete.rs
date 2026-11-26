@@ -32,10 +32,7 @@ impl PositionDeleteReader {
 
         // Probe the cache first so hit/miss is observable, then fall back to
         // `try_get_with` (which coalesces concurrent misses) on a miss.
-        let full_map = match crate::FULL_DELETE_FILE_CACHE
-            .get(&cache_key)
-            .await
-        {
+        let full_map = match crate::FULL_DELETE_FILE_CACHE.get(&cache_key).await {
             Some(v) => {
                 crate::metrics::DELETE_FILE_CACHE_TOTAL
                     .with_label_values(&["hit"])

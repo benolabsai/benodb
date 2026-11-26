@@ -252,12 +252,11 @@ fn append_delete_record<W: std::io::Write>(
         apache_avro::types::Value::Union(0, Box::new(apache_avro::types::Value::Null)),
     );
 
-    let partition_record_values =
-        build_partition_avro_record(
-            &partition_values_in_spec_order(&del_file.partition_values, partition_spec),
-            partition_spec,
-            schema,
-        );
+    let partition_record_values = build_partition_avro_record(
+        &partition_values_in_spec_order(&del_file.partition_values, partition_spec),
+        partition_spec,
+        schema,
+    );
     data_file.put(
         "partition",
         apache_avro::types::Value::Record(partition_record_values),
@@ -526,8 +525,11 @@ impl IcebergWriter {
             );
 
             // Partition Data
-            let partition_record_values =
-                build_partition_avro_record(&entry.data_file.partition, partition_spec, table_schema);
+            let partition_record_values = build_partition_avro_record(
+                &entry.data_file.partition,
+                partition_spec,
+                table_schema,
+            );
             data_file.put(
                 "partition",
                 apache_avro::types::Value::Record(partition_record_values),
@@ -1292,7 +1294,12 @@ fn partition_values_in_spec_order(
     partition_spec
         .fields
         .iter()
-        .map(|f| values.get(&f.name).cloned().unwrap_or(serde_json::Value::Null))
+        .map(|f| {
+            values
+                .get(&f.name)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        })
         .collect()
 }
 
@@ -1306,9 +1313,7 @@ fn build_partition_avro_record(
         .iter()
         .enumerate()
         .map(|(i, field)| {
-            let val = partition_values
-                .get(i)
-                .unwrap_or(&serde_json::Value::Null);
+            let val = partition_values.get(i).unwrap_or(&serde_json::Value::Null);
             let kind = partition_field_avro_kind(field, schema);
             (field.name.clone(), kind.json_to_avro_union(val))
         })
@@ -1394,14 +1399,22 @@ mod bounds_roundtrip_tests {
                 null_value_counts: Some([(1, 0)].into_iter().collect()),
                 nan_value_counts: None,
                 lower_bounds: Some(
-                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(40)).expect("int64 encodes"))]
-                        .into_iter()
-                        .collect(),
+                    [(
+                        1,
+                        crate::value::encode_iceberg_value(&ManifestValue::Int64(40))
+                            .expect("int64 encodes"),
+                    )]
+                    .into_iter()
+                    .collect(),
                 ),
                 upper_bounds: Some(
-                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(42)).expect("int64 encodes"))]
-                        .into_iter()
-                        .collect(),
+                    [(
+                        1,
+                        crate::value::encode_iceberg_value(&ManifestValue::Int64(42))
+                            .expect("int64 encodes"),
+                    )]
+                    .into_iter()
+                    .collect(),
                 ),
                 equality_ids: None,
                 referenced_data_file: None,

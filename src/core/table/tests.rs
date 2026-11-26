@@ -74,11 +74,26 @@ fn backpressure_grace_defaults_and_parses() {
     // unparseable value must fall back to the 60s default so a typo cannot
     // silently disable it.
     assert_eq!(crate::core::config::backpressure_grace_secs(None), 60.0);
-    assert_eq!(crate::core::config::backpressure_grace_secs(Some("15")), 15.0);
-    assert_eq!(crate::core::config::backpressure_grace_secs(Some("2.5")), 2.5);
-    assert_eq!(crate::core::config::backpressure_grace_secs(Some("0")), 60.0);
-    assert_eq!(crate::core::config::backpressure_grace_secs(Some("-3")), 60.0);
-    assert_eq!(crate::core::config::backpressure_grace_secs(Some("nope")), 60.0);
+    assert_eq!(
+        crate::core::config::backpressure_grace_secs(Some("15")),
+        15.0
+    );
+    assert_eq!(
+        crate::core::config::backpressure_grace_secs(Some("2.5")),
+        2.5
+    );
+    assert_eq!(
+        crate::core::config::backpressure_grace_secs(Some("0")),
+        60.0
+    );
+    assert_eq!(
+        crate::core::config::backpressure_grace_secs(Some("-3")),
+        60.0
+    );
+    assert_eq!(
+        crate::core::config::backpressure_grace_secs(Some("nope")),
+        60.0
+    );
 }
 
 #[tokio::test]

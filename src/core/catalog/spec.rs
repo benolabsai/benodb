@@ -112,7 +112,11 @@ impl SpecCatalogTrait for SpecCatalog {
         self.inner.list_tables(namespace).await
     }
 
-    async fn load_table(&self, namespace: &str, table: &str) -> anyhow::Result<IcebergTableMetadata> {
+    async fn load_table(
+        &self,
+        namespace: &str,
+        table: &str,
+    ) -> anyhow::Result<IcebergTableMetadata> {
         let m = self.inner.load_table(namespace, table).await?;
         Ok(to_iceberg_metadata(&m))
     }

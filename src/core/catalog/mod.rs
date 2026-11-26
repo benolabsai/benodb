@@ -8,8 +8,8 @@ pub mod jdbc;
 pub mod memory;
 pub mod nessie;
 pub mod policy;
-pub mod spec;
 pub mod rest;
+pub mod spec;
 pub mod unity;
 
 use anyhow::Result;

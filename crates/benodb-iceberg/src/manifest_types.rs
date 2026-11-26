@@ -327,7 +327,6 @@ pub struct VectorStats {
     pub dim_max: Option<Vec<f32>>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 

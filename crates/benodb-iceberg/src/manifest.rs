@@ -4,9 +4,7 @@ use anyhow::Result;
 use apache_avro::{types::Value as AvroValue, Reader};
 use std::io::Read;
 
-use super::types::{
-    IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry,
-};
+use super::types::{IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry};
 use super::value::avro_to_json;
 
 /// Read a manifest list (snap-*.avro) and return its entries

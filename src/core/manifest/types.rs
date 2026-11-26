@@ -7,13 +7,13 @@
 //! resolving.
 
 use crate::core::iceberg::value::decode_iceberg_value;
-use benodb_iceberg::types::IcebergManifestEntry;
+use anyhow::Result;
 pub use benodb_iceberg::manifest_types::{
     encode_composite_key, ColumnStats, DeleteContent, DeleteFile, IndexAlgorithm,
     ManifestListEntry, ManifestValue, PartitionField, PartitionSpec, Schema, SchemaField,
     VectorStats,
 };
-use anyhow::Result;
+use benodb_iceberg::types::IcebergManifestEntry;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -468,7 +468,6 @@ pub enum IcebergManifestObject {
     Delete(crate::core::manifest::types::DeleteFile),
 }
 
-
 /// Convert Iceberg Manifest Entry to BenoStream Manifest Entry or Delete File
 pub fn convert_iceberg_to_object(
     iceberg_entry: &IcebergManifestEntry,
@@ -646,4 +645,3 @@ mod sort_order_spec_spelling_tests {
         assert_eq!(tuple2, "1:a\u{1f}3:b\u{1f}c");
     }
 }
-

@@ -88,9 +88,20 @@ pub enum PredicateOp {
 /// `In`/`NotIn` carry the set; the null checks carry no literal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Predicate {
-    Unary { op: PredicateOp, term: Term },
-    Binary { op: PredicateOp, term: Term, literal: Literal },
-    Set { op: PredicateOp, term: Term, literals: Vec<Literal> },
+    Unary {
+        op: PredicateOp,
+        term: Term,
+    },
+    Binary {
+        op: PredicateOp,
+        term: Term,
+        literal: Literal,
+    },
+    Set {
+        op: PredicateOp,
+        term: Term,
+        literals: Vec<Literal>,
+    },
 }
 
 /// The spec's boolean expression tree.
@@ -183,23 +194,25 @@ impl Predicate {
                     PredicateOp::GtEq => Some(ord != std::cmp::Ordering::Less),
                     PredicateOp::Eq => Some(ord == std::cmp::Ordering::Equal),
                     PredicateOp::NotEq => Some(ord != std::cmp::Ordering::Equal),
-                    PredicateOp::StartsWith | PredicateOp::NotStartsWith => {
-                        match (&v, literal) {
-                            (Literal::String(s), Literal::String(prefix)) => {
-                                let starts = s.starts_with(prefix.as_str());
-                                Some(if *op == PredicateOp::StartsWith { starts } else { !starts })
-                            }
-                            _ => None,
+                    PredicateOp::StartsWith | PredicateOp::NotStartsWith => match (&v, literal) {
+                        (Literal::String(s), Literal::String(prefix)) => {
+                            let starts = s.starts_with(prefix.as_str());
+                            Some(if *op == PredicateOp::StartsWith {
+                                starts
+                            } else {
+                                !starts
+                            })
                         }
-                    }
+                        _ => None,
+                    },
                     _ => None,
                 }
             }
             Self::Set { op, term, literals } => {
                 let v = resolve_field(term, resolve)?;
-                let contained = literals.iter().any(|l| {
-                    v.cmp_same_type(l) == Some(std::cmp::Ordering::Equal)
-                });
+                let contained = literals
+                    .iter()
+                    .any(|l| v.cmp_same_type(l) == Some(std::cmp::Ordering::Equal));
                 match op {
                     PredicateOp::In => Some(contained),
                     PredicateOp::NotIn => Some(!contained),
@@ -210,10 +223,7 @@ impl Predicate {
     }
 }
 
-fn resolve_field(
-    term: &Term,
-    resolve: &mut impl FnMut(i32) -> Option<Literal>,
-) -> Option<Literal> {
+fn resolve_field(term: &Term, resolve: &mut impl FnMut(i32) -> Option<Literal>) -> Option<Literal> {
     match term {
         Term::ByFieldId(id) => resolve(*id),
     }
@@ -301,9 +311,17 @@ mod tests {
 
     #[test]
     fn starts_with_on_strings() {
-        let e = Expression::predicate(PredicateOp::StartsWith, 2, Literal::String("ab".to_string()));
+        let e = Expression::predicate(
+            PredicateOp::StartsWith,
+            2,
+            Literal::String("ab".to_string()),
+        );
         assert_eq!(e.test(&mut resolver()), Some(true));
-        let e = Expression::predicate(PredicateOp::NotStartsWith, 2, Literal::String("ab".to_string()));
+        let e = Expression::predicate(
+            PredicateOp::NotStartsWith,
+            2,
+            Literal::String("ab".to_string()),
+        );
         assert_eq!(e.test(&mut resolver()), Some(false));
     }
 

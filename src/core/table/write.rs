@@ -219,7 +219,8 @@ impl Table {
             // budget, otherwise a large caller-side frame blocks the write
             // forever (the caller cannot free it until the write returns).
             let caller_reserved =
-                self.resource_limits.caller_reserved_bytes
+                self.resource_limits
+                    .caller_reserved_bytes
                     .load(std::sync::atomic::Ordering::Relaxed) as usize;
             let engine_rss = || current_rss_bytes().saturating_sub(caller_reserved);
 

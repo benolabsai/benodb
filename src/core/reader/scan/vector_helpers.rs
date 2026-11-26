@@ -6,7 +6,11 @@
 use super::*;
 
 impl HybridReader {
-    pub(super) fn extract_vector_at(col: &dyn Array, i: usize, expected_dim: usize) -> Option<Vec<f32>> {
+    pub(super) fn extract_vector_at(
+        col: &dyn Array,
+        i: usize,
+        expected_dim: usize,
+    ) -> Option<Vec<f32>> {
         if col.is_null(i) {
             return None;
         }

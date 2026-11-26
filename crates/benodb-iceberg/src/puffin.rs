@@ -282,7 +282,6 @@ pub fn parse_footer_payload(payload: &[u8], flags: u32) -> Result<PuffinFooter> 
     serde_json::from_slice(&payload).context("Failed to parse Puffin footer JSON")
 }
 
-
 /// Reader for Puffin files.
 pub struct PuffinReader<R: Read + Seek> {
     reader: R,

@@ -89,7 +89,8 @@ impl Transaction {
 
     /// Upgrade the format version. Downgrades are rejected at `apply`.
     pub fn upgrade_format_version(&mut self, format_version: i32) -> &mut Self {
-        self.updates.push(TableUpdate::UpgradeFormatVersion { format_version });
+        self.updates
+            .push(TableUpdate::UpgradeFormatVersion { format_version });
         self
     }
 
@@ -112,12 +113,12 @@ impl Transaction {
                 TableRequirement::AssertCurrentSchemaId { current_schema_id } => {
                     base.current_schema_id == *current_schema_id
                 }
-                TableRequirement::AssertLastSequenceNumber { last_sequence_number } => {
-                    base.last_sequence_number == *last_sequence_number
-                }
-                TableRequirement::AssertLastAssignedFieldId { last_assigned_field_id } => {
-                    base.last_assigned_field_id == Some(*last_assigned_field_id)
-                }
+                TableRequirement::AssertLastSequenceNumber {
+                    last_sequence_number,
+                } => base.last_sequence_number == *last_sequence_number,
+                TableRequirement::AssertLastAssignedFieldId {
+                    last_assigned_field_id,
+                } => base.last_assigned_field_id == Some(*last_assigned_field_id),
                 TableRequirement::AssertRefSnapshotId { r#ref, snapshot_id } => {
                     base.refs.get(r#ref).map(|r| r.snapshot_id) == *snapshot_id
                 }
@@ -135,14 +136,18 @@ impl Transaction {
     /// Apply the updates to a clone of the base metadata, producing the next
     /// metadata. `validate` must pass first; this function re-runs it so a
     /// caller cannot skip the assertions.
-    pub fn apply(self, base: &crate::types::IcebergTableMetadata) -> Result<crate::types::IcebergTableMetadata> {
+    pub fn apply(
+        self,
+        base: &crate::types::IcebergTableMetadata,
+    ) -> Result<crate::types::IcebergTableMetadata> {
         self.validate(base)?;
         let mut next = base.clone();
         for update in self.updates {
             match update {
                 TableUpdate::AddSchema { schema } => {
                     let id = schema.schema_id;
-                    next.schemas.push(serde_json::to_value(schema).unwrap_or_default());
+                    next.schemas
+                        .push(serde_json::to_value(schema).unwrap_or_default());
                     next.current_schema_id = id;
                     if let Some(la) = next.last_assigned_field_id.as_mut() {
                         *la = (*la).max(id);

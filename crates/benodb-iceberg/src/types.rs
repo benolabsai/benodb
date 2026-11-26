@@ -109,7 +109,6 @@ pub struct IcebergDataFile {
     pub first_row_id: Option<i64>,
 }
 
-
 /// Content type for delete files
 #[derive(Debug, Clone)]
 pub enum DeleteContent {
