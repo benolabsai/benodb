@@ -17,6 +17,7 @@
 //! carries only format-level failures.
 #![deny(warnings)]
 
+pub mod catalog;
 pub mod delete;
 pub mod error;
 pub mod expr;

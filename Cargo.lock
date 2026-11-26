@@ -1381,7 +1381,6 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chrono",
- "datafusion",
  "futures",
  "lazy_static",
  "moka",

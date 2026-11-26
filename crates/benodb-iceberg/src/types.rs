@@ -18,7 +18,7 @@ pub struct IcebergTableMetadata {
     pub default_spec_id: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct IcebergSnapshot {
     pub snapshot_id: i64,
