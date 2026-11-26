@@ -1340,9 +1340,8 @@ impl GpuPuffinWriter {
 #[cfg(test)]
 mod bounds_roundtrip_tests {
     use super::*;
-    use crate::manifest_types::{
-        ColumnStats, ManifestEntry, ManifestValue, PartitionSpec, Schema, SchemaField,
-    };
+    use crate::manifest_types::{ColumnStats, ManifestValue, PartitionSpec, Schema, SchemaField};
+    use crate::types::{IcebergDataFile, IcebergManifestEntry};
 
     fn one_field_schema() -> Schema {
         Schema {
@@ -1392,10 +1391,18 @@ mod bounds_roundtrip_tests {
                 file_size_in_bytes: 10,
                 column_sizes: None,
                 value_counts: None,
-                null_value_counts: None,
+                null_value_counts: Some([(1, 0)].into_iter().collect()),
                 nan_value_counts: None,
-                lower_bounds: None,
-                upper_bounds: None,
+                lower_bounds: Some(
+                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(40)))]
+                        .into_iter()
+                        .collect(),
+                ),
+                upper_bounds: Some(
+                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(42)))]
+                        .into_iter()
+                        .collect(),
+                ),
                 equality_ids: None,
                 referenced_data_file: None,
                 content_offset: None,

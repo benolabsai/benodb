@@ -8,6 +8,11 @@
 
 pub use benodb_iceberg::*;
 
+// Engine vocabulary now: the enum's Data variant carries the engine's
+// ManifestEntry. Re-exported so the historical path keeps resolving.
+pub use crate::core::manifest::types::IcebergManifestObject;
+pub use crate::core::manifest::types::convert_iceberg_to_object;
+
 // Re-export `iceberg_delete` for backward compatibility with existing callers
 // that reference `crate::core::iceberg::iceberg_delete::IcebergDeleteWriter`.
 // The actual implementation lives in `delete` module.

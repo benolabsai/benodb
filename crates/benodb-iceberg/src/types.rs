@@ -82,11 +82,6 @@ pub struct IcebergDataFile {
     pub first_row_id: Option<i64>,
 }
 
-/// Enum to distinguish between Data and Delete entries in the manifest
-pub enum IcebergManifestObject {
-    Data(Box<crate::manifest_types::ManifestEntry>),
-    Delete(crate::manifest_types::DeleteFile),
-}
 
 /// Content type for delete files
 #[derive(Debug, Clone)]

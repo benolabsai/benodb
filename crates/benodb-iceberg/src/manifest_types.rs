@@ -3,213 +3,10 @@
 use anyhow::Result;
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-pub type SegmentId = String;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct IndexFile {
-    /// Format version of the serialized index structure (e.g., 1 for legacy, 2 for tightened/Puffin)
-    #[serde(default = "default_index_format_version")]
-    pub format_version: u32,
-
-    /// Unique identifier for this index instance
-    pub index_id: String,
-
-    /// High-level index category: "vector", "lexical", "scalar", "composite", "bloom"
-    pub index_category: String,
-
-    /// Concrete algorithm implementation: "hnsw_turboquant8", "hnsw_f32", "bm25_v1", "roaring_bitmap_v1"
-    pub algorithm: String,
-
-    /// Target column name within the Parquet schema
-    pub column_name: String,
-
-    // -----------------------------------------------------------------------
-    // Strict Lineage Bindings (Data Integrity Guards)
-    // -----------------------------------------------------------------------
-    /// Exact Iceberg Snapshot ID active when this index was constructed
-    pub source_snapshot_id: i64,
-
-    /// Cryptographic SHA-256 hash of the target Parquet data file
-    pub source_data_checksum: String,
-
-    /// Exact record count of the target Parquet data file
-    /// Enforces a strict 1-to-1 bijection between index point IDs and Parquet row offsets
-    pub source_record_count: i64,
-
-    /// Cryptographic SHA-256 hash of the index artifact itself (detects storage corruption / bitrot)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub index_checksum: Option<String>,
-
-    // -----------------------------------------------------------------------
-    // Physical Storage Location & Puffin Bundle Offsets
-    // -----------------------------------------------------------------------
-    /// Physical URI or relative storage path of the index artifact (or Puffin bundle)
-    pub file_path: String,
-
-    /// Puffin blob type if packed into an Iceberg Puffin container
-    /// e.g., "org.apache.iceberg.vector.hnsw-graph", "org.apache.iceberg.lexical.bm25"
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob_type: Option<String>,
-
-    /// Byte offset within the container file where the index payload begins
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob_offset: Option<i64>,
-
-    /// Length in bytes of the index payload
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob_length: Option<i64>,
-
-    /// Compression algorithm applied to the index blob ("zstd", "lz4", "none")
-    #[serde(default = "default_index_compression")]
-    pub compression: String,
-}
-
-fn default_index_format_version() -> u32 {
-    2
-}
-fn default_index_compression() -> String {
-    "zstd".to_string()
-}
-
-/// A **table-level** index artifact: one Puffin file that is not owned by any
-/// single data file.
-///
-/// [`IndexFile`] hangs off a [`ManifestEntry`], so it is per-data-file and its
-/// lineage bindings (`source_snapshot_id`, `source_data_checksum`,
-/// `source_record_count`) describe exactly one Parquet file. A cluster-keyed
-/// vector index spans every data file in the table, so it has no single file to
-/// bind to.
-///
-/// The lineage contract for this type supports a two-tier LSM architecture:
-///
-/// * `source_manifest_version` binds the artifact to the manifest version it was
-///   built from.
-/// * `source_segments` records the exact set of base data files it covers.
-/// * Commits that append data files retain `Manifest::table_indexes` so that the
-///   compacted base tier can be queried alongside uncompacted delta segments.
-/// * Any commit that removes or rewrites data files prunes `TableIndexFile`
-///   entries whose `source_segments` were deleted.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct TableIndexFile {
-    /// Format version of the serialized artifact.
-    #[serde(default = "default_index_format_version")]
-    pub format_version: u32,
-
-    /// Unique identifier for this index instance.
-    pub index_id: String,
-
-    /// High-level index category. Always `"vector"` today.
-    pub index_category: String,
-
-    /// Concrete algorithm implementation, e.g. `"cluster_hnsw_tq8"`.
-    pub algorithm: String,
-
-    /// Target column name within the Parquet schema.
-    pub column_name: String,
-
-    // -----------------------------------------------------------------------
-    // Table-level lineage bindings
-    // -----------------------------------------------------------------------
-    /// Manifest version this artifact was built from.
-    pub source_manifest_version: u64,
-
-    /// Data files (segment ids) covered by this artifact. A query whose manifest
-    /// contains a data file outside this set must not use the artifact.
-    #[serde(default)]
-    pub source_segments: Vec<String>,
-
-    /// Total number of indexed rows across all segments.
-    #[serde(default)]
-    pub source_record_count: i64,
-
-    /// Cryptographic SHA-256 hash of the artifact itself.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub index_checksum: Option<String>,
-
-    // -----------------------------------------------------------------------
-    // Physical storage location
-    // -----------------------------------------------------------------------
-    /// Physical URI or relative storage path of the Puffin container.
-    pub file_path: String,
-
-    /// Individual sequential shard files when the table index is partitioned.
-    #[serde(default)]
-    pub shard_files: Vec<String>,
-
-    /// Puffin blob type of the container's primary payload.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob_type: Option<String>,
-
-    /// Number of global clusters in the artifact.
-    #[serde(default)]
-    pub cluster_count: usize,
-
-    /// Vector dimensionality.
-    #[serde(default)]
-    pub dim: usize,
-
-    /// Distance metric name (`l2`, `cosine`, `ip`, ...).
-    #[serde(default)]
-    pub metric: String,
-
-    /// Compression algorithm applied to the artifact ("zstd", "lz4", "none").
-    #[serde(default = "default_index_compression")]
-    pub compression: String,
-}
-
-impl TableIndexFile {
-    /// Whether this artifact covers exactly the given set of segment ids.
-    ///
-    /// Order-insensitive. Used by the read path to reject an artifact that was
-    /// built before a data file was added or removed.
-    pub fn covers_segments(&self, segments: &[String]) -> bool {
-        if self.source_segments.len() != segments.len() {
-            return false;
-        }
-        let mut a = self.source_segments.clone();
-        let mut b = segments.to_vec();
-        a.sort_unstable();
-        b.sort_unstable();
-        a == b
-    }
-
-    /// Whether all source segments covered by this artifact are present in the
-    /// given segment set (and this artifact covers at least one segment).
-    ///
-    /// In a two-tier LSM model, this artifact covers the historical base tier
-    /// (S_base). Uncompacted delta segments (S_delta = segments \ S_base) are
-    /// queried independently and merged at retrieval time.
-    pub fn is_valid_base_for(&self, segments: &[String]) -> bool {
-        if self.source_segments.is_empty() {
-            return false;
-        }
-        let set: std::collections::HashSet<&String> = segments.iter().collect();
-        self.source_segments.iter().all(|s| set.contains(s))
-    }
-}
-
-impl IndexFile {
-    /// Whether this index belongs to the lexical (full-text) family.
-    ///
-    /// The canonical category is `"lexical"`. Legacy manifests written before
-    /// the rename used `"inverted"`, and some code
-    /// paths historically used `"bm25"`. All three denote the same family
-    /// (inverted postings / BM25) and must be treated equivalently so that
-    /// legacy tables keep working and new tables are recognized by every
-    /// consumer.
-    pub fn is_lexical(&self) -> bool {
-        matches!(
-            self.index_category.as_str(),
-            "lexical" | "inverted" | "bm25"
-        )
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -315,87 +112,6 @@ impl PartitionField {
 pub struct PartitionSpec {
     pub spec_id: i32,
     pub fields: Vec<PartitionField>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum SortDirection {
-    Asc,
-    Desc,
-}
-
-/// Iceberg's `null-order` for a sort field.
-///
-/// The spec spells these `nulls-first` / `nulls-last`. `rename_all =
-/// "lowercase"` produced `nullsfirst` / `nullslast`, which the Java client
-/// rejects: `SortOrderParser` upper-cases the value and replaces `-` with `_`
-/// before `NullOrder.valueOf`, so `nullslast` becomes `NULLSLAST` and does not
-/// exist. Spark and Trino therefore refused to open any BenoStreamDB table that
-/// had a sort order, with `IllegalArgumentException: Unexpected null order:
-/// nullslast`.
-///
-/// The old concatenated spelling stays as an `alias` so metadata written by
-/// earlier releases still parses.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum NullOrder {
-    #[serde(rename = "nulls-first", alias = "nullsfirst")]
-    NullsFirst,
-    #[serde(rename = "nulls-last", alias = "nullslast")]
-    NullsLast,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub struct SortField {
-    pub source_id: i32,
-    pub transform: String, // e.g. "identity"
-    pub direction: SortDirection,
-    pub null_order: NullOrder,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "kebab-case")]
-pub struct SortOrder {
-    pub order_id: i32,
-    pub fields: Vec<SortField>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct ManifestEntry {
-    pub file_path: String,
-    pub file_size_bytes: i64,
-    pub record_count: i64,
-    /// BenoStream Extension: File checksum (e.g. SHA256) for data integrity verification
-    #[serde(default)]
-    pub file_checksum: Option<String>,
-    /// BenoStream Extension: Sidecar Index Files
-    pub index_files: Vec<IndexFile>,
-    /// BenoStream Extension: Merge-on-Read Delete Files (Iceberg v2 compliant)
-    #[serde(default)]
-    pub delete_files: Vec<DeleteFile>,
-    /// Column Statistics for Pruning (Min/Max/Nulls)
-    #[serde(default)]
-    pub column_stats: HashMap<String, ColumnStats>,
-    /// Partition values for this file
-    #[serde(default)]
-    pub partition_values: HashMap<String, Value>,
-    /// BenoStream Extension: Clustering metadata for advanced pruning
-    #[serde(default)]
-    pub clustering_strategy: Option<String>,
-    #[serde(default)]
-    pub clustering_columns: Option<Vec<String>>,
-    #[serde(default)]
-    pub min_clustering_score: Option<u64>,
-    #[serde(default)]
-    pub max_clustering_score: Option<u64>,
-    #[serde(default)]
-    pub normalization_mins: Option<Vec<Value>>,
-    #[serde(default)]
-    pub normalization_maxs: Option<Vec<Value>>,
-    /// Iceberg V3 Row Lineage: the first `_row_id` assigned to the first row in
-    /// this data file. A row's `_row_id` is `first_row_id + row_position`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub first_row_id: Option<i64>,
 }
 
 impl From<&ManifestValue> for Value {
@@ -611,32 +327,10 @@ pub struct VectorStats {
     pub dim_max: Option<Vec<f32>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ManifestListEntry {
-    pub manifest_path: String,
-    pub manifest_length: i64,
-    pub partition_spec_id: i32,
-    /// 0=Data, 1=Deletes
-    pub content: i32,
-    pub sequence_number: i64,
-    pub min_sequence_number: i64,
-    pub added_snapshot_id: i64,
-    pub added_files_count: i32,
-    pub existing_files_count: i32,
-    pub deleted_files_count: i32,
-    pub added_rows_count: i64,
-    pub existing_rows_count: i64,
-    pub deleted_rows_count: i64,
-    pub partition_stats: HashMap<String, ColumnStats>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct ManifestList {
-    pub manifest_files: Vec<ManifestListEntry>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
+
 pub enum IndexAlgorithm {
     Hnsw {
         #[serde(default = "default_metric")]
@@ -818,18 +512,23 @@ impl Default for IndexAlgorithm {
 fn default_metric() -> String {
     "l2".to_string()
 }
+
 fn default_complexity() -> usize {
     16
 }
+
 fn default_quality() -> usize {
     200
 }
+
 fn default_compression() -> usize {
     8
 }
+
 fn default_src_column() -> String {
     "src".to_string()
 }
+
 fn default_dst_column() -> String {
     "dst".to_string()
 }
@@ -926,6 +625,25 @@ impl IndexAlgorithm {
         }
         self
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ManifestListEntry {
+    pub manifest_path: String,
+    pub manifest_length: i64,
+    pub partition_spec_id: i32,
+    /// 0=Data, 1=Deletes
+    pub content: i32,
+    pub sequence_number: i64,
+    pub min_sequence_number: i64,
+    pub added_snapshot_id: i64,
+    pub added_files_count: i32,
+    pub existing_files_count: i32,
+    pub deleted_files_count: i32,
+    pub added_rows_count: i64,
+    pub existing_rows_count: i64,
+    pub deleted_rows_count: i64,
+    pub partition_stats: HashMap<String, ColumnStats>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1620,159 +1338,6 @@ impl SchemaField {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Manifest {
-    pub version: u64,
-    /// Iceberg table format version (1, 2, or 3)
-    #[serde(default = "default_format_version")]
-    pub format_version: i32,
-    pub timestamp_ms: i64,
-    /// Path to the ManifestList file (Iceberg-style scalability)
-    #[serde(default)]
-    pub manifest_list_path: Option<String>,
-    /// List of active entries (Directly in manifest for small tables, otherwise in ManifestList)
-    pub entries: Vec<ManifestEntry>,
-    /// Authoritative, partition-scoped list of merge-on-read delete files.
-    ///
-    /// Delete files are stored **once** here (not attached to every data
-    /// entry). `ManifestEntry::delete_files` is a read-time *derived view*:
-    /// the reader resolves it by matching `partition_values`, and the commit
-    /// never persists it. This avoids the read-attach -> commit-persist cycle
-    /// that previously made the per-entry list grow without bound.
-    #[serde(default)]
-    pub delete_files: Vec<DeleteFile>,
-    /// Pointer to previous version (for history/rollback)
-    pub prev_version: Option<u64>,
-    /// Explicit Schema Tracking (Iceberg-style)
-    #[serde(default)]
-    pub schemas: Vec<Schema>,
-    #[serde(default)]
-    pub current_schema_id: i32,
-    /// Partition Specification
-    #[serde(default)]
-    pub partition_spec: PartitionSpec,
-    #[serde(default)]
-    pub partition_specs: Vec<PartitionSpec>,
-    #[serde(default)]
-    pub default_spec_id: i32,
-    /// Sort Orders (Iceberg spec)
-    #[serde(default)]
-    pub sort_orders: Vec<SortOrder>,
-    #[serde(default)]
-    pub default_sort_order_id: i32,
-    #[serde(default)]
-    pub properties: HashMap<String, String>,
-    #[serde(default)]
-    pub last_column_id: i32,
-    /// Table-level index artifacts (not owned by any single data file).
-    ///
-    /// `#[serde(default)]` keeps every pre-existing manifest readable: an old
-    /// table loads with an empty list and the read path falls back to the
-    /// per-segment index. The field is intentionally **not** carried forward by
-    /// [`Manifest::new`] and friends, so any data commit invalidates the
-    /// artifact — see [`TableIndexFile`] for the lineage contract.
-    #[serde(default)]
-    pub table_indexes: Vec<TableIndexFile>,
-}
-
-fn default_format_version() -> i32 {
-    2 // Default to V2 for backward compatibility
-}
-
-impl Manifest {
-    pub fn new(version: u64, entries: Vec<ManifestEntry>, prev_version: Option<u64>) -> Self {
-        Self {
-            version,
-            format_version: 2,
-            timestamp_ms: Utc::now().timestamp_millis(),
-            manifest_list_path: None,
-            entries,
-            delete_files: Vec::new(),
-            prev_version,
-            schemas: Vec::new(),
-            current_schema_id: 0,
-            partition_spec: PartitionSpec::default(),
-            partition_specs: Vec::new(),
-            default_spec_id: 0,
-            sort_orders: Vec::new(),
-            default_sort_order_id: 0,
-            properties: HashMap::new(),
-            last_column_id: 0,
-            table_indexes: Vec::new(),
-        }
-    }
-
-    pub fn new_with_schema(
-        version: u64,
-        entries: Vec<ManifestEntry>,
-        prev_version: Option<u64>,
-        schemas: Vec<Schema>,
-        current_schema_id: i32,
-    ) -> Self {
-        let last_id = schemas
-            .iter()
-            .flat_map(|s| s.fields.iter().map(|f| f.id))
-            .max()
-            .unwrap_or(0);
-        Self {
-            version,
-            format_version: 2,
-            timestamp_ms: Utc::now().timestamp_millis(),
-            manifest_list_path: None,
-            entries,
-            delete_files: Vec::new(),
-            prev_version,
-            schemas,
-            current_schema_id,
-            partition_spec: PartitionSpec::default(),
-            partition_specs: Vec::new(),
-            default_spec_id: 0,
-            sort_orders: Vec::new(),
-            default_sort_order_id: 0,
-            properties: HashMap::new(),
-            last_column_id: last_id,
-            table_indexes: Vec::new(),
-        }
-    }
-
-    pub fn new_with_spec(
-        version: u64,
-        entries: Vec<ManifestEntry>,
-        prev_version: Option<u64>,
-        schema_list: Vec<Schema>,
-        current_schema_id: i32,
-        partition_spec: PartitionSpec,
-    ) -> Self {
-        let last_id = schema_list
-            .iter()
-            .flat_map(|s| s.fields.iter().map(|f| f.id))
-            .max()
-            .unwrap_or(0);
-        let spec_id = partition_spec.spec_id;
-        Self {
-            version,
-            format_version: 2,
-            timestamp_ms: Utc::now().timestamp_millis(),
-            manifest_list_path: None,
-            entries,
-            delete_files: Vec::new(),
-            prev_version,
-            schemas: schema_list,
-            current_schema_id,
-            partition_spec: partition_spec.clone(),
-            partition_specs: vec![partition_spec], // Track spec history
-            default_spec_id: spec_id,
-            sort_orders: Vec::new(),
-            default_sort_order_id: 0,
-            properties: HashMap::new(),
-            last_column_id: last_id,
-            table_indexes: Vec::new(),
-        }
-    }
-}
-// Iceberg Target Manifest Size = 8MB
-pub const MANIFEST_TARGET_SIZE_BYTES: usize = 8 * 1024 * 1024;
-
 impl PartitionSpec {
     /// Convert partition values to a Hive-style path string
     pub fn partition_to_path(&self, values: &HashMap<String, serde_json::Value>) -> String {
@@ -1826,109 +1391,6 @@ impl ManifestValue {
             ManifestValue::Boolean(b) => serde_json::json!(b),
             ManifestValue::Null => serde_json::Value::Null,
         }
-    }
-}
-
-#[cfg(test)]
-mod index_algorithm_name_tests {
-    use super::IndexAlgorithm;
-
-    #[test]
-    fn from_name_accepts_canonical_names_and_categories() {
-        // Canonical names round-trip.
-        for name in IndexAlgorithm::all_names() {
-            let alg = IndexAlgorithm::from_name(&name)
-                .unwrap_or_else(|| panic!("canonical name '{name}' did not parse"));
-            assert_eq!(alg.name(), name, "name '{name}' did not round-trip");
-        }
-        // Physical categories the manifest uses map to the right family.
-        assert_eq!(
-            IndexAlgorithm::from_name("vector").map(|a| a.name()),
-            Some("hnsw")
-        );
-        assert_eq!(
-            IndexAlgorithm::from_name("lexical").map(|a| a.name()),
-            Some("bm25")
-        );
-        assert_eq!(
-            IndexAlgorithm::from_name("scalar").map(|a| a.name()),
-            Some("bitmap")
-        );
-        assert_eq!(
-            IndexAlgorithm::from_name("graph_v2").map(|a| a.name()),
-            Some("csr_graph")
-        );
-    }
-
-    #[test]
-    fn from_name_is_case_insensitive_and_trims() {
-        assert_eq!(
-            IndexAlgorithm::from_name("  HNSW_PQ ").map(|a| a.name()),
-            Some("hnsw_pq")
-        );
-    }
-
-    #[test]
-    fn from_name_returns_none_for_unknown() {
-        // Unknown input must be `None` so callers apply their own default
-        // rather than silently mis-indexing.
-        assert!(IndexAlgorithm::from_name("not_an_index").is_none());
-        assert!(IndexAlgorithm::from_name("").is_none());
-    }
-}
-
-#[cfg(test)]
-mod sort_order_spec_spelling_tests {
-    use super::*;
-
-    /// Spark and Trino parse `null-order` with
-    /// `NullOrder.valueOf(value.to_uppercase().replace('-', '_'))`, so the value
-    /// must be `nulls-first` / `nulls-last`. Writing `nullsfirst` made every
-    /// foreign reader reject the table with
-    /// `IllegalArgumentException: Unexpected null order: nullslast`.
-    #[test]
-    fn null_order_is_written_with_the_spec_hyphen() {
-        let field = SortField {
-            source_id: 1,
-            transform: "identity".to_string(),
-            direction: SortDirection::Desc,
-            null_order: NullOrder::NullsLast,
-        };
-        let json = serde_json::to_string(&field).expect("serialize sort field");
-        assert!(json.contains(r#""null-order":"nulls-last""#), "{json}");
-        assert!(json.contains(r#""direction":"desc""#), "{json}");
-
-        let json = serde_json::to_string(&NullOrder::NullsFirst).expect("serialize null order");
-        assert_eq!(json, r#""nulls-first""#);
-    }
-
-    /// Metadata written by releases that emitted the concatenated spelling must
-    /// still load, or the fix would strand existing tables.
-    #[test]
-    fn legacy_concatenated_null_order_still_deserializes() {
-        let legacy =
-            r#"{"source-id":1,"transform":"identity","direction":"desc","null-order":"nullslast"}"#;
-        let field: SortField = serde_json::from_str(legacy).expect("parse legacy sort field");
-        assert_eq!(field.null_order, NullOrder::NullsLast);
-
-        let legacy_first: NullOrder =
-            serde_json::from_str(r#""nullsfirst""#).expect("parse legacy null order");
-        assert_eq!(legacy_first, NullOrder::NullsFirst);
-    }
-
-    #[test]
-    fn test_encode_composite_key_disambiguation() {
-        let single = encode_composite_key(["bob-1"]);
-        assert_eq!(single, "bob-1");
-
-        let tuple1 = encode_composite_key(["a\u{1f}b", "c"]);
-        let tuple2 = encode_composite_key(["a", "b\u{1f}c"]);
-        assert_ne!(
-            tuple1, tuple2,
-            "Disambiguated length prefixing must prevent delimiter collisions"
-        );
-        assert_eq!(tuple1, "3:a\u{1f}b\u{1f}1:c");
-        assert_eq!(tuple2, "1:a\u{1f}3:b\u{1f}c");
     }
 }
 
@@ -2016,6 +1478,54 @@ impl PartitionSpec {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod index_algorithm_name_tests {
+    use super::IndexAlgorithm;
+
+    #[test]
+    fn from_name_accepts_canonical_names_and_categories() {
+        // Canonical names round-trip.
+        for name in IndexAlgorithm::all_names() {
+            let alg = IndexAlgorithm::from_name(&name)
+                .unwrap_or_else(|| panic!("canonical name '{name}' did not parse"));
+            assert_eq!(alg.name(), name, "name '{name}' did not round-trip");
+        }
+        // Physical categories the manifest uses map to the right family.
+        assert_eq!(
+            IndexAlgorithm::from_name("vector").map(|a| a.name()),
+            Some("hnsw")
+        );
+        assert_eq!(
+            IndexAlgorithm::from_name("lexical").map(|a| a.name()),
+            Some("bm25")
+        );
+        assert_eq!(
+            IndexAlgorithm::from_name("scalar").map(|a| a.name()),
+            Some("bitmap")
+        );
+        assert_eq!(
+            IndexAlgorithm::from_name("graph_v2").map(|a| a.name()),
+            Some("csr_graph")
+        );
+    }
+
+    #[test]
+    fn from_name_is_case_insensitive_and_trims() {
+        assert_eq!(
+            IndexAlgorithm::from_name("  HNSW_PQ ").map(|a| a.name()),
+            Some("hnsw_pq")
+        );
+    }
+
+    #[test]
+    fn from_name_returns_none_for_unknown() {
+        // Unknown input must be `None` so callers apply their own default
+        // rather than silently mis-indexing.
+        assert!(IndexAlgorithm::from_name("not_an_index").is_none());
+        assert!(IndexAlgorithm::from_name("").is_none());
     }
 }
 

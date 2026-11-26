@@ -5,9 +5,9 @@ use apache_avro::{types::Value as AvroValue, Reader};
 use std::io::Read;
 
 use super::types::{
-    IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry, IcebergManifestObject,
+    IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry,
 };
-use super::value::{avro_to_json, decode_iceberg_value};
+use super::value::avro_to_json;
 
 /// Read a manifest list (snap-*.avro) and return its entries
 pub fn read_manifest_list<R: Read>(reader: R) -> Result<Vec<IcebergManifestListEntry>> {
@@ -405,127 +405,4 @@ fn parse_map_int_bytes(val: AvroValue) -> Option<std::collections::HashMap<i32, 
         return Some(map);
     }
     None
-}
-
-/// Convert Iceberg Manifest Entry to BenoStream Manifest Entry or Delete File
-pub fn convert_iceberg_to_object(
-    iceberg_entry: &IcebergManifestEntry,
-    schema: &crate::manifest_types::Schema,
-    partition_spec: &crate::manifest_types::PartitionSpec,
-) -> Result<IcebergManifestObject> {
-    use crate::manifest_types::{ColumnStats, DeleteContent, DeleteFile, ManifestEntry};
-    use std::collections::HashMap;
-
-    let df = &iceberg_entry.data_file;
-
-    // Process partition values
-    let mut partition_values = HashMap::new();
-    if !df.partition.is_empty() && partition_spec.fields.len() == df.partition.len() {
-        for (i, p_field) in partition_spec.fields.iter().enumerate() {
-            partition_values.insert(p_field.name.clone(), df.partition[i].clone());
-        }
-    }
-
-    if df.content == 0 {
-        // Data File
-        let mut column_stats = HashMap::new();
-        let field_map: HashMap<i32, &crate::manifest_types::SchemaField> =
-            schema.fields.iter().map(|f| (f.id, f)).collect();
-
-        if let (Some(lowers), Some(uppers), Some(nulls)) =
-            (&df.lower_bounds, &df.upper_bounds, &df.null_value_counts)
-        {
-            for (id, lower_bytes) in lowers {
-                if let Some(field) = field_map.get(id) {
-                    let min_val =
-                        decode_iceberg_value(&serde_json::json!(field.type_str), lower_bytes);
-                    let max_val = uppers.get(id).map(|upper_bytes| {
-                        decode_iceberg_value(&serde_json::json!(field.type_str), upper_bytes)
-                    });
-                    let null_count = *nulls.get(id).unwrap_or(&0);
-                    column_stats.insert(
-                        field.name.clone(),
-                        ColumnStats {
-                            min: Some(min_val),
-                            max: max_val,
-                            null_count,
-                            ..Default::default()
-                        },
-                    );
-                }
-            }
-        }
-
-        let index_files = if let Some(idx_json) = &df.index_files {
-            serde_json::from_str(idx_json).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        Ok(IcebergManifestObject::Data(Box::new(ManifestEntry {
-            file_path: df.file_path.clone(),
-            file_size_bytes: df.file_size_in_bytes,
-            record_count: df.record_count,
-            column_stats,
-            partition_values,
-            index_files,
-            file_checksum: df.file_checksum.clone(),
-            first_row_id: df.first_row_id,
-            ..Default::default()
-        })))
-    } else {
-        // Delete File.
-        //
-        // Two encodings are accepted for V3 Deletion Vectors:
-        //  - spec shape: `content = 1` (POSITION_DELETES), `file_format = "PUFFIN"`,
-        //    non-null `referenced_data_file` + `content_offset` + `content_size_in_bytes`;
-        //  - legacy BenoStreamDB shape: the custom `content = 3` code, which earlier
-        //    builds wrote before the V3 spec layout was implemented.
-        let dv_fields = (df.content_offset, df.content_size_in_bytes);
-        let is_puffin = df.file_format.eq_ignore_ascii_case("PUFFIN");
-        let content = if df.content == 1 && is_puffin {
-            match dv_fields {
-                (Some(offset), Some(size)) => DeleteContent::DeletionVector {
-                    puffin_file_path: df.file_path.clone(),
-                    referenced_data_file: df.referenced_data_file.clone(),
-                    content_offset: offset,
-                    content_size_in_bytes: size,
-                },
-                // A PUFFIN-format position-delete entry without blob coordinates
-                // cannot be fetched; failing closed here would silently drop the
-                // deletes, so surface it as a position delete and let the reader
-                // warn on the unreadable path.
-                _ => DeleteContent::Position,
-            }
-        } else if df.content == 1 {
-            DeleteContent::Position
-        } else if df.content == 2 {
-            DeleteContent::Equality {
-                equality_ids: df.equality_ids.clone().unwrap_or_default(),
-            }
-        } else if df.content == 3 {
-            // Legacy DV encoding written before the V3 spec layout landed.
-            if let (Some(offset), Some(size)) = dv_fields {
-                DeleteContent::DeletionVector {
-                    puffin_file_path: df.file_path.clone(),
-                    referenced_data_file: df.referenced_data_file.clone(),
-                    content_offset: offset,
-                    content_size_in_bytes: size,
-                }
-            } else {
-                DeleteContent::Position
-            }
-        } else {
-            // Unknown content type, default to position
-            DeleteContent::Position
-        };
-
-        Ok(IcebergManifestObject::Delete(DeleteFile {
-            file_path: df.file_path.clone(),
-            content,
-            file_size_bytes: df.file_size_in_bytes,
-            record_count: df.record_count,
-            partition_values,
-        }))
-    }
 }

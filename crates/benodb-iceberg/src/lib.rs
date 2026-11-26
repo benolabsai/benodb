@@ -39,11 +39,11 @@ pub mod iceberg_delete {
 // ── Types ──────────────────────────────────────────────────────────────────
 pub use types::{
     DeleteContent, IcebergDataFile, IcebergManifestEntry, IcebergManifestListEntry,
-    IcebergManifestObject, IcebergSnapshot, IcebergTableMetadata,
+    IcebergSnapshot, IcebergTableMetadata,
 };
 
 // ── Manifest reading & conversion ─────────────────────────────────────────
-pub use manifest::{convert_iceberg_to_object, read_manifest, read_manifest_list};
+pub use manifest::{read_manifest, read_manifest_list};
 
 // ── Schema ─────────────────────────────────────────────────────────────────
 pub use schema::{iceberg_json_to_arrow_schema, iceberg_partition_spec_to_benodb};
