@@ -95,3 +95,4 @@ they were not decisions: a graph-RAG feature set with a post-mortem, a binding
 ergonomics fix list, and a partitioned-indexing fix list. Their surviving content
 is in [`CHANGELOG.md`](https://github.com/benolabsai/benodb/blob/main/CHANGELOG.md).
 Deleting them is the reason the series could be renumbered contiguously.
+- [`ADR-011`](ADR_011_BENODB_ICEBERG_STANDALONE_FORMAT_CRATE.md): The Iceberg format layer is a standalone crate, and its public API speaks only spec concepts.
