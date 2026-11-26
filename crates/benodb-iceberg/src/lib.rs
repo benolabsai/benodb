@@ -19,6 +19,7 @@
 
 pub mod delete;
 pub mod error;
+pub mod expr;
 pub mod manifest;
 pub mod manifest_types;
 pub mod metrics;

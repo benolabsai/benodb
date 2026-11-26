@@ -1394,12 +1394,12 @@ mod bounds_roundtrip_tests {
                 null_value_counts: Some([(1, 0)].into_iter().collect()),
                 nan_value_counts: None,
                 lower_bounds: Some(
-                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(40)))]
+                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(40)).expect("int64 encodes"))]
                         .into_iter()
                         .collect(),
                 ),
                 upper_bounds: Some(
-                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(42)))]
+                    [(1, crate::value::encode_iceberg_value(&ManifestValue::Int64(42)).expect("int64 encodes"))]
                         .into_iter()
                         .collect(),
                 ),
