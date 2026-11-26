@@ -26,6 +26,78 @@ fn max_manifest_files_before_consolidation() -> usize {
     crate::core::config::manifest_max_files_before_consolidation()
 }
 
+/// Convert an engine manifest entry into the spec-shaped entry the
+/// `benodb-iceberg` writer consumes. Partition values are ordered by the
+/// partition spec's fields — the same order the Avro partition record is
+/// written in — and the column stats convert to the spec's field-id-keyed
+/// maps using the same `encode_iceberg_value` encoding the format crate uses
+/// on read.
+fn to_iceberg_manifest_entry(
+    entry: &ManifestEntry,
+    spec: &PartitionSpec,
+    schema: &Schema,
+) -> crate::core::iceberg::IcebergManifestEntry {
+    use crate::core::iceberg::value::encode_iceberg_value;
+    use crate::core::iceberg::{IcebergDataFile, IcebergManifestEntry};
+
+    let mut null_counts = HashMap::new();
+    let mut lower_bounds = HashMap::new();
+    let mut upper_bounds = HashMap::new();
+    for (col_name, col_stats) in &entry.column_stats {
+        let Some(field) = schema.fields.iter().find(|f| &f.name == col_name) else {
+            continue; // not addressable by field id; skip rather than guess
+        };
+        null_counts.insert(field.id, col_stats.null_count);
+        if let Some(bytes) = col_stats.min.as_ref().and_then(encode_iceberg_value) {
+            lower_bounds.insert(field.id, bytes);
+        }
+        if let Some(bytes) = col_stats.max.as_ref().and_then(encode_iceberg_value) {
+            upper_bounds.insert(field.id, bytes);
+        }
+    }
+
+    IcebergManifestEntry {
+        status: 1, // ADDED
+        snapshot_id: None,
+        data_file: IcebergDataFile {
+            content: 0,
+            file_path: entry.file_path.clone(),
+            file_format: "PARQUET".to_string(),
+            partition: spec
+                .fields
+                .iter()
+                .map(|f| {
+                    entry
+                        .partition_values
+                        .get(&f.name)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null)
+                })
+                .collect(),
+            record_count: entry.record_count,
+            file_size_in_bytes: entry.file_size_bytes,
+            column_sizes: None,
+            value_counts: None,
+            null_value_counts: Some(null_counts),
+            nan_value_counts: None,
+            lower_bounds: Some(lower_bounds),
+            upper_bounds: Some(upper_bounds),
+            equality_ids: None,
+            referenced_data_file: None,
+            content_offset: None,
+            content_size_in_bytes: None,
+            index_files: if entry.index_files.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&entry.index_files).unwrap_or_else(|_| "[]".to_string()))
+            },
+            file_checksum: entry.file_checksum.clone(),
+            first_row_id: entry.first_row_id,
+        },
+        delete_files: entry.delete_files.clone(),
+    }
+}
+
 impl ManifestManager {
     /// Commit a change to the timeline.
     /// Uses optimistic concurrency control with retries and PutMode::Create
@@ -226,8 +298,13 @@ impl ManifestManager {
                         e.delete_files.clear();
                     }
 
+                    let spec_entries: Vec<crate::core::iceberg::IcebergManifestEntry> =
+                        qualified_new
+                            .iter()
+                            .map(|e| to_iceberg_manifest_entry(e, &table_spec, &table_schema))
+                            .collect();
                     let chunks = writer.write_manifest_chunks(
-                        &qualified_new,
+                        &spec_entries,
                         &table_spec,
                         &table_schema,
                         new_ver_i64,
@@ -387,8 +464,13 @@ impl ManifestManager {
                         e.delete_files.clear();
                     }
 
+                    let spec_entries: Vec<crate::core::iceberg::IcebergManifestEntry> =
+                        qualified_entries
+                            .iter()
+                            .map(|e| to_iceberg_manifest_entry(e, &table_spec, &table_schema))
+                            .collect();
                     let chunks = writer.write_manifest_chunks(
-                        &qualified_entries,
+                        &spec_entries,
                         &table_spec,
                         &table_schema,
                         new_ver_i64,

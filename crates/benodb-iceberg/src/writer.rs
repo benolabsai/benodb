@@ -253,7 +253,11 @@ fn append_delete_record<W: std::io::Write>(
     );
 
     let partition_record_values =
-        build_partition_avro_record(&del_file.partition_values, partition_spec, schema);
+        build_partition_avro_record(
+            &partition_values_in_spec_order(&del_file.partition_values, partition_spec),
+            partition_spec,
+            schema,
+        );
     data_file.put(
         "partition",
         apache_avro::types::Value::Record(partition_record_values),
@@ -418,7 +422,7 @@ impl IcebergWriter {
     /// Write a Manifest File (*.avro)
     pub fn write_manifest_file(
         &self,
-        entries: &[crate::manifest_types::ManifestEntry],
+        entries: &[crate::types::IcebergManifestEntry],
         partition_spec: &crate::manifest_types::PartitionSpec,
         schema: &crate::manifest_types::Schema,
         snapshot_id: i64,
@@ -480,7 +484,7 @@ impl IcebergWriter {
             data_file.put("content", apache_avro::types::Value::Int(0)); // 0=Data
             data_file.put(
                 "file_path",
-                apache_avro::types::Value::String(entry.file_path.clone()),
+                apache_avro::types::Value::String(entry.data_file.file_path.clone()),
             );
             data_file.put(
                 "file_format",
@@ -488,11 +492,11 @@ impl IcebergWriter {
             );
             data_file.put(
                 "record_count",
-                apache_avro::types::Value::Long(entry.record_count),
+                apache_avro::types::Value::Long(entry.data_file.record_count),
             );
             data_file.put(
                 "file_size_in_bytes",
-                apache_avro::types::Value::Long(entry.file_size_bytes),
+                apache_avro::types::Value::Long(entry.data_file.file_size_in_bytes),
             );
 
             // Statistics (Unions)
@@ -523,7 +527,7 @@ impl IcebergWriter {
 
             // Partition Data
             let partition_record_values =
-                build_partition_avro_record(&entry.partition_values, partition_spec, table_schema);
+                build_partition_avro_record(&entry.data_file.partition, partition_spec, table_schema);
             data_file.put(
                 "partition",
                 apache_avro::types::Value::Record(partition_record_values),
@@ -534,14 +538,12 @@ impl IcebergWriter {
             );
 
             // Populate index_files if present
-            if !entry.index_files.is_empty() {
-                let index_json =
-                    serde_json::to_string(&entry.index_files).unwrap_or_else(|_| "[]".to_string());
+            if let Some(index_json) = &entry.data_file.index_files {
                 data_file.put(
                     "index_files",
                     apache_avro::types::Value::Union(
                         1,
-                        Box::new(apache_avro::types::Value::String(index_json)),
+                        Box::new(apache_avro::types::Value::String(index_json.clone())),
                     ),
                 );
             } else {
@@ -551,7 +553,7 @@ impl IcebergWriter {
                 );
             }
 
-            if let Some(chk) = &entry.file_checksum {
+            if let Some(chk) = &entry.data_file.file_checksum {
                 data_file.put(
                     "file_checksum",
                     apache_avro::types::Value::Union(
@@ -566,7 +568,7 @@ impl IcebergWriter {
                 );
             }
 
-            if let Some(fid) = entry.first_row_id {
+            if let Some(fid) = entry.data_file.first_row_id {
                 data_file.put(
                     "first_row_id",
                     apache_avro::types::Value::Union(
@@ -693,7 +695,7 @@ impl IcebergWriter {
                 // Use Delete File's partition values (or inherit from parent if empty?)
                 // DeleteFile has partition_values.
                 let partition_record_values = build_partition_avro_record(
-                    &del_file.partition_values,
+                    &partition_values_in_spec_order(&del_file.partition_values, partition_spec),
                     partition_spec,
                     table_schema,
                 );
@@ -742,7 +744,7 @@ impl IcebergWriter {
     /// manifest to contain a single content type.
     pub fn write_manifest_chunks(
         &self,
-        entries: &[crate::manifest_types::ManifestEntry],
+        entries: &[crate::types::IcebergManifestEntry],
         partition_spec: &crate::manifest_types::PartitionSpec,
         schema: &crate::manifest_types::Schema,
         snapshot_id: i64,
@@ -833,7 +835,7 @@ impl IcebergWriter {
             data_file.put("content", apache_avro::types::Value::Int(0));
             data_file.put(
                 "file_path",
-                apache_avro::types::Value::String(entry.file_path.clone()),
+                apache_avro::types::Value::String(entry.data_file.file_path.clone()),
             );
             data_file.put(
                 "file_format",
@@ -841,11 +843,11 @@ impl IcebergWriter {
             );
             data_file.put(
                 "record_count",
-                apache_avro::types::Value::Long(entry.record_count),
+                apache_avro::types::Value::Long(entry.data_file.record_count),
             );
             data_file.put(
                 "file_size_in_bytes",
-                apache_avro::types::Value::Long(entry.file_size_bytes),
+                apache_avro::types::Value::Long(entry.data_file.file_size_in_bytes),
             );
 
             data_file.put(
@@ -856,22 +858,35 @@ impl IcebergWriter {
                 "value_counts",
                 apache_avro::types::Value::Union(0, Box::new(apache_avro::types::Value::Null)),
             );
-            // Per-column bounds and null counts. The reader reconstructs
-            // `column_stats` from these three, so writing Null here (as this
-            // code used to) silently discarded every min/max and left the
-            // planner's stats-pruning branch with nothing to work on.
-            let (null_counts, lower_bounds, upper_bounds) =
-                bounds_avro_values(&entry.column_stats, schema);
-            data_file.put("null_value_counts", null_counts);
+            // Per-column bounds and null counts, from the spec's field-id
+            // keyed maps. The reader reconstructs `column_stats` from these
+            // three, so an absent map writes Null and the planner's
+            // stats-pruning branch has nothing to work on.
+            data_file.put(
+                "null_value_counts",
+                stat_map_avro(&entry.data_file.null_value_counts, |v| {
+                    apache_avro::types::Value::Long(*v)
+                }),
+            );
             data_file.put(
                 "nan_value_counts",
                 apache_avro::types::Value::Union(0, Box::new(apache_avro::types::Value::Null)),
             );
-            data_file.put("lower_bounds", lower_bounds);
-            data_file.put("upper_bounds", upper_bounds);
+            data_file.put(
+                "lower_bounds",
+                stat_map_avro(&entry.data_file.lower_bounds, |b| {
+                    apache_avro::types::Value::Bytes(b.clone())
+                }),
+            );
+            data_file.put(
+                "upper_bounds",
+                stat_map_avro(&entry.data_file.upper_bounds, |b| {
+                    apache_avro::types::Value::Bytes(b.clone())
+                }),
+            );
 
             let partition_record_values =
-                build_partition_avro_record(&entry.partition_values, partition_spec, schema);
+                build_partition_avro_record(&entry.data_file.partition, partition_spec, schema);
             data_file.put(
                 "partition",
                 apache_avro::types::Value::Record(partition_record_values),
@@ -881,14 +896,12 @@ impl IcebergWriter {
                 apache_avro::types::Value::Union(0, Box::new(apache_avro::types::Value::Null)),
             );
 
-            if !entry.index_files.is_empty() {
-                let index_json =
-                    serde_json::to_string(&entry.index_files).unwrap_or_else(|_| "[]".to_string());
+            if let Some(index_json) = &entry.data_file.index_files {
                 data_file.put(
                     "index_files",
                     apache_avro::types::Value::Union(
                         1,
-                        Box::new(apache_avro::types::Value::String(index_json)),
+                        Box::new(apache_avro::types::Value::String(index_json.clone())),
                     ),
                 );
             } else {
@@ -898,7 +911,7 @@ impl IcebergWriter {
                 );
             }
 
-            if let Some(chk) = &entry.file_checksum {
+            if let Some(chk) = &entry.data_file.file_checksum {
                 data_file.put(
                     "file_checksum",
                     apache_avro::types::Value::Union(
@@ -913,7 +926,7 @@ impl IcebergWriter {
                 );
             }
 
-            if let Some(fid) = entry.first_row_id {
+            if let Some(fid) = entry.data_file.first_row_id {
                 data_file.put(
                     "first_row_id",
                     apache_avro::types::Value::Union(
@@ -936,7 +949,7 @@ impl IcebergWriter {
             record.put("data_file", data_file);
             writer.append(record)?;
             current_file_count += 1;
-            current_row_count += entry.record_count;
+            current_row_count += entry.data_file.record_count;
 
             writer.flush()?;
             if written.load(Ordering::Relaxed) >= target_size_bytes {
@@ -1099,58 +1112,28 @@ impl IcebergWriter {
     }
 }
 
-/// Build the manifest's `null_value_counts`, `lower_bounds` and `upper_bounds`
-/// Avro values from a segment's `column_stats`, keyed by Iceberg field id.
-///
-/// This is the write side of the pair that
-/// [`crate::manifest`] reads: it reconstructs `column_stats`
-/// from exactly these three maps, and only when all three are present.
-fn bounds_avro_values(
-    stats: &std::collections::HashMap<String, crate::manifest_types::ColumnStats>,
-    schema: &crate::manifest_types::Schema,
-) -> (
-    apache_avro::types::Value,
-    apache_avro::types::Value,
-    apache_avro::types::Value,
-) {
-    use crate::value::encode_iceberg_value;
-    use apache_avro::types::Value as AvroValue;
-
-    let mut nulls: Vec<AvroValue> = Vec::new();
-    let mut lowers: Vec<AvroValue> = Vec::new();
-    let mut uppers: Vec<AvroValue> = Vec::new();
-
-    for (col_name, col_stats) in stats {
-        let Some(field) = schema.fields.iter().find(|f| &f.name == col_name) else {
-            continue; // not addressable by field id; skip rather than guess
-        };
-
-        nulls.push(AvroValue::Record(vec![
-            ("key".to_string(), AvroValue::Int(field.id)),
-            ("value".to_string(), AvroValue::Long(col_stats.null_count)),
-        ]));
-        if let Some(bytes) = col_stats.min.as_ref().and_then(encode_iceberg_value) {
-            lowers.push(AvroValue::Record(vec![
-                ("key".to_string(), AvroValue::Int(field.id)),
-                ("value".to_string(), AvroValue::Bytes(bytes)),
-            ]));
+/// Write a spec stat map (field id to value) as the Avro key/value list the
+/// Iceberg manifest schema declares: `Union(1, Array)` when non-empty,
+/// `Union(0, Null)` when absent or empty.
+fn stat_map_avro<V: Clone>(
+    map: &Option<std::collections::HashMap<i32, V>>,
+    to_value: impl Fn(&V) -> apache_avro::types::Value,
+) -> apache_avro::types::Value {
+    match map {
+        Some(m) if !m.is_empty() => {
+            let items: Vec<apache_avro::types::Value> = m
+                .iter()
+                .map(|(id, v)| {
+                    apache_avro::types::Value::Record(vec![
+                        ("key".to_string(), apache_avro::types::Value::Int(*id)),
+                        ("value".to_string(), to_value(v)),
+                    ])
+                })
+                .collect();
+            apache_avro::types::Value::Union(1, Box::new(apache_avro::types::Value::Array(items)))
         }
-        if let Some(bytes) = col_stats.max.as_ref().and_then(encode_iceberg_value) {
-            uppers.push(AvroValue::Record(vec![
-                ("key".to_string(), AvroValue::Int(field.id)),
-                ("value".to_string(), AvroValue::Bytes(bytes)),
-            ]));
-        }
+        _ => apache_avro::types::Value::Union(0, Box::new(apache_avro::types::Value::Null)),
     }
-
-    let wrap = |v: Vec<AvroValue>| {
-        if v.is_empty() {
-            AvroValue::Union(0, Box::new(AvroValue::Null))
-        } else {
-            AvroValue::Union(1, Box::new(AvroValue::Array(v)))
-        }
-    };
-    (wrap(nulls), wrap(lowers), wrap(uppers))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1300,17 +1283,31 @@ fn partition_field_avro_type(
     partition_field_avro_kind(field, schema).avro_type_str()
 }
 
+/// Order a partition value map by the partition spec's fields — the same
+/// order the Avro partition record is written in. Missing fields become Null.
+fn partition_values_in_spec_order(
+    values: &std::collections::HashMap<String, serde_json::Value>,
+    partition_spec: &crate::manifest_types::PartitionSpec,
+) -> Vec<serde_json::Value> {
+    partition_spec
+        .fields
+        .iter()
+        .map(|f| values.get(&f.name).cloned().unwrap_or(serde_json::Value::Null))
+        .collect()
+}
+
 fn build_partition_avro_record(
-    partition_values: &std::collections::HashMap<String, serde_json::Value>,
+    partition_values: &[serde_json::Value],
     partition_spec: &crate::manifest_types::PartitionSpec,
     schema: &crate::manifest_types::Schema,
 ) -> Vec<(String, apache_avro::types::Value)> {
     partition_spec
         .fields
         .iter()
-        .map(|field| {
+        .enumerate()
+        .map(|(i, field)| {
             let val = partition_values
-                .get(&field.name)
+                .get(i)
                 .unwrap_or(&serde_json::Value::Null);
             let kind = partition_field_avro_kind(field, schema);
             (field.name.clone(), kind.json_to_avro_union(val))
@@ -1383,12 +1380,31 @@ mod bounds_roundtrip_tests {
             },
         );
 
-        let entry = ManifestEntry {
-            file_path: "seg_x.parquet".to_string(),
-            file_size_bytes: 10,
-            record_count: 3,
-            column_stats: stats,
-            ..Default::default()
+        let entry = IcebergManifestEntry {
+            status: 1,
+            snapshot_id: None,
+            data_file: IcebergDataFile {
+                content: 0,
+                file_path: "seg_x.parquet".to_string(),
+                file_format: "PARQUET".to_string(),
+                partition: vec![],
+                record_count: 3,
+                file_size_in_bytes: 10,
+                column_sizes: None,
+                value_counts: None,
+                null_value_counts: None,
+                nan_value_counts: None,
+                lower_bounds: None,
+                upper_bounds: None,
+                equality_ids: None,
+                referenced_data_file: None,
+                content_offset: None,
+                content_size_in_bytes: None,
+                index_files: None,
+                file_checksum: None,
+                first_row_id: None,
+            },
+            delete_files: vec![],
         };
 
         let chunks = IcebergWriter::new()

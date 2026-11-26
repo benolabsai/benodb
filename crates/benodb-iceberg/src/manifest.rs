@@ -160,6 +160,7 @@ pub fn read_manifest<R: Read>(reader: R) -> Result<Vec<IcebergManifestEntry>> {
                     status,
                     snapshot_id,
                     data_file: df,
+                    delete_files: Vec::new(),
                 });
             }
         }

@@ -49,6 +49,9 @@ pub struct IcebergManifestEntry {
     pub status: i32,
     pub snapshot_id: Option<i64>,
     pub data_file: IcebergDataFile,
+    /// BenoDB extension: the delete files associated with this data entry,
+    /// written as spec-compliant delete records in the same manifest.
+    pub delete_files: Vec<crate::manifest_types::DeleteFile>,
 }
 
 #[derive(Debug, Clone)]
