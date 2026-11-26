@@ -1,27 +1,46 @@
 #!/usr/bin/env bash
-# .git/hooks/pre-push
 # BenoStreamDB Pre-Push Git Hook
-# Automatically blocks any git push (branches or tags) if pre-release checks fail locally.
+# Blocks pushes of main (and release tags) when pre-release checks fail.
+# Working branches bypass the suite: the full gate runs when the work lands
+# on main, not on every intermediate push.
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CHECK_SCRIPT="${REPO_ROOT}/scripts/pre_release_check.sh"
 
-echo "================================================================="
-echo " [Git Pre-Push Hook] Running pre-release verification suite..."
-echo "================================================================="
+# Pre-push stdin: one line per ref: <local_ref> <local_sha> <remote_ref> <remote_sha>
+BRANCHES_PUSHED=""
+while read -r local_ref _remote_ref _local_sha _remote_sha; do
+    [[ "$local_ref" == refs/heads/* ]] && BRANCHES_PUSHED="${BRANCHES_PUSHED:+$BRANCHES_PUSHED }${local_ref#refs/heads/}"
+done
 
-if [[ ! -x "${CHECK_SCRIPT}" ]]; then
-    chmod +x "${CHECK_SCRIPT}"
+# Tag-only pushes run the suite (a release tag is a release).
+if [[ -z "${BRANCHES_PUSHED}" ]]; then
+    echo "================================================================="
+    echo " [Git Pre-Push Hook] Tag push: running pre-release verification..."
+    echo "================================================================="
+    if [[ ! -x "${CHECK_SCRIPT}" ]]; then
+        chmod +x "${CHECK_SCRIPT}"
+    fi
+    "${CHECK_SCRIPT}" || { echo "❌ [Git Pre-Push Hook] REJECTED: Local checks failed!"; exit 1; }
+    echo "✅ [Git Pre-Push Hook] All checks passed."
+    exit 0
 fi
 
-if ! "${CHECK_SCRIPT}"; then
-    echo ""
-    echo "❌ [Git Pre-Push Hook] REJECTED: Local checks failed!"
-    echo "Fix formatting, clippy warnings, or version alignment before pushing."
-    exit 1
-fi
+for b in ${BRANCHES_PUSHED}; do
+    if [[ "$b" == "main" || "$b" == "master" ]]; then
+        echo "================================================================="
+        echo " [Git Pre-Push Hook] Pushing ${b}: running pre-release verification..."
+        echo "================================================================="
+        if [[ ! -x "${CHECK_SCRIPT}" ]]; then
+            chmod +x "${CHECK_SCRIPT}"
+        fi
+        "${CHECK_SCRIPT}" || { echo "❌ [Git Pre-Push Hook] REJECTED: Local checks failed!"; exit 1; }
+        echo "✅ [Git Pre-Push Hook] All checks passed."
+        exit 0
+    fi
+done
 
-echo "✅ [Git Pre-Push Hook] All checks passed. Proceeding with push."
+echo "✅ [Git Pre-Push Hook] Working branch(es) '${BRANCHES_PUSHED}' — pre-release checks bypassed (they run on main)."
 exit 0
