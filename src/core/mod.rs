@@ -5,6 +5,7 @@ pub mod cache;
 pub mod catalog;
 pub mod clustering;
 pub mod compaction;
+pub(crate) mod config;
 pub mod error;
 #[cfg(feature = "java")]
 pub mod ffi;

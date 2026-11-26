@@ -76,7 +76,7 @@ impl Table {
         );
 
         let new_arrow_schema = current_schema.to_arrow();
-        let mut lock = self.schema.write();
+        let mut lock = self.schema_state.schema.write();
         *lock = std::sync::Arc::new(new_arrow_schema);
 
         Ok(())
@@ -189,7 +189,7 @@ impl Table {
         );
 
         let new_arrow_schema = current_schema.to_arrow();
-        let mut lock = self.schema.write();
+        let mut lock = self.schema_state.schema.write();
         *lock = std::sync::Arc::new(new_arrow_schema);
 
         Ok(())
@@ -236,7 +236,7 @@ impl Table {
         );
 
         let new_arrow_schema = current_schema.to_arrow();
-        let mut lock = self.schema.write();
+        let mut lock = self.schema_state.schema.write();
         *lock = std::sync::Arc::new(new_arrow_schema);
 
         Ok(())
@@ -288,7 +288,7 @@ impl Table {
         );
 
         let new_arrow_schema = current_schema.to_arrow();
-        let mut lock = self.schema.write();
+        let mut lock = self.schema_state.schema.write();
         *lock = std::sync::Arc::new(new_arrow_schema);
 
         Ok(())
@@ -361,7 +361,7 @@ impl Table {
         );
 
         let new_arrow_schema = current_schema.to_arrow();
-        let mut lock = self.schema.write();
+        let mut lock = self.schema_state.schema.write();
         *lock = std::sync::Arc::new(new_arrow_schema);
 
         Ok(())

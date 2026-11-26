@@ -92,14 +92,14 @@ impl Table {
         let planner = MergePlanner::new().with_table_context(
             self.store.clone(),
             self.data_store.clone(),
-            (*self.partition_spec).clone(),
+            (*self.schema_state.partition_spec).clone(),
             iceberg_schema,
             if table_schema.fields().is_empty() {
                 None
             } else {
                 Some(table_schema)
             },
-            self.primary_key.read().clone(),
+            self.schema_state.primary_key.read().clone(),
             self.indexing.index_all,
             self.indexing.index_columns.read().clone(),
             self.indexing.index_configs.read().clone(),

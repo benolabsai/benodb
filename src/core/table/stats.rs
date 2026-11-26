@@ -979,8 +979,8 @@ impl Table {
     /// the manifest read and this call is visible twice — once from the new
     /// manifest and once from the still-`Staging` pending commit.
     fn capture_write_buffer_batches(&self) -> Vec<RecordBatch> {
-        let pc_guard = self.pending_commit.lock();
-        let pending = self.pending_writes.read();
+        let pc_guard = self.commit_buffer.pending_commit.lock();
+        let pending = self.commit_buffer.pending_writes.read();
         let mut combined = Vec::new();
         if let Some(pc) = pc_guard.as_ref() {
             if pc.phase == super::CommitPhase::Staging {
@@ -1026,7 +1026,7 @@ impl Table {
         let mut force_direct = true;
 
         for attempt in 0..8usize {
-            let epoch1 = self.buffer_epoch.load(Ordering::SeqCst);
+            let epoch1 = self.commit_buffer.buffer_epoch.load(Ordering::SeqCst);
 
             let (version, segments) = if force_direct {
                 match manifest_manager.load_latest_direct().await {
@@ -1041,8 +1041,8 @@ impl Table {
             };
 
             let (buffer, committed_ver) = {
-                let pc_guard = self.pending_commit.lock();
-                let pending = self.pending_writes.read();
+                let pc_guard = self.commit_buffer.pending_commit.lock();
+                let pending = self.commit_buffer.pending_writes.read();
                 let mut combined = Vec::new();
                 let mut committed_ver = None;
                 if let Some(pc) = pc_guard.as_ref() {
@@ -1056,7 +1056,7 @@ impl Table {
                 (combined, committed_ver)
             };
 
-            let epoch2 = self.buffer_epoch.load(Ordering::SeqCst);
+            let epoch2 = self.commit_buffer.buffer_epoch.load(Ordering::SeqCst);
             let stale_manifest = committed_ver.is_some_and(|cv| version < cv);
             if (epoch1 != epoch2 || stale_manifest) && attempt < 7 {
                 force_direct = true;

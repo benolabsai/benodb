@@ -32,22 +32,10 @@ fn current_rss_bytes() -> usize {
 /// process memory the engine will never free), before it fails open.
 ///
 /// Overridable via `BDB_INGEST_BACKPRESSURE_GRACE_SECS`; a non-positive or
-/// unparseable value falls back to the 60-second default.
+/// unparseable value falls back to the 60-second default. Resolved once per
+/// process; the pure parser lives in `core::config`.
 fn ingest_backpressure_grace() -> std::time::Duration {
-    std::time::Duration::from_secs_f64(backpressure_grace_secs(
-        std::env::var("BDB_INGEST_BACKPRESSURE_GRACE_SECS")
-            .ok()
-            .as_deref(),
-    ))
-}
-
-/// Parse the fail-open grace (seconds). A missing, non-positive, or unparseable
-/// value falls back to the 60-second default so a typo cannot disable the
-/// liveness safety net. Pure so it can be asserted without process-global env.
-pub(crate) fn backpressure_grace_secs(raw: Option<&str>) -> f64 {
-    raw.and_then(|v| v.parse::<f64>().ok())
-        .filter(|v| *v > 0.0)
-        .unwrap_or(60.0)
+    std::time::Duration::from_secs_f64(crate::core::config::ingest_backpressure_grace_secs())
 }
 
 impl Table {
@@ -86,8 +74,8 @@ impl Table {
     #[tracing::instrument(skip(self))]
     pub async fn truncate_async(&self) -> Result<()> {
         self.ensure_writable()?;
-        let _maintenance_guard = self.maintenance_lock.write().await;
-        let _commit_guard = self.commit_lock.lock().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
+        let _commit_guard = self.locks.commit_lock.lock().await;
 
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
 
@@ -107,27 +95,20 @@ impl Table {
             .await?;
 
         // Step 3: Clear in-memory buffers & indexes in canonical lock order before WAL reset.
-        {
-            let mut pc = self.pending_commit.lock();
-            let mut pending = self.pending_writes.write();
-            let mut idx = self.indexing.memory_index.write();
-            *pc = None;
-            pending.clear();
-            *idx = None;
-        }
-        self.committed_wal_txs.lock().clear();
+        // The order lives on `CommitBufferState` so it cannot drift from the definition.
+        self.commit_buffer.clear_for_truncate(&self.indexing);
         self.indexing.cluster_indexes.write().clear();
         self.indexing.vector_routers.write().clear();
         self.bump_buffer_epoch();
 
         // Step 4: Truncate WAL cleanly via the WAL worker.
         {
-            let wal = self.wal.lock().await;
+            let wal = self.wal_state.wal.lock().await;
             wal.truncate_all_async()
                 .await
                 .context("Failed to truncate WAL during table truncate")?;
         }
-        self.recovered_wal_paths.lock().clear();
+        self.wal_state.recovered_wal_paths.lock().clear();
 
         // Manifest commits are invisible to external readers until the snapshot
         // is published in the table metadata.
@@ -158,7 +139,7 @@ impl Table {
     pub async fn checkpoint_async(&self) -> Result<()> {
         self.ensure_writable()?;
         {
-            let wal = self.wal.lock().await;
+            let wal = self.wal_state.wal.lock().await;
             wal.compact_async().await?;
         }
         self.checkpoint_index_async().await
@@ -191,7 +172,7 @@ impl Table {
     #[tracing::instrument(skip(self, batches))]
     pub async fn write_async(&self, batches: Vec<RecordBatch>) -> Result<()> {
         self.ensure_writable()?;
-        self.write_with_durability_async(batches, self.durability)
+        self.write_with_durability_async(batches, self.wal_state.durability)
             .await
     }
 
@@ -205,7 +186,7 @@ impl Table {
 
     /// Explicitly flush and sync pending WAL writes to durable storage.
     pub async fn flush_wal_async(&self) -> Result<()> {
-        let wal = self.wal.lock().await;
+        let wal = self.wal_state.wal.lock().await;
         wal.flush_async().await
     }
 
@@ -231,14 +212,14 @@ impl Table {
             )?;
         }
 
-        if let Some(max_gb) = self.max_ingest_ram_gb {
+        if let Some(max_gb) = self.resource_limits.max_ingest_ram_gb {
             let max_bytes = (max_gb * 1_000_000_000.0) as usize;
             // The caller may hold memory outside the engine (e.g. a Python
             // DataFrame). Count only the engine's own footprint against the
             // budget, otherwise a large caller-side frame blocks the write
             // forever (the caller cannot free it until the write returns).
             let caller_reserved =
-                self.caller_reserved_bytes
+                self.resource_limits.caller_reserved_bytes
                     .load(std::sync::atomic::Ordering::Relaxed) as usize;
             let engine_rss = || current_rss_bytes().saturating_sub(caller_reserved);
 
@@ -311,7 +292,7 @@ impl Table {
                 }
 
                 tokio::select! {
-                    _ = self.memory_reclaimed.notified() => {
+                    _ = self.resource_limits.memory_reclaimed.notified() => {
                         reclaimed_while_stalled = true;
                     }
                     _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
@@ -351,7 +332,7 @@ impl Table {
             crate::core::resources::check_min_free_disk(path).map_err(|e| anyhow::anyhow!(e))?;
         }
 
-        let _maintenance_guard = self.maintenance_lock.read().await;
+        let _maintenance_guard = self.locks.maintenance_lock.read().await;
 
         let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
         INGEST_ROWS_TOTAL.inc_by(total_rows as u64);
@@ -364,7 +345,7 @@ impl Table {
 
         let mut is_empty_schema = false;
         if let Some(first_batch) = batches.first() {
-            let mut lock = self.schema.write();
+            let mut lock = self.schema_state.schema.write();
             is_empty_schema = lock.fields().is_empty();
             if is_empty_schema {
                 let incoming_schema = first_batch.schema();
@@ -413,9 +394,9 @@ impl Table {
 
         // 2. Primary Key Uniqueness Validation
         let t_pk = std::time::Instant::now();
-        let pk_cols = self.primary_key.read().clone();
+        let pk_cols = self.schema_state.primary_key.read().clone();
         let _pk_validation_guard = if !pk_cols.is_empty() {
-            Some(self.pk_validation_lock.lock().await)
+            Some(self.locks.pk_validation_lock.lock().await)
         } else {
             None
         };
@@ -425,8 +406,8 @@ impl Table {
 
             // 1. Pre-populate seen keys from any Staging commit + active write buffer
             {
-                let pc_guard = self.pending_commit.lock();
-                let pending = self.pending_writes.read();
+                let pc_guard = self.commit_buffer.pending_commit.lock();
+                let pending = self.commit_buffer.pending_writes.read();
                 let staging_iter = pc_guard
                     .as_ref()
                     .filter(|pc| pc.phase == CommitPhase::Staging)
@@ -631,7 +612,7 @@ impl Table {
             }
 
             if changed {
-                let mut lock = self.schema.write();
+                let mut lock = self.schema_state.schema.write();
                 *lock = Arc::new(evolved_schema);
                 drop(lock);
                 target_schema = self.arrow_schema();
@@ -690,7 +671,7 @@ impl Table {
 
         // 1. Write-Ahead Log (Durability) & 2. Indexing (In-Memory) in PARALLEL
         let t_wal = std::time::Instant::now();
-        let wal = self.wal.clone();
+        let wal = self.wal_state.wal.clone();
         let memory_index = self.indexing.memory_index.clone();
         // Only use explicitly configured index columns — do NOT auto-detect by column name.
         // Auto-detecting "embedding" caused silent 15s HNSW builds on every write.
@@ -797,7 +778,7 @@ impl Table {
 
         // Canonical lock order: pending_writes -> indexing.memory_index.
         {
-            let mut pending = self.pending_writes.write();
+            let mut pending = self.commit_buffer.pending_writes.write();
             let mut idx_lock = self.indexing.memory_index.write();
             if let Some(prep) = prepared_vectors {
                 match idx_lock.as_mut() {
@@ -831,7 +812,7 @@ impl Table {
 
         // Check if we should flush (spillover)
         let should_flush = {
-            let pending = self.pending_writes.read();
+            let pending = self.commit_buffer.pending_writes.read();
 
             // Calculate size in bytes (approximate)
             let total_bytes: usize = pending
@@ -862,18 +843,18 @@ impl Table {
     #[tracing::instrument(skip(self))]
     pub async fn flush_async(&self) -> Result<()> {
         self.ensure_writable()?;
-        let _maintenance_guard = self.maintenance_lock.read().await;
+        let _maintenance_guard = self.locks.maintenance_lock.read().await;
         self.flush_unlocked_async().await
     }
 
     /// Internal flush implementation without acquiring `maintenance_lock.read()`.
     /// Used by operations that already hold `maintenance_lock.write()` (such as compaction).
     pub(crate) async fn flush_unlocked_async(&self) -> Result<()> {
-        let _commit_guard = self.commit_lock.lock().await;
+        let _commit_guard = self.locks.commit_lock.lock().await;
 
         // Resume or clean up any interrupted in-flight PendingCommit before starting a new flush.
         let prior = {
-            let pc_guard = self.pending_commit.lock();
+            let pc_guard = self.commit_buffer.pending_commit.lock();
             pc_guard.as_ref().map(|pc| (pc.id, pc.phase))
         };
         if let Some((prior_id, prior_phase)) = prior {
@@ -890,8 +871,8 @@ impl Table {
         let commit_id = uuid::Uuid::new_v4();
         // Canonical sync lock order: pending_commit -> pending_writes -> indexing.memory_index.
         let (batches_to_write, wal_tx_ids): (Vec<RecordBatch>, Vec<uuid::Uuid>) = {
-            let mut pc_guard = self.pending_commit.lock();
-            let mut pending = self.pending_writes.write();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
+            let mut pending = self.commit_buffer.pending_writes.write();
             let mut mem_idx_guard = self.indexing.memory_index.write();
 
             if pending.is_empty() {
@@ -931,7 +912,7 @@ impl Table {
         // Seal the active WAL segment so subsequent concurrent writes land in a fresh
         // segment file and post-commit watermark pruning never drops un-flushed rows.
         let rotate_res = {
-            let wal = self.wal.lock().await;
+            let wal = self.wal_state.wal.lock().await;
             wal.rotate_async().await
         };
         if let Err(e) = rotate_res {
@@ -962,7 +943,7 @@ impl Table {
         // clearing cluster artifacts before bumping buffer_epoch so concurrent readers
         // force-reload the newly committed manifest instead of serving stale indexes.
         {
-            let mut pc_guard = self.pending_commit.lock();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
             if let Some(pc) = pc_guard.as_mut() {
                 if pc.id == commit_id {
                     pc.phase = CommitPhase::ManifestCommitted;
@@ -977,7 +958,7 @@ impl Table {
             }
         }
         {
-            let mut committed = self.committed_wal_txs.lock();
+            let mut committed = self.commit_buffer.committed_wal_txs.lock();
             for tx in &wal_tx_ids {
                 committed.insert(*tx);
             }
@@ -1000,8 +981,8 @@ impl Table {
     /// newer concurrent writes have arrived while staging was in flight.
     fn restore_staging_pending_commit_to_buffer(&self, expected_id: uuid::Uuid) {
         let restored_any = {
-            let mut pc_guard = self.pending_commit.lock();
-            let mut pending = self.pending_writes.write();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
+            let mut pending = self.commit_buffer.pending_writes.write();
             let mut idx_guard = self.indexing.memory_index.write();
 
             let matches_staging = pc_guard
@@ -1092,10 +1073,10 @@ impl Table {
         let index_all_flag = self.indexing.index_all;
         let index_configs_cap = self.indexing.index_configs.read().clone();
         let default_device_cap = self.indexing.default_device.read().clone();
-        let pk_cap = self.primary_key.read().clone();
+        let pk_cap = self.schema_state.primary_key.read().clone();
         let table_store_cap = self.store.clone();
-        let spec_cap = self.partition_spec.clone();
-        let memory_reclaimed_cap = self.memory_reclaimed.clone();
+        let spec_cap = self.schema_state.partition_spec.clone();
+        let memory_reclaimed_cap = self.resource_limits.memory_reclaimed.clone();
         let manifest_manager_cap = ManifestManager::new(self.store.clone(), "", &self.uri);
 
         for (entry, batch, partition_values, segment_id) in pending_builds {
@@ -1232,7 +1213,7 @@ impl Table {
         );
 
         const MAX_V3_RETRIES: usize = 64;
-        let spec = self.partition_spec.clone();
+        let spec = self.schema_state.partition_spec.clone();
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let is_local_uri = !self.uri.contains("://") || self.uri.starts_with("file://");
         let base_path = self.uri.strip_prefix("file://").unwrap_or(&self.uri);
@@ -1240,7 +1221,7 @@ impl Table {
             std::fs::create_dir_all(base_path)?;
         }
 
-        let pk_cols = self.primary_key.read().clone();
+        let pk_cols = self.schema_state.primary_key.read().clone();
         let _cross_process_guard = self.acquire_pk_publication_lock(&pk_cols).await?;
 
         for v3_attempt in 0..MAX_V3_RETRIES {
@@ -1474,7 +1455,7 @@ impl Table {
                             .with_partition_values(partition_values.clone())
                             .with_default_device(default_device_inner);
                         let mut writer_write = HybridSegmentWriter::new(config_write);
-                        writer_write.primary_key = self.primary_key.read().clone();
+                        writer_write.primary_key = self.schema_state.primary_key.read().clone();
                         writer_write.set_store(self.store.clone());
 
                         let batch_inner = batch.clone();
@@ -1505,7 +1486,7 @@ impl Table {
             .buffer_unordered(concurrency);
 
             let results: Vec<Result<PartitionSegment>> = stream.collect().await;
-            let has_pks = !self.primary_key.read().is_empty();
+            let has_pks = !self.schema_state.primary_key.read().is_empty();
             for res in results {
                 let (mut entry, generated_files, segment_id, batch, partition_values): PartitionSegment =
                     res?;
@@ -1765,7 +1746,7 @@ impl Table {
             wal_tx_ids,
             pending_builds,
         ) = {
-            let mut pc_guard = self.pending_commit.lock();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
             let Some(pc) = pc_guard.as_mut() else {
                 return Ok(());
             };
@@ -1849,7 +1830,7 @@ impl Table {
             });
 
             if let Some(catalog_snap) = already_in_catalog {
-                let mut pc_guard = self.pending_commit.lock();
+                let mut pc_guard = self.commit_buffer.pending_commit.lock();
                 if let Some(pc) = pc_guard.as_mut() {
                     if pc.published_snapshot.is_none() {
                         pc.published_snapshot = Some(catalog_snap);
@@ -1887,7 +1868,7 @@ impl Table {
                             )
                             .await?;
                         {
-                            let mut pc_guard = self.pending_commit.lock();
+                            let mut pc_guard = self.commit_buffer.pending_commit.lock();
                             if let Some(pc) = pc_guard.as_mut() {
                                 pc.metadata_location = Some(loc.clone());
                                 pc.published_snapshot = Some(snap.clone());
@@ -1917,14 +1898,14 @@ impl Table {
                             published_snap,
                         )
                         .await?;
-                    let mut pc_guard = self.pending_commit.lock();
+                    let mut pc_guard = self.commit_buffer.pending_commit.lock();
                     if let Some(pc) = pc_guard.as_mut() {
                         pc.metadata_location = Some(cat_loc);
                         pc.published_snapshot = Some(cat_snap);
                     }
                 }
 
-                let mut pc_guard = self.pending_commit.lock();
+                let mut pc_guard = self.commit_buffer.pending_commit.lock();
                 if let Some(pc) = pc_guard.as_mut() {
                     pc.phase = CommitPhase::IcebergPublished;
                 }
@@ -1937,7 +1918,7 @@ impl Table {
         // WS2 crash boundary: manifest + metadata committed, WAL segments not yet pruned.
         crate::core::fault_injection::check(crate::core::fault_injection::CrashPoint::WalTruncate)?;
         let mut committed_set = {
-            let mut guard = self.committed_wal_txs.lock();
+            let mut guard = self.commit_buffer.committed_wal_txs.lock();
             for tx in &wal_tx_ids {
                 guard.insert(*tx);
             }
@@ -1951,7 +1932,7 @@ impl Table {
             }
         }
         let pruned_paths = {
-            let wal = self.wal.lock().await;
+            let wal = self.wal_state.wal.lock().await;
             wal.prune_committed_segments(&committed_set)
                 .context("Failed to prune committed WAL segments")?
         };
@@ -1960,13 +1941,13 @@ impl Table {
                 .iter()
                 .filter_map(|p| p.to_str().map(str::to_string))
                 .collect();
-            let mut recovered = self.recovered_wal_paths.lock();
+            let mut recovered = self.wal_state.recovered_wal_paths.lock();
             recovered.retain(|p| !pruned_set.contains(p));
         }
 
         // Publish committed batches to `Table::subscribe()` consumers at most once.
         let notify_batches: Option<Vec<RecordBatch>> = {
-            let mut pc_guard = self.pending_commit.lock();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
             if let Some(pc) = pc_guard.as_mut() {
                 if !pc.subscribers_notified {
                     pc.subscribers_notified = true;
@@ -1983,7 +1964,7 @@ impl Table {
         }
 
         {
-            let mut pc_guard = self.pending_commit.lock();
+            let mut pc_guard = self.commit_buffer.pending_commit.lock();
             *pc_guard = None;
         }
         self.bump_buffer_epoch();

@@ -7,14 +7,7 @@ use std::collections::HashMap;
 
 use super::super::types::*;
 use super::ManifestManager;
-
-fn is_already_exists(err: &object_store::Error) -> bool {
-    matches!(err, object_store::Error::AlreadyExists { .. })
-        || err.to_string().contains("already exists")
-        || err.to_string().contains("409")
-        || err.to_string().contains("Conflict")
-        || err.to_string().contains("PreconditionFailed")
-}
+use crate::core::storage::is_already_exists;
 
 impl ManifestManager {
     /// Commit a schema evolution.

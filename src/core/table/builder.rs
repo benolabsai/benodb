@@ -522,35 +522,47 @@ impl TableBuilder {
                 table_name: self.catalog_table_name,
             },
 
-            schema: Arc::new(parking_lot::RwLock::new(schema_val)),
-            pending_writes: Arc::new(parking_lot::RwLock::new(
-                initial_buffer
-                    .into_iter()
-                    .zip(recovered_tx_ids)
-                    .map(|(batch, tx_id)| crate::core::table::PendingWrite { batch, tx_id })
-                    .collect(),
-            )),
-            commit_lock: Arc::new(Mutex::new(())),
-            pk_validation_lock: Arc::new(tokio::sync::Mutex::new(())),
-            pending_commit: Arc::new(parking_lot::Mutex::new(None)),
-            committed_wal_txs: Arc::new(parking_lot::Mutex::new(committed_tx)),
-            buffer_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            maintenance_lock: Arc::new(tokio::sync::RwLock::new(())),
-            wal: Arc::new(Mutex::new(wal)),
+            schema_state: crate::core::table::SchemaState {
+                schema: Arc::new(parking_lot::RwLock::new(schema_val)),
+                sort_order: Arc::new(parking_lot::RwLock::new(None)),
+                sort_order_columns: Arc::new(parking_lot::RwLock::new(None)),
+                primary_key: Arc::new(parking_lot::RwLock::new(Vec::new())),
+                partition_spec,
+                format_version: Arc::new(std::sync::atomic::AtomicI32::new(
+                    manifest.format_version,
+                )),
+            },
+            commit_buffer: crate::core::table::CommitBufferState {
+                pending_writes: Arc::new(parking_lot::RwLock::new(
+                    initial_buffer
+                        .into_iter()
+                        .zip(recovered_tx_ids)
+                        .map(|(batch, tx_id)| crate::core::table::PendingWrite { batch, tx_id })
+                        .collect(),
+                )),
+                pending_commit: Arc::new(parking_lot::Mutex::new(None)),
+                committed_wal_txs: Arc::new(parking_lot::Mutex::new(committed_tx)),
+                buffer_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+            locks: crate::core::table::LockSet {
+                maintenance_lock: Arc::new(tokio::sync::RwLock::new(())),
+                commit_lock: Arc::new(Mutex::new(())),
+                pk_validation_lock: Arc::new(tokio::sync::Mutex::new(())),
+            },
+            wal_state: crate::core::table::WalState {
+                wal: Arc::new(Mutex::new(wal)),
+                durability: self.durability,
+                recovered_wal_paths: Arc::new(parking_lot::Mutex::new(recovered_paths)),
+            },
             background_tasks: Arc::new(Mutex::new(Vec::new())),
-            index_build_gate: super::new_index_build_gate(),
-            sort_order: Arc::new(parking_lot::RwLock::new(None)),
-            sort_order_columns: Arc::new(parking_lot::RwLock::new(None)),
-            primary_key: Arc::new(parking_lot::RwLock::new(Vec::new())),
+            resource_limits: crate::core::table::ResourceLimits {
+                max_ingest_ram_gb: self.max_ingest_ram_gb,
+                memory_reclaimed: Arc::new(tokio::sync::Notify::new()),
+                caller_reserved_bytes: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                index_build_gate: super::new_index_build_gate(),
+            },
             autocommit: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            recovered_wal_paths: Arc::new(parking_lot::Mutex::new(recovered_paths)),
-            partition_spec,
             label_pattern: self.label_pattern,
-            durability: self.durability,
-            max_ingest_ram_gb: self.max_ingest_ram_gb,
-            memory_reclaimed: Arc::new(tokio::sync::Notify::new()),
-            caller_reserved_bytes: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            format_version: Arc::new(std::sync::atomic::AtomicI32::new(manifest.format_version)),
             subscribers: crate::core::table::subscribe::new_subscriber_channel(),
         };
 

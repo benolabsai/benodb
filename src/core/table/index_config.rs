@@ -106,7 +106,7 @@ impl Table {
     }
 
     pub async fn add_index(&self, column: String, algorithm: IndexAlgorithm) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let manifest = self.manifest().await?;
         let latest_schema = match manifest.schemas.last() {
             Some(s) => s,
@@ -254,7 +254,7 @@ impl Table {
     /// removes index metadata from all segment entries, invalidates query caches,
     /// and deletes physical sidecar files.
     pub async fn drop_index(&self, column: String) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let _ = self.wait_for_background_tasks_async().await;
         // Collect all file paths associated with this index from the current manifest.
         let manifest = self.manifest().await?;
@@ -575,8 +575,8 @@ impl Table {
         let index_columns = self.indexing.index_columns.read().clone();
         let index_configs = self.indexing.index_configs.read().clone();
         let index_all = self.indexing.index_all;
-        let primary_key = self.primary_key.read().clone();
-        let gate = self.index_build_gate.clone();
+        let primary_key = self.schema_state.primary_key.read().clone();
+        let gate = self.resource_limits.index_build_gate.clone();
         // Table-level centroids for this pass, if `rebuild_indexes_with_global_centroids`
         // staged them. Empty for ordinary builds.
         let global_centroids = self.indexing.global_centroids.read().clone();
@@ -822,7 +822,7 @@ impl Table {
     pub async fn reindex_inverted_column(&self, column: &str) -> Result<usize> {
         use futures::StreamExt;
 
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
 
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let (_manifest, entries, _) = manager.load_latest_full().await?;
@@ -922,7 +922,7 @@ impl Table {
             // read down to `column` so a segment's other (potentially huge)
             // columns — e.g. a 384-dim embedding — are never fetched.
             let projection: Option<arrow::datatypes::SchemaRef> = {
-                let schema = self.schema.read();
+                let schema = self.schema_state.schema.read();
                 schema
                     .field_with_name(column)
                     .ok()

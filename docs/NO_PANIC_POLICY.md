@@ -86,6 +86,12 @@ Everything else in the core and search library crates — graph UDFs, the storag
   gate is enforced, not whole-application panic freedom across every binary entry
   point.
 
+Both gaps are Phase 2, targeted for the **0.18.x** line: convert the `hnswio`
+entry points to `Result` (closing the last user-reachable panic path), and
+compile the root binaries and `benodb-search/src/main.rs` under the hard gate.
+Until then the library gate — the surface every embedding consumer links — is
+fully enforced.
+
 ## Residual-invariant allowlist
 
 These sites are permitted to keep a documented `#[allow]` because the API has no

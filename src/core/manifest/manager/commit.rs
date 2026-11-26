@@ -10,45 +10,20 @@ use std::collections::{HashMap, HashSet};
 
 use super::super::types::*;
 use super::{CommitMetadata, ManifestManager};
-
-fn is_already_exists(err: &object_store::Error) -> bool {
-    matches!(err, object_store::Error::AlreadyExists { .. })
-        || err.to_string().contains("already exists")
-        || err.to_string().contains("409")
-        || err.to_string().contains("Conflict")
-        || err.to_string().contains("PreconditionFailed")
-}
+use crate::core::storage::is_already_exists;
 
 /// Minimum age (seconds) before vacuum will delete an unreferenced file.
-///
-/// This is the safety margin that closes the GC-vs-writer race: a file uploaded
-/// by a concurrent writer is young, so it is never reaped before the writer's
-/// commit becomes visible. Override with `BDB_VACUUM_MIN_FILE_AGE_SECS`
-/// (default 60s; `0` disables the grace period).
+/// Resolved once per process; the parser and its documentation live in
+/// `core::config`.
 fn vacuum_min_file_age_secs() -> i64 {
-    std::env::var("BDB_VACUUM_MIN_FILE_AGE_SECS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|v| *v >= 0)
-        .unwrap_or(60)
+    crate::core::config::vacuum_min_file_age_secs()
 }
 
 /// Maximum number of manifest files the append-only fast path will accumulate
-/// before it consolidates with a full rewrite.
-///
-/// The append-only path writes only the new entries and references the previous
-/// manifest files, so each commit adds one manifest file to the list. Reads walk
-/// every referenced manifest file, so an unbounded list would make reads
-/// O(number of commits). Once the list reaches this many files the next commit
-/// falls back to the full rewrite, which re-encodes the live entries into a
-/// single (chunked) manifest file and resets the list. This bounds read cost
-/// while still amortizing the common burst of small appends.
+/// before it consolidates with a full rewrite. Resolved once per process; the
+/// parser and its documentation live in `core::config`.
 fn max_manifest_files_before_consolidation() -> usize {
-    std::env::var("BDB_MANIFEST_MAX_FILES_BEFORE_CONSOLIDATION")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|v| *v > 0)
-        .unwrap_or(32)
+    crate::core::config::manifest_max_files_before_consolidation()
 }
 
 impl ManifestManager {

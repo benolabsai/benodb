@@ -625,7 +625,7 @@ impl Table {
         let (manifest, all_entries, version, staging_snap, active_snap) = {
             let mut resolved = None;
             for attempt in 0..8usize {
-                let epoch1 = self.buffer_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                let epoch1 = self.commit_buffer.buffer_epoch.load(std::sync::atomic::Ordering::SeqCst);
                 let (m, e, v) = if force_direct {
                     match manifest_manager.load_latest_direct_full_arc().await {
                         Ok(full) => full,
@@ -672,8 +672,8 @@ impl Table {
 
                 // Canonical lock order: pending_commit -> pending_writes -> indexing.memory_index.
                 let (staging, active, committed_ver) = {
-                    let pc_guard = self.pending_commit.lock();
-                    let pw_guard = self.pending_writes.read();
+                    let pc_guard = self.commit_buffer.pending_commit.lock();
+                    let pw_guard = self.commit_buffer.pending_writes.read();
                     let idx_guard = self.indexing.memory_index.read();
 
                     let committed_ver = pc_guard
@@ -712,7 +712,7 @@ impl Table {
                     (staging, active, committed_ver)
                 };
 
-                let epoch2 = self.buffer_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                let epoch2 = self.commit_buffer.buffer_epoch.load(std::sync::atomic::Ordering::SeqCst);
                 let stale_manifest = committed_ver.is_some_and(|cv| v < cv);
                 if (epoch2 != epoch1 || stale_manifest) && attempt < 7 {
                     force_direct = true;

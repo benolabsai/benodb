@@ -12,10 +12,12 @@
 )]
 // No-panic policy for production paths (see docs/NO_PANIC_POLICY.md).
 //
-// Staged behind the `no-panic` feature because `#![deny(warnings)]` above means
-// enabling these restriction lints as errors today would fail the build on every
-// not-yet-remediated site. Phase 1 remediation drives the count down (tracked by
-// `scripts/no_panic_check.sh`), after which CI turns the feature on permanently.
+// Enforced in CI: the `no-panic` job runs the zero-site ratchet
+// (`scripts/no_panic_check.sh`, baseline 0) and then the hard gate
+// (`cargo clippy --lib --features no-panic`), so a new un-exempted
+// `unwrap`/`expect`/`panic` in the library fails the build. Phase 1
+// remediation is complete; the remaining scope (hnswio Result conversion,
+// binary-target gate coverage) is tracked as Phase 2 in the policy doc.
 //
 // `#[cfg(test)]` code and the separate `tests/` crates are exempt: tests are
 // allowed to unwrap freely.

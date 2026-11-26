@@ -123,13 +123,10 @@ pub const DEFAULT_MEMORY_BUDGET_GB: f64 = 8.0;
 /// Resolve the RSS trim budget in bytes.
 ///
 /// A positive `BDB_INGEST_MEMORY_BUDGET_GB` overrides `default_gb`; otherwise
-/// `default_gb` applies. The budget is always active.
+/// `default_gb` applies. The budget is always active. The override is resolved
+/// once per process; see `core::config`.
 pub fn memory_budget_bytes(default_gb: f64) -> u64 {
-    let gb = std::env::var("BDB_INGEST_MEMORY_BUDGET_GB")
-        .ok()
-        .and_then(|s| s.parse::<f64>().ok())
-        .filter(|g| *g > 0.0)
-        .unwrap_or(default_gb);
+    let gb = crate::core::config::ingest_memory_budget_gb_override().unwrap_or(default_gb);
     (gb * 1024.0 * 1024.0 * 1024.0) as u64
 }
 
@@ -178,11 +175,7 @@ impl HeapTrimPolicy {
         if let Some(b) = budget_bytes {
             return Self::new(b);
         }
-        if let Some(gb) = std::env::var("BDB_INGEST_MEMORY_BUDGET_GB")
-            .ok()
-            .and_then(|s| s.parse::<f64>().ok())
-            .filter(|g| *g > 0.0)
-        {
+        if let Some(gb) = crate::core::config::ingest_memory_budget_gb_override() {
             return Self::new((gb * 1024.0 * 1024.0 * 1024.0) as u64);
         }
         Self::new(crate::core::resources::default_memory_budget_bytes())

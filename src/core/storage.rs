@@ -76,6 +76,137 @@ pub fn multipart_part_bytes(object_len: u64) -> usize {
     by_count.clamp(MIN_MULTIPART_PART_BYTES, MAX_MULTIPART_PART_BYTES) as usize
 }
 
+// ---------------------------------------------------------------------------
+// Error classification at the storage boundary
+// ---------------------------------------------------------------------------
+
+/// Whether an object store error is a conflict / already exists condition —
+/// the signal the OCC commit loops treat as "lost the race, rebase and retry".
+///
+/// `object_store::Error::AlreadyExists` and `Error::Precondition` are the
+/// typed cases and are checked first. The string fallback exists because the
+/// cloud backends wrap provider SDK errors into `Error::Generic`, which drops
+/// the status code: an S3 `PreconditionFailed` on a conditional PUT surfaces
+/// only as display text. The string match is confined to the `Generic` arm of
+/// this one function; if object_store gains typed conflict variants for the
+/// cloud backends, the fallback deletes.
+pub(crate) fn is_already_exists(err: &object_store::Error) -> bool {
+    match err {
+        object_store::Error::AlreadyExists { .. } | object_store::Error::Precondition { .. } => {
+            true
+        }
+        object_store::Error::Generic { source, .. } => {
+            let text = source.to_string();
+            text.contains("already exists")
+                || text.contains("409")
+                || text.contains("Conflict")
+                || text.contains("PreconditionFailed")
+        }
+        _ => false,
+    }
+}
+
+/// Whether an object store error chain bottoms out in EMFILE (errno 24, "too
+/// many open files").
+///
+/// Classified by errno on the `io::Error` found in the source chain rather
+/// than by display text, so the check survives wording changes. The display
+/// text fallback covers wrappers that stringify the io error and drop the
+/// type.
+pub(crate) fn is_emfile(err: &object_store::Error) -> bool {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(e) = current {
+        if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+            if io_err.raw_os_error() == Some(24) {
+                return true;
+            }
+        }
+        current = e.source();
+    }
+    let text = err.to_string();
+    text.contains("Too many open files") || text.contains("os error 24")
+}
+
+#[cfg(test)]
+mod error_classification_tests {
+    use super::*;
+
+    #[test]
+    fn typed_already_exists_is_a_conflict() {
+        let err = object_store::Error::AlreadyExists {
+            path: "t/v3.json".to_string(),
+            source: Box::new(std::io::Error::other("boom")),
+        };
+        assert!(is_already_exists(&err));
+    }
+
+    #[test]
+    fn typed_precondition_is_a_conflict() {
+        let err = object_store::Error::Precondition {
+            path: "t/v3.json".to_string(),
+            source: Box::new(std::io::Error::other("etag mismatch")),
+        };
+        assert!(is_already_exists(&err));
+    }
+
+    #[test]
+    fn generic_provider_text_falls_back_to_string_match() {
+        let err = object_store::Error::Generic {
+            store: "s3",
+            source: Box::new(std::io::Error::other(
+                "ServiceError: 412, PreconditionFailed",
+            )),
+        };
+        assert!(is_already_exists(&err));
+        let err = object_store::Error::Generic {
+            store: "s3",
+            source: Box::new(std::io::Error::other("ServiceError: 409, Conflict")),
+        };
+        assert!(is_already_exists(&err));
+    }
+
+    #[test]
+    fn non_conflict_errors_are_decisively_not_conflicts() {
+        let err = object_store::Error::NotFound {
+            path: "t/missing.parquet".to_string(),
+            source: Box::new(std::io::Error::other("no such object")),
+        };
+        assert!(!is_already_exists(&err));
+        let err = object_store::Error::Generic {
+            store: "s3",
+            source: Box::new(std::io::Error::other("ServiceError: 500, InternalError")),
+        };
+        assert!(!is_already_exists(&err));
+    }
+
+    #[test]
+    fn emfile_is_classified_by_errno_through_the_chain() {
+        let err = object_store::Error::Generic {
+            store: "LocalFileSystem",
+            source: Box::new(std::io::Error::from_raw_os_error(24)),
+        };
+        assert!(is_emfile(&err));
+    }
+
+    #[test]
+    fn emfile_falls_back_to_display_text_when_the_type_is_lost() {
+        let err = object_store::Error::Generic {
+            store: "LocalFileSystem",
+            source: Box::new(std::io::Error::other("fd limit: Too many open files")),
+        };
+        assert!(is_emfile(&err));
+    }
+
+    #[test]
+    fn other_io_errors_are_not_emfile() {
+        let err = object_store::Error::Generic {
+            store: "LocalFileSystem",
+            source: Box::new(std::io::Error::from_raw_os_error(13)), // EACCES
+        };
+        assert!(!is_emfile(&err));
+    }
+}
+
 static SSRF_ALLOW_WARNED: std::sync::Once = std::sync::Once::new();
 
 /// Canonical form used for both the allow list and the host under test.

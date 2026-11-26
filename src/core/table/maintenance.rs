@@ -57,7 +57,7 @@ impl Table {
 
     /// Rewrite data files (Asynchronous)
     pub async fn rewrite_data_files_async(&self, options: Option<CompactionOptions>) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         // Flush before compaction to include recent writes using unlocked variant
         // because this task already holds maintenance_lock.write()
         self.flush_unlocked_async().await?;
@@ -85,7 +85,7 @@ impl Table {
 
     /// Update the table schema (Evolution)
     pub async fn update_schema(&self, new_schema: crate::core::manifest::Schema) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         let (manifest, _, _) = manifest_manager.load_latest_full().await?;
 
@@ -109,7 +109,7 @@ impl Table {
             .await?;
 
         // Reload local schema
-        let mut local_schema = self.schema.write();
+        let mut local_schema = self.schema_state.schema.write();
         *local_schema = Arc::new(new_schema.to_arrow());
 
         Ok(())
@@ -117,7 +117,7 @@ impl Table {
 
     /// Rollback table to a specific snapshot ID
     pub async fn rollback_to_snapshot(&self, snapshot_id: i64) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         manifest_manager
             .rollback_to_snapshot(snapshot_id as u64)
@@ -163,7 +163,7 @@ impl Table {
         &self,
         properties: std::collections::HashMap<String, String>,
     ) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         manifest_manager.update_properties(properties).await?;
         Ok(())
@@ -191,7 +191,7 @@ impl Table {
 
     /// Async implementation of vacuum
     pub async fn vacuum_async(&self, retention_versions: usize) -> Result<usize> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
         manifest_manager.vacuum(retention_versions).await
     }
@@ -203,7 +203,7 @@ impl Table {
 
     /// Async implementation of delete
     pub async fn delete_async(&self, filter: &str) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         use futures::StreamExt;
 
         let manifest_manager = ManifestManager::new(self.store.clone(), "", &self.uri);
@@ -942,7 +942,7 @@ impl Table {
 
     /// Remove orphan files (asynchronous)
     pub async fn remove_orphan_files_async(&self, older_than_ms: i64) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let maintenance = Maintenance::new(&self.uri)?;
         maintenance.remove_orphan_files(older_than_ms).await
     }
@@ -1400,7 +1400,7 @@ impl Table {
         ef_construction: usize,
         target_shard_bytes: Option<usize>,
     ) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let _ = self.wait_for_background_tasks_async().await;
 
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
@@ -1535,7 +1535,7 @@ impl Table {
         columns: Option<Vec<String>>,
         k: usize,
     ) -> Result<()> {
-        let _maintenance_guard = self.maintenance_lock.write().await;
+        let _maintenance_guard = self.locks.maintenance_lock.write().await;
         let _ = self.wait_for_background_tasks_async().await;
 
         let manager = ManifestManager::new(self.store.clone(), "", &self.uri);
@@ -1671,7 +1671,7 @@ impl Table {
     /// configuration remains in place so the table tier keeps being loaded.
     /// Returns the number of per segment index entries removed.
     pub async fn retire_covered_vector_indexes(&self, column: String) -> Result<usize> {
-        let _guard = self.maintenance_lock.write().await;
+        let _guard = self.locks.maintenance_lock.write().await;
         let _ = self.wait_for_background_tasks_async().await;
 
         let manager =

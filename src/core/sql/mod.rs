@@ -41,18 +41,9 @@ use crate::core::table::Table;
 /// Scales to the CPU budget visible to the process (respects cgroup limits via
 /// `std::thread::available_parallelism`) rather than hard-coding a value, so a
 /// container gets the parallelism it is actually allowed. `BDB_TARGET_PARTITIONS`
-/// overrides for tuning.
+/// overrides for tuning. Resolved once per process; see `core::config`.
 pub fn effective_target_partitions() -> usize {
-    if let Ok(n) = std::env::var("BDB_TARGET_PARTITIONS") {
-        if let Ok(n) = n.parse::<usize>() {
-            if n > 0 {
-                return n;
-            }
-        }
-    }
-    std::thread::available_parallelism()
-        .map(|p| p.get())
-        .unwrap_or(4)
+    crate::core::config::target_partitions()
 }
 
 /// A range bound on a single column, used for OR-over-ranges pruning.
@@ -365,7 +356,7 @@ impl TableProvider for BenoStreamTableProvider {
         // inverted indexes and drop segments that cannot match, before they are
         // ever read. This is only sound when *every* PK column is indexed: a
         // partial index would under-count matches and prune real rows.
-        let pk_cols = self.table.primary_key.read().clone();
+        let pk_cols = self.table.schema_state.primary_key.read().clone();
         let indexed_cols = self.table.get_index_columns();
         let pk_filter = if !pk_cols.is_empty() && pk_cols.iter().all(|c| indexed_cols.contains(c)) {
             filters.iter().find_map(|f| {

@@ -45,48 +45,29 @@ where
     }
 }
 
-const GIB: u64 = 1024 * 1024 * 1024;
-
 /// Default on-disk budget for [`DiskCache`] when `BDB_DISK_CACHE_GB` is unset.
 ///
 /// The disk cache exists to keep *remote* objects (S3/Azure/GCS) off the
 /// network. It is not scratch space: with no budget it grows without bound, and
 /// a single 10M-vector benchmark run wrote 409 GB of copies of indexes that were
-/// already sitting on a local disk.
-pub const DEFAULT_DISK_CACHE_BUDGET_GB: u64 = 16;
+/// already sitting on a local disk. Defined and resolved in `core::config`;
+/// re-exported here so the public path this constant has always had keeps
+/// resolving.
+pub use crate::core::config::DEFAULT_DISK_CACHE_BUDGET_GB;
 
 /// Whether the secondary [`DiskCache`] is enabled at all.
 ///
 /// `BDB_DISK_CACHE=off|0|false|no` and `BDB_DISK_CACHE_GB=0` both disable it.
 /// Local (`file://`) stores are always served in place regardless — see
-/// [`DiskCache::new`].
+/// [`DiskCache::new`]. Resolved once per process; see `core::config`.
 fn disk_cache_enabled() -> bool {
-    if let Ok(v) = std::env::var("BDB_DISK_CACHE") {
-        if matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "0" | "off" | "false" | "no"
-        ) {
-            return false;
-        }
-    }
-    disk_cache_budget_bytes() > 0
+    crate::core::config::disk_cache_enabled()
 }
 
 /// On-disk budget for [`DiskCache`], from `BDB_DISK_CACHE_GB` (default 16 GiB).
+/// Resolved once per process; see `core::config`.
 pub fn disk_cache_budget_bytes() -> u64 {
-    match std::env::var("BDB_DISK_CACHE_GB") {
-        Ok(v) => match v.trim().parse::<u64>() {
-            Ok(gb) => gb.saturating_mul(GIB),
-            Err(_) => {
-                tracing::warn!(
-                    value = %v,
-                    "BDB_DISK_CACHE_GB is not a number; using the default budget"
-                );
-                DEFAULT_DISK_CACHE_BUDGET_GB * GIB
-            }
-        },
-        Err(_) => DEFAULT_DISK_CACHE_BUDGET_GB * GIB,
-    }
+    crate::core::config::disk_cache_budget_bytes()
 }
 
 /// Bytes currently resident in [`DISK_CACHE_DIR`], maintained on write.

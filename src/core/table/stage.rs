@@ -72,13 +72,13 @@ impl Table {
                 self.get_format_version()
             );
         }
-        let _maintenance_guard = self.maintenance_lock.read().await;
+        let _maintenance_guard = self.locks.maintenance_lock.read().await;
 
         let table_schema = self.arrow_schema();
         let aligned = self.align_staged_batches(batches, &table_schema)?;
         self.validate_staged_primary_keys(&aligned).await?;
 
-        let spec = self.partition_spec.clone();
+        let spec = self.schema_state.partition_spec.clone();
         let base_path = self
             .uri
             .strip_prefix("file://")
@@ -106,7 +106,7 @@ impl Table {
         let index_configs: HashMap<String, crate::core::table::ColumnIndexConfig> =
             self.indexing.index_configs.read().clone();
         let default_device = self.indexing.default_device.read().clone();
-        let primary_key = self.primary_key.read().clone();
+        let primary_key = self.schema_state.primary_key.read().clone();
         let build_indexes = index_all || !index_columns.is_empty() || !primary_key.is_empty();
 
         let mut entries = Vec::with_capacity(grouped.len());
@@ -200,12 +200,12 @@ impl Table {
         if entries.is_empty() {
             return Ok(());
         }
-        let _maintenance_guard = self.maintenance_lock.read().await;
-        let _commit_guard = self.commit_lock.lock().await;
+        let _maintenance_guard = self.locks.maintenance_lock.read().await;
+        let _commit_guard = self.locks.commit_lock.lock().await;
 
-        let pk_columns = self.primary_key.read().clone();
+        let pk_columns = self.schema_state.primary_key.read().clone();
         let _pk_val_guard = if !pk_columns.is_empty() {
-            Some(self.pk_validation_lock.lock().await)
+            Some(self.locks.pk_validation_lock.lock().await)
         } else {
             None
         };
@@ -363,7 +363,7 @@ impl Table {
     /// Enforce the primary-key invariant the buffered write path enforces:
     /// no NULL keys, no duplicates inside the write, none already in storage.
     async fn validate_staged_primary_keys(&self, batches: &[RecordBatch]) -> Result<()> {
-        let pk_columns = self.primary_key.read().clone();
+        let pk_columns = self.schema_state.primary_key.read().clone();
         if pk_columns.is_empty() {
             return Ok(());
         }
@@ -445,8 +445,8 @@ impl Table {
 
         // 1. Pre-populate seen keys from any active in-flight write buffer or staging commit
         {
-            let pc_guard = self.pending_commit.lock();
-            let pending = self.pending_writes.read();
+            let pc_guard = self.commit_buffer.pending_commit.lock();
+            let pending = self.commit_buffer.pending_writes.read();
             let staging_iter = pc_guard
                 .as_ref()
                 .filter(|pc| {

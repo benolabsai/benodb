@@ -127,7 +127,7 @@ impl Table {
         if let Some(ref rt) = self.rt {
             let _ = rt.block_on(self.set_primary_key_async(columns));
         } else {
-            let mut pk = self.primary_key.write();
+            let mut pk = self.schema_state.primary_key.write();
             *pk = columns;
         }
     }
@@ -157,7 +157,7 @@ impl Table {
 
         // Update in-memory state
         {
-            let mut pk = self.primary_key.write();
+            let mut pk = self.schema_state.primary_key.write();
             *pk = columns;
         }
 
@@ -165,7 +165,7 @@ impl Table {
         // or we could force a reload.
         let (new_manifest, _) = manifest_manager.load_latest().await?;
         if let Some(s) = new_manifest.schemas.last() {
-            let mut schema_lock = self.schema.write();
+            let mut schema_lock = self.schema_state.schema.write();
             *schema_lock = std::sync::Arc::new(s.to_arrow());
         }
 
@@ -181,14 +181,14 @@ impl Table {
                     pk_names.push(field.name.clone());
                 }
             }
-            let mut pk = self.primary_key.write();
+            let mut pk = self.schema_state.primary_key.write();
             *pk = pk_names;
         }
         Ok(())
     }
 
     pub fn get_primary_key(&self) -> Vec<String> {
-        self.primary_key.read().clone()
+        self.schema_state.primary_key.read().clone()
     }
 
     /// Synchronize PK columns (Public Sync)
@@ -234,7 +234,7 @@ impl Table {
         manifest_manager.update_identifier_fields(next_ids).await?;
 
         // Update in-memory state
-        let mut pk = self.primary_key.write();
+        let mut pk = self.schema_state.primary_key.write();
         if !pk.contains(&column) {
             pk.push(column);
         }
@@ -265,7 +265,7 @@ impl Table {
         manifest_manager.update_identifier_fields(next_ids).await?;
 
         // Update in-memory state
-        let mut pk = self.primary_key.write();
+        let mut pk = self.schema_state.primary_key.write();
         pk.retain(|c| c != &column);
         Ok(())
     }

@@ -10,10 +10,7 @@ use std::sync::Arc;
 
 use super::super::types::*;
 use super::ManifestManager;
-
-fn is_already_exists(err: &object_store::Error) -> bool {
-    err.to_string().contains("already exists")
-}
+use crate::core::storage::is_already_exists;
 
 impl ManifestManager {
     /// Update partition specification

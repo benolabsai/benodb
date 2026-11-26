@@ -124,6 +124,124 @@ pub(crate) struct PendingWrite {
     pub(crate) tx_id: uuid::Uuid,
 }
 
+/// The write path's shared buffer state: pending batches, the in flight
+/// commit state machine, durably recorded WAL transaction ids, and the epoch
+/// that invalidates stale buffer reads.
+///
+/// These four change together on every commit path, and three of them are
+/// locks with a documented acquisition order. Grouping them gives that order
+/// an owning type instead of a comment: `clear_for_truncate` holds the
+/// canonical sequence, and new write path code reaches these locks through
+/// this struct rather than off `Table` directly.
+#[derive(Clone)]
+pub(crate) struct CommitBufferState {
+    pub(crate) pending_writes: Arc<parking_lot::RwLock<Vec<PendingWrite>>>,
+    pub(crate) pending_commit: Arc<parking_lot::Mutex<Option<PendingCommit>>>,
+    pub(crate) committed_wal_txs:
+        Arc<parking_lot::Mutex<std::collections::HashSet<uuid::Uuid>>>,
+    pub(crate) buffer_epoch: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl CommitBufferState {
+    /// Clear every in memory buffer in the canonical order truncate uses:
+    /// the pending commit state, the pending batches, and the frozen memory
+    /// index under one lock scope, so no reader observes a half cleared view,
+    /// then the committed WAL transaction ids.
+    pub(crate) fn clear_for_truncate(&self, indexing: &TableIndexState) {
+        {
+            let mut pc = self.pending_commit.lock();
+            let mut pending = self.pending_writes.write();
+            let mut idx = indexing.memory_index.write();
+            *pc = None;
+            pending.clear();
+            *idx = None;
+        }
+        self.committed_wal_txs.lock().clear();
+    }
+}
+
+/// The WAL and durability state: the log handle, the durability mode writes
+/// were configured with, and the recovered segment paths from the last open.
+#[derive(Clone)]
+pub(crate) struct WalState {
+    pub(crate) wal: Arc<Mutex<WriteAheadLog>>,
+    pub(crate) durability: WalDurability,
+    pub(crate) recovered_wal_paths: Arc<parking_lot::Mutex<Vec<String>>>,
+}
+
+/// Resource governance: the ingest RAM cap and its wake signal, the caller
+/// reserved byte adjustment, and the index build concurrency gate. See
+/// `docs/RESOURCE_LIMITS.md`.
+#[derive(Clone)]
+pub(crate) struct ResourceLimits {
+    /// Maximum RAM (in GB) allowed for ingest before blocking writes.
+    pub(crate) max_ingest_ram_gb: Option<f64>,
+    /// Signalled when a background task releases memory (a segment index
+    /// build finished, or the ingest loop trimmed the heap), so writers
+    /// blocked by `max_ingest_ram_gb` wake immediately instead of polling
+    /// RSS on a timer.
+    pub(crate) memory_reclaimed: Arc<tokio::sync::Notify>,
+    /// Bytes the *caller* is using outside the engine (e.g. a Python process
+    /// holding a large DataFrame before calling `write`). Subtracted from
+    /// process RSS in the ingest back-pressure check so the engine blocks on
+    /// its own memory, not the caller's — otherwise a caller holding a big
+    /// frame deadlocks the write (the caller cannot free the frame until the
+    /// write returns). Set via [`Table::set_caller_reserved_bytes`].
+    pub(crate) caller_reserved_bytes: Arc<std::sync::atomic::AtomicU64>,
+    /// Bounds how many segment index builds run at once.
+    ///
+    /// Index building is spawned onto the tokio runtime, whose worker count is
+    /// the CPU count (32 on a typical workstation). Each build holds its
+    /// segment's vectors plus the HNSW/IVF/quantizer structures — several GB at
+    /// the demo's 1 GB flush size. Unbounded, N concurrent builds blow past
+    /// physical RAM: the workstation OOM-killed the Wikipedia load at **105 GB
+    /// RSS**, and before that thrashed so badly that per-chunk time exploded
+    /// 43 min → 8.65 h. This gate keeps the build working set inside the memory
+    /// budget (see [`crate::core::memory`]) and, by avoiding page-cache
+    /// eviction, is usually *faster* than unbounded fan-out.
+    ///
+    /// Sized by `BDB_INDEX_BUILD_CONCURRENCY` (memory-scaled default).
+    pub(crate) index_build_gate: Arc<tokio::sync::Semaphore>,
+}
+
+/// The three coarse write path locks, with the acquisition order the codebase
+/// depends on: maintenance first (write to exclude maintenance work, read to
+/// bar it), then the commit lock, then the primary key validation lock. The
+/// nesting sites — truncate, staged commits, and the flush path — take them
+/// in exactly that sequence; a site that inverts the order deadlocks under
+/// concurrent maintenance and flush. `flush_unlocked_async` exists so the
+/// flush body can run with either the write guard (compaction callers) or
+/// none; it takes only the commit lock itself.
+#[derive(Clone)]
+pub(crate) struct LockSet {
+    /// Held write by maintenance operations (compaction, vacuum, truncate);
+    /// held read by flush and staged commit paths that only need to bar
+    /// concurrent maintenance.
+    pub(crate) maintenance_lock: Arc<tokio::sync::RwLock<()>>,
+    /// Serializes manifest-advancing commits on this handle.
+    pub(crate) commit_lock: Arc<Mutex<()>>,
+    /// Serializes primary key validation and reservation before admission.
+    pub(crate) pk_validation_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// The Iceberg schema and spec state: the Arrow schema, sort order, primary
+/// key, partition spec, and table format version. Every field here is
+/// published to Iceberg table metadata on commit, so they change together
+/// through the schema evolution paths.
+#[derive(Clone)]
+pub(crate) struct SchemaState {
+    pub(crate) schema: Arc<parking_lot::RwLock<SchemaRef>>,
+    /// Sort order to apply when writing data (Iceberg V2 spec compliance)
+    pub(crate) sort_order: Arc<parking_lot::RwLock<Option<SortOrder>>>,
+    /// Column names for sort order (needed for column lookup)
+    pub(crate) sort_order_columns: Arc<parking_lot::RwLock<Option<Vec<String>>>>,
+    pub(crate) primary_key: Arc<parking_lot::RwLock<Vec<String>>>,
+    pub(crate) partition_spec: Arc<PartitionSpec>,
+    /// Iceberg table format version (1, 2, or 3). v3 enables row lineage
+    /// (`_row_id` / `_last_updated_sequence_number`).
+    pub(crate) format_version: Arc<std::sync::atomic::AtomicI32>,
+}
+
 /// Phase of an in-flight buffered table commit in the M2 state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum CommitPhase {
@@ -183,59 +301,15 @@ pub struct Table {
     pub(crate) indexing: TableIndexState,
     pub(crate) catalog_state: TableCatalogState,
 
-    pub(crate) schema: Arc<parking_lot::RwLock<SchemaRef>>,
-    pub(crate) pending_writes: Arc<parking_lot::RwLock<Vec<PendingWrite>>>,
-    pub(crate) commit_lock: Arc<Mutex<()>>,
-    pub(crate) pk_validation_lock: Arc<tokio::sync::Mutex<()>>,
-    pub(crate) pending_commit: Arc<parking_lot::Mutex<Option<PendingCommit>>>,
-    pub(crate) committed_wal_txs: Arc<parking_lot::Mutex<std::collections::HashSet<uuid::Uuid>>>,
-    pub(crate) buffer_epoch: Arc<std::sync::atomic::AtomicU64>,
-    pub(crate) maintenance_lock: Arc<tokio::sync::RwLock<()>>,
-    pub(crate) wal: Arc<Mutex<WriteAheadLog>>,
+    pub(crate) schema_state: SchemaState,
+    pub(crate) commit_buffer: CommitBufferState,
+    pub(crate) locks: LockSet,
+    pub(crate) wal_state: WalState,
     pub(crate) background_tasks: Arc<Mutex<Vec<JoinHandle<()>>>>,
-    /// Bounds how many segment index builds run at once.
-    ///
-    /// Index building is spawned onto the tokio runtime, whose worker count is
-    /// the CPU count (32 on a typical workstation). Each build holds its
-    /// segment's vectors plus the HNSW/IVF/quantizer structures — several GB at
-    /// the demo's 1 GB flush size. Unbounded, N concurrent builds blow past
-    /// physical RAM: the workstation OOM-killed the Wikipedia load at **105 GB
-    /// RSS**, and before that thrashed so badly that per-chunk time exploded
-    /// 43 min → 8.65 h. This gate keeps the build working set inside the memory
-    /// budget (see [`crate::core::memory`]) and, by avoiding page-cache
-    /// eviction, is usually *faster* than unbounded fan-out.
-    ///
-    /// Sized by `BDB_INDEX_BUILD_CONCURRENCY` (memory-scaled default).
-    pub(crate) index_build_gate: Arc<tokio::sync::Semaphore>,
-
-    /// Sort order to apply when writing data (Iceberg V2 spec compliance)
-    pub(crate) sort_order: Arc<parking_lot::RwLock<Option<SortOrder>>>,
-    /// Column names for sort order (needed for column lookup)
-    pub(crate) sort_order_columns: Arc<parking_lot::RwLock<Option<Vec<String>>>>,
-    pub(crate) primary_key: Arc<parking_lot::RwLock<Vec<String>>>,
+    pub(crate) resource_limits: ResourceLimits,
     pub(crate) autocommit: Arc<std::sync::atomic::AtomicBool>,
-    pub(crate) recovered_wal_paths: Arc<parking_lot::Mutex<Vec<String>>>,
-    pub(crate) partition_spec: Arc<PartitionSpec>,
     /// Naming pattern to use for unnamed columns
     pub(crate) label_pattern: LabelPattern,
-    /// Durability mode for WAL writes
-    pub(crate) durability: WalDurability,
-    /// Maximum RAM (in GB) allowed for ingest before blocking writes
-    pub(crate) max_ingest_ram_gb: Option<f64>,
-    /// Signalled when a background task releases memory (a segment index build
-    /// finished, or the ingest loop trimmed the heap), so writers blocked by
-    /// `max_ingest_ram_gb` wake immediately instead of polling RSS on a timer.
-    pub(crate) memory_reclaimed: Arc<tokio::sync::Notify>,
-    /// Bytes the *caller* is using outside the engine (e.g. a Python process
-    /// holding a large DataFrame before calling `write`). Subtracted from
-    /// process RSS in the ingest back-pressure check so the engine blocks on
-    /// its own memory, not the caller's — otherwise a caller holding a big
-    /// frame deadlocks the write (the caller cannot free the frame until the
-    /// write returns). Set via [`Table::set_caller_reserved_bytes`].
-    pub(crate) caller_reserved_bytes: Arc<std::sync::atomic::AtomicU64>,
-    /// Iceberg table format version (1, 2, or 3). v3 enables row lineage
-    /// (`_row_id` / `_last_updated_sequence_number`).
-    pub(crate) format_version: Arc<std::sync::atomic::AtomicI32>,
     /// Broadcast channel for `Table::subscribe()` — committed batches and
     /// commit markers. Shared across clones so every handle publishes to the
     /// same subscribers.
@@ -331,29 +405,14 @@ impl Clone for Table {
             pinned_version: self.pinned_version.clone(),
             indexing: self.indexing.clone(),
             catalog_state: self.catalog_state.clone(),
-            schema: self.schema.clone(),
-            pending_writes: self.pending_writes.clone(),
-            commit_lock: self.commit_lock.clone(),
-            pk_validation_lock: self.pk_validation_lock.clone(),
-            pending_commit: self.pending_commit.clone(),
-            committed_wal_txs: self.committed_wal_txs.clone(),
-            buffer_epoch: self.buffer_epoch.clone(),
-            maintenance_lock: self.maintenance_lock.clone(),
-            wal: self.wal.clone(),
+            schema_state: self.schema_state.clone(),
+            commit_buffer: self.commit_buffer.clone(),
+            locks: self.locks.clone(),
+            wal_state: self.wal_state.clone(),
             background_tasks: self.background_tasks.clone(),
-            index_build_gate: self.index_build_gate.clone(),
-            sort_order: self.sort_order.clone(),
-            sort_order_columns: self.sort_order_columns.clone(),
-            primary_key: self.primary_key.clone(),
+            resource_limits: self.resource_limits.clone(),
             autocommit: self.autocommit.clone(),
-            recovered_wal_paths: self.recovered_wal_paths.clone(),
-            partition_spec: self.partition_spec.clone(),
             label_pattern: self.label_pattern,
-            durability: self.durability,
-            max_ingest_ram_gb: self.max_ingest_ram_gb,
-            memory_reclaimed: self.memory_reclaimed.clone(),
-            caller_reserved_bytes: self.caller_reserved_bytes.clone(),
-            format_version: self.format_version.clone(),
             subscribers: self.subscribers.clone(),
         }
     }
@@ -386,7 +445,8 @@ impl Drop for Table {
 
 impl Table {
     pub(crate) fn bump_buffer_epoch(&self) {
-        self.buffer_epoch
+        self.commit_buffer
+            .buffer_epoch
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -419,8 +479,8 @@ impl Table {
                 }
 
                 let has_pending = {
-                    let pc = bg_table.pending_commit.lock();
-                    let pending = bg_table.pending_writes.read();
+                    let pc = bg_table.commit_buffer.pending_commit.lock();
+                    let pending = bg_table.commit_buffer.pending_writes.read();
                     pc.is_some() || !pending.is_empty()
                 };
 
@@ -634,7 +694,7 @@ impl Table {
     /// `write_with_durability_async` re-checks RSS at once instead of waiting out
     /// its fallback poll interval.
     pub(crate) fn notify_memory_reclaimed(&self) {
-        self.memory_reclaimed.notify_waiters();
+        self.resource_limits.memory_reclaimed.notify_waiters();
     }
 
     /// Report how many bytes the caller is holding outside the engine.
@@ -646,14 +706,14 @@ impl Table {
     /// lets the caller declare its footprint so the engine back-pressures on its
     /// own memory instead. Pass `0` to clear.
     pub fn set_caller_reserved_bytes(&self, bytes: u64) {
-        self.caller_reserved_bytes
+        self.resource_limits.caller_reserved_bytes
             .store(bytes, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Bytes the caller has declared as its own (see
     /// [`Table::set_caller_reserved_bytes`]).
     pub fn caller_reserved_bytes(&self) -> u64 {
-        self.caller_reserved_bytes
+        self.resource_limits.caller_reserved_bytes
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
@@ -668,6 +728,7 @@ impl Table {
     ) -> Result<tokio::sync::OwnedSemaphorePermit> {
         let start = std::time::Instant::now();
         let permit = self
+            .resource_limits
             .index_build_gate
             .clone()
             .acquire_owned()
@@ -710,10 +771,10 @@ impl Table {
             fields,
         };
 
-        let mut guard = self.sort_order.write();
+        let mut guard = self.schema_state.sort_order.write();
         *guard = Some(order);
 
-        self.sort_order_columns
+        self.schema_state.sort_order_columns
             .write()
             .replace(columns.iter().map(|s| s.to_string()).collect());
 
@@ -721,12 +782,12 @@ impl Table {
     }
 
     pub fn get_sort_order(&self) -> Option<SortOrder> {
-        self.sort_order.read().clone()
+        self.schema_state.sort_order.read().clone()
     }
 
     /// Iceberg table format version (1, 2, or 3).
     pub fn get_format_version(&self) -> i32 {
-        self.format_version
+        self.schema_state.format_version
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
@@ -734,18 +795,18 @@ impl Table {
     /// (`_row_id` / `_last_updated_sequence_number`). The change is persisted on
     /// the next commit.
     pub fn set_format_version(&self, version: i32) {
-        self.format_version
+        self.schema_state.format_version
             .store(version, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(crate) fn apply_sort_order(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-        let guard = self.sort_order.read();
+        let guard = self.schema_state.sort_order.read();
         let order = match guard.as_ref() {
             Some(o) if !o.fields.is_empty() => o,
             _ => return Ok(batch.clone()),
         };
 
-        let columns_guard = self.sort_order_columns.read();
+        let columns_guard = self.schema_state.sort_order_columns.read();
         let column_names = match columns_guard.as_ref() {
             Some(names) => names,
             None => return Ok(batch.clone()),

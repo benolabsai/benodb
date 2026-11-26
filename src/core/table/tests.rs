@@ -36,7 +36,7 @@ async fn memory_reclaimed_notification_wakes_blocked_writer() {
     let uri = format!("file://{}", dir.path().to_str().unwrap());
     let table = Table::new_async(uri).await.expect("table");
 
-    let mut waiter = std::pin::pin!(table.memory_reclaimed.notified());
+    let mut waiter = std::pin::pin!(table.resource_limits.memory_reclaimed.notified());
     // Poll once so the waiter registers before the notification is sent.
     assert!(
         futures::FutureExt::now_or_never(waiter.as_mut()).is_none(),
@@ -73,12 +73,12 @@ fn backpressure_grace_defaults_and_parses() {
     // this long instead of blocking forever. A missing, non-positive, or
     // unparseable value must fall back to the 60s default so a typo cannot
     // silently disable it.
-    assert_eq!(write::backpressure_grace_secs(None), 60.0);
-    assert_eq!(write::backpressure_grace_secs(Some("15")), 15.0);
-    assert_eq!(write::backpressure_grace_secs(Some("2.5")), 2.5);
-    assert_eq!(write::backpressure_grace_secs(Some("0")), 60.0);
-    assert_eq!(write::backpressure_grace_secs(Some("-3")), 60.0);
-    assert_eq!(write::backpressure_grace_secs(Some("nope")), 60.0);
+    assert_eq!(crate::core::config::backpressure_grace_secs(None), 60.0);
+    assert_eq!(crate::core::config::backpressure_grace_secs(Some("15")), 15.0);
+    assert_eq!(crate::core::config::backpressure_grace_secs(Some("2.5")), 2.5);
+    assert_eq!(crate::core::config::backpressure_grace_secs(Some("0")), 60.0);
+    assert_eq!(crate::core::config::backpressure_grace_secs(Some("-3")), 60.0);
+    assert_eq!(crate::core::config::backpressure_grace_secs(Some("nope")), 60.0);
 }
 
 #[tokio::test]
@@ -265,7 +265,7 @@ async fn test_streaming_flush_interval() -> Result<()> {
 
     // The data should be in the write buffer, not on disk yet.
     {
-        let buffer = table.pending_writes.read();
+        let buffer = table.commit_buffer.pending_writes.read();
         assert!(!buffer.is_empty(), "Data should be buffered");
     }
 
@@ -274,7 +274,7 @@ async fn test_streaming_flush_interval() -> Result<()> {
 
     // The buffer should now be empty because the background task committed it
     {
-        let buffer = table.pending_writes.read();
+        let buffer = table.commit_buffer.pending_writes.read();
         assert!(
             buffer.is_empty(),
             "Buffer should be empty after streaming flush"

@@ -390,7 +390,7 @@ impl Table {
         let index_configs: HashMap<String, ColumnIndexConfig> =
             self.indexing.index_configs.read().clone();
         let default_device = self.indexing.default_device.read().clone();
-        let pk = self.primary_key.read().clone();
+        let pk = self.schema_state.primary_key.read().clone();
         let base_path = self
             .uri
             .strip_prefix("file://")
@@ -544,7 +544,7 @@ impl Table {
         let index_configs: HashMap<String, ColumnIndexConfig> =
             self.indexing.index_configs.read().clone();
         let default_device = self.indexing.default_device.read().clone();
-        let pk = self.primary_key.read().clone();
+        let pk = self.schema_state.primary_key.read().clone();
         let base_path = self
             .uri
             .strip_prefix("file://")
@@ -679,7 +679,7 @@ impl Table {
             )?;
         }
 
-        let spec = self.partition_spec.clone();
+        let spec = self.schema_state.partition_spec.clone();
         let global_centroids = self.indexing.global_centroids.read().clone();
         let sorted_batch = self.apply_sort_order(&batch)?;
         let partitioned = spec.partition_batch(&sorted_batch)?;

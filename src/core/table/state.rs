@@ -113,7 +113,7 @@ impl Table {
 
     /// Check if the table currently has an active in-memory vector index.
     pub fn has_memory_index(&self) -> bool {
-        let pc_guard = self.pending_commit.lock();
+        let pc_guard = self.commit_buffer.pending_commit.lock();
         if let Some(pc) = pc_guard.as_ref() {
             if pc.phase == super::CommitPhase::Staging && pc.frozen_memory_index.is_some() {
                 return true;
@@ -124,8 +124,8 @@ impl Table {
 
     /// Get the number of rows currently in the write buffer (not yet flushed).
     pub fn write_buffer_row_count(&self) -> usize {
-        let pc_guard = self.pending_commit.lock();
-        let pending = self.pending_writes.read();
+        let pc_guard = self.commit_buffer.pending_commit.lock();
+        let pending = self.commit_buffer.pending_writes.read();
         let staging_rows: usize = pc_guard
             .as_ref()
             .filter(|pc| pc.phase == super::CommitPhase::Staging)
@@ -206,7 +206,7 @@ impl Table {
     }
 
     pub fn arrow_schema(&self) -> SchemaRef {
-        self.schema.read().clone()
+        self.schema_state.schema.read().clone()
     }
 
     /// A manifest manager bound to the version this handle reads.
