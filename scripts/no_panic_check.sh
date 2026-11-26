@@ -89,6 +89,9 @@ total=$((total + COUNT))
 run_clippy "benodb-search (lib):" -p benodb-search --lib
 total=$((total + COUNT))
 
+run_clippy "benodb-iceberg (lib):" -p benodb-iceberg --lib
+total=$((total + COUNT))
+
 run_clippy "benodb-flight (bin):" -p benodb-flight --bin benodb-flight
 total=$((total + COUNT))
 
@@ -137,6 +140,16 @@ echo "no-panic: enforcing the hard gate (--features ${HARD_FEATURES})"
 if ! cargo clippy --no-deps --lib --features "${HARD_FEATURES}" >/dev/null 2>&1; then
     echo "no-panic: FAIL - hard gate violated (unwrap/expect/panic in production code)" >&2
     cargo clippy --no-deps --lib --features "${HARD_FEATURES}" 2>&1 \
+        | grep -E '^(error|warning)' | head -n 20 >&2
+    exit 1
+fi
+
+# The format crate carries its own staged `no-panic` feature; the root
+# package's feature flag does not reach it, so gate it separately.
+echo "no-panic: enforcing the hard gate for benodb-iceberg (--features no-panic)"
+if ! cargo clippy --no-deps -p benodb-iceberg --lib --features no-panic >/dev/null 2>&1; then
+    echo "no-panic: FAIL - benodb-iceberg hard gate violated (unwrap/expect/panic in production code)" >&2
+    cargo clippy --no-deps -p benodb-iceberg --lib --features no-panic 2>&1 \
         | grep -E '^(error|warning)' | head -n 20 >&2
     exit 1
 fi

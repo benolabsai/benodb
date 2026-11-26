@@ -115,7 +115,7 @@ pub async fn plan_file_scan(
         let delete_files: Vec<DeleteFile> = delete_entries
             .iter()
             .filter(|d| d.data_file.partition == entry.data_file.partition)
-            .filter_map(|d| DeleteFile::from_iceberg_entry(d))
+            .filter_map(DeleteFile::from_iceberg_entry)
             .collect();
 
         tasks.push(FileScanTask {

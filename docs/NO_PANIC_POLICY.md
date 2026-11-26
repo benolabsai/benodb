@@ -43,11 +43,11 @@ bash scripts/no_panic_check.sh           # fail if production panic sites grew, 
 bash scripts/no_panic_check.sh --write   # lower the baseline after a fix
 ```
 
-The script compiles with `-D clippy::unwrap_used -D clippy::expect_used -D clippy::panic` across `benodb` (`--lib`), `benodb-search` (`--lib`), `benodb-flight` (`--bin benodb-flight`), and `benodb-mcp` (`--bin benodb-mcp`). Using explicit non-test targets leaves `#[cfg(test)]` tests out while comparing the total un-exempted site count against `scripts/no_panic_baseline.txt`.
+The script compiles with `-D clippy::unwrap_used -D clippy::expect_used -D clippy::panic` across `benodb` (`--lib`), `benodb-search` (`--lib`), `benodb-iceberg` (`--lib`), `benodb-flight` (`--bin benodb-flight`), and `benodb-mcp` (`--bin benodb-mcp`). Using explicit non-test targets leaves `#[cfg(test)]` tests out while comparing the total un-exempted site count against `scripts/no_panic_baseline.txt`.
 
 ### 2. Library hard gate (`--features no-panic`)
 
-Both `src/lib.rs` and `benodb-search/src/lib.rs` carry:
+`src/lib.rs`, `benodb-search/src/lib.rs`, and `crates/benodb-iceberg/src/lib.rs` carry:
 
 ```rust
 #![cfg_attr(
@@ -56,7 +56,7 @@ Both `src/lib.rs` and `benodb-search/src/lib.rs` carry:
 )]
 ```
 
-After the ratchet passes, `scripts/no_panic_check.sh` runs `cargo clippy --no-deps --lib --features no-panic` so any new un-exempted `unwrap()`, `expect()`, or `panic!` in the core library fails CI directly.
+After the ratchet passes, `scripts/no_panic_check.sh` runs `cargo clippy --no-deps --lib --features no-panic` so any new un-exempted `unwrap()`, `expect()`, or `panic!` in the core library fails CI directly. The `benodb-iceberg` crate carries its own `no-panic` feature (the root package's flag does not reach it), and the script gates it separately with `cargo clippy --no-deps -p benodb-iceberg --lib --features no-panic`.
 
 ## Baseline and inventory
 

@@ -329,7 +329,6 @@ pub struct VectorStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
-
 pub enum IndexAlgorithm {
     Hnsw {
         #[serde(default = "default_metric")]

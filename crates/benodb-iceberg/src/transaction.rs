@@ -60,10 +60,11 @@ impl Transaction {
         if schema.schema_id == 0 {
             schema.schema_id = self.next_schema_id();
         }
-        self.last_added_schema_id = Some(schema.schema_id);
+        let added_schema_id = schema.schema_id;
+        self.last_added_schema_id = Some(added_schema_id);
         self.updates.push(TableUpdate::AddSchema { schema });
         self.updates.push(TableUpdate::SetCurrentSchema {
-            schema_id: self.last_added_schema_id.unwrap(),
+            schema_id: added_schema_id,
         });
         self
     }

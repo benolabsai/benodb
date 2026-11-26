@@ -6,6 +6,11 @@ license = "MIT AND Apache-2.0"
 authors = ["Richard Albright and BenoDB Contributors"]
 description = "Apache Iceberg format layer for BenoDB: table metadata, Avro manifests, schemas, transforms, values, delete files, and Puffin deletion vectors"
 
+[features]
+# Turns the production-path no-panic restriction lints into hard errors
+# (see docs/NO_PANIC_POLICY.md and scripts/no_panic_check.sh).
+no-panic = []
+
 [dependencies]
 anyhow = "1.0"
 apache-avro = "0.17"

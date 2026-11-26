@@ -16,6 +16,16 @@
 //! engine's own error type lives in the engine; this crate's `error` module
 //! carries only format-level failures.
 #![deny(warnings)]
+// No-panic policy for production paths (see docs/NO_PANIC_POLICY.md).
+//
+// Enforced by `scripts/no_panic_check.sh`, which ratchets this crate's `--lib`
+// target against the shared baseline and runs the hard gate below. The
+// `#[cfg(test)]` code inside the crate is exempt: tests are allowed to unwrap
+// freely.
+#![cfg_attr(
+    all(not(test), feature = "no-panic"),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
 
 pub mod catalog;
 pub mod delete;
