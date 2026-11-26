@@ -267,16 +267,24 @@ pub enum ClusterSearchMode {
     Graph,
 }
 
-fn configured_search_mode() -> ClusterSearchMode {
-    match std::env::var("BDB_CLUSTER_SEARCH_MODE")
-        .ok()
-        .as_deref()
-        .map(str::trim)
-    {
+/// Parse `BDB_CLUSTER_SEARCH_MODE`. Unset or unrecognized values fall back to
+/// `Auto`. Pure so tests can assert the ladder without process global env.
+fn parse_search_mode(raw: Option<&str>) -> ClusterSearchMode {
+    match raw.map(str::trim) {
         Some(v) if v.eq_ignore_ascii_case("graph") => ClusterSearchMode::Graph,
         Some(v) if v.eq_ignore_ascii_case("codes") => ClusterSearchMode::Codes,
         _ => ClusterSearchMode::Auto,
     }
+}
+
+/// Resolved once per process. The mode exists for A/B benchmarking and is set
+/// before process start, so caching does not change that workflow; it removes
+/// an environment read and string compare from every search.
+fn configured_search_mode() -> ClusterSearchMode {
+    static CACHED: std::sync::OnceLock<ClusterSearchMode> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        parse_search_mode(std::env::var("BDB_CLUSTER_SEARCH_MODE").ok().as_deref())
+    })
 }
 
 /// Byte slices of one cluster's blobs inside a Puffin container.
