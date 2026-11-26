@@ -14,6 +14,7 @@ use crate::core::catalog::Catalog as EngineCatalog;
 use crate::core::metadata::TableMetadata as EngineTableMetadata;
 use benodb_iceberg::catalog::{Catalog as SpecCatalogTrait, TableRequirement, TableUpdate};
 use benodb_iceberg::types::{IcebergSnapshot, IcebergTableMetadata};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Convert the engine's full kebab-case metadata into the crate's
@@ -51,6 +52,9 @@ pub fn to_iceberg_metadata(m: &EngineTableMetadata) -> IcebergTableMetadata {
             .map(|s| serde_json::to_value(s).unwrap_or_default())
             .collect(),
         default_spec_id: m.default_spec_id,
+        last_assigned_field_id: Some(m.last_column_id),
+        refs: HashMap::new(),
+        properties: m.properties.clone(),
     }
 }
 
@@ -176,6 +180,7 @@ mod tests {
             current_schema_id: 0,
             partition_specs: vec![crate::core::manifest::PartitionSpec::default()],
             default_spec_id: 0,
+            properties: HashMap::new(),
             ..Default::default()
         };
 

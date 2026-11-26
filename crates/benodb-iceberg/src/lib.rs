@@ -26,6 +26,7 @@ pub mod manifest_types;
 pub mod metrics;
 pub mod puffin;
 pub mod schema;
+pub mod transaction;
 pub mod transform;
 pub mod types;
 pub mod value;

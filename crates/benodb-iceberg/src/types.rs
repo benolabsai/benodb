@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Richard Albright and BenoStreamDB Contributors.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -16,6 +17,32 @@ pub struct IcebergTableMetadata {
     pub current_schema_id: i32,
     pub partition_specs: Vec<serde_json::Value>,
     pub default_spec_id: i32,
+    /// The highest field id ever assigned (the spec's
+    /// `last-assigned-field-id`). `None` when the metadata source does not
+    /// carry it; requirement validation fails closed on `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assigned_field_id: Option<i32>,
+    /// The table's snapshot references (branches and tags).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub refs: HashMap<String, SnapshotRef>,
+    /// The table's properties (the spec's free-form settings map).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub properties: HashMap<String, String>,
+}
+
+/// A named snapshot reference (a branch or a tag).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct SnapshotRef {
+    /// `branch` or `tag`.
+    #[serde(rename = "type")]
+    pub ref_type: String,
+    #[serde(rename = "snapshot-id")]
+    pub snapshot_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_snapshots_to_keep: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_snapshot_age_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
