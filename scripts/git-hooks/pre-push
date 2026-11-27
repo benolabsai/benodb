@@ -9,11 +9,33 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CHECK_SCRIPT="${REPO_ROOT}/scripts/pre_release_check.sh"
 
-# Pre-push stdin: one line per ref: <local_ref> <local_sha> <remote_ref> <remote_sha>
+# Pre-push stdin: one line per ref, in this order:
+#   <local_ref> <local_sha> <remote_ref> <remote_sha>
+#
+# A delete of a remote ref arrives with local_ref "(delete)" and an all-zero
+# local sha. The fields used to be read under transposed names (`_remote_ref`
+# held the local sha); nothing broke because only local_ref was consumed, but
+# the sha is load bearing now.
+ZERO_SHA="0000000000000000000000000000000000000000"
+
 BRANCHES_PUSHED=""
-while read -r local_ref _remote_ref _local_sha _remote_sha; do
+REFS_WITH_CODE=0
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+    if [[ -z "$local_sha" || "$local_sha" == "$ZERO_SHA" || "$local_ref" == "(delete)" ]]; then
+        continue
+    fi
+    REFS_WITH_CODE=$((REFS_WITH_CODE + 1))
     [[ "$local_ref" == refs/heads/* ]] && BRANCHES_PUSHED="${BRANCHES_PUSHED:+$BRANCHES_PUSHED }${local_ref#refs/heads/}"
 done
+
+# A deletion pushes no code, so there is nothing to format, lint, type-check,
+# test, or version-align. Without this exit, deleting a branch ran the whole
+# sixteen-step suite and cost about six minutes, because a deletion carries no
+# branch name for the working-branch bypass below to match.
+if [[ "$REFS_WITH_CODE" -eq 0 ]]; then
+    echo "✅ [Git Pre-Push Hook] Ref deletion only — no code pushed, checks bypassed."
+    exit 0
+fi
 
 # Tag-only pushes run the suite (a release tag is a release).
 if [[ -z "${BRANCHES_PUSHED}" ]]; then
