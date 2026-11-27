@@ -513,6 +513,186 @@ class TestV3Features:
         pass
 
 
+class TestSparkOutOfBandAppend:
+    """#100: an external writer appends between index builds.
+
+    Spark owns the upstream table and never sees the overlay prefix; BenoDB
+    mounts it read only and writes only its sidecars. Two properties are under
+    test, and together they are why serving a pinned overlay is safe:
+
+    * before a sync the overlay reports the snapshot it imported and returns
+      exactly that snapshot's rows, so a reader never sees a half applied
+      upstream change;
+    * after a sync the overlay returns every row of the imported snapshot,
+      including files appended after the index was built. Those files have no
+      sidecar, so they are read from Parquet -- the fallback this issue asks
+      for.
+
+    This replaces the PyIceberg detached sync tests. PyIceberg support here is
+    v2 only and is no longer used for Iceberg outside BenoDB, so it could not
+    cover an external writer at all.
+    """
+
+    SCHEMA = "id BIGINT, title STRING, kind STRING"
+
+    def _spark_write(self, warehouse: Path, action: str) -> None:
+        """Run one Spark process against the upstream table.
+
+        Two separate `spark-submit` invocations rather than one session: a JVM
+        that starts after the mount is the closest local analogue of the
+        external writer this issue is about (Databricks, Flink, a scheduled
+        job), and it cannot have observed any BenoDB state.
+        """
+        import textwrap
+
+        if action == "create":
+            statement = (
+                "spark.createDataFrame(\n"
+                '    [(1, "alpha", "a"), (2, "beta", "b"), (3, "gamma", "a")],\n'
+                f'    "{self.SCHEMA}",\n'
+                ').writeTo("local.db.events").using("iceberg").create()\n'
+            )
+        elif action == "append":
+            statement = (
+                "spark.createDataFrame(\n"
+                '    [(4, "delta", "b"), (5, "epsilon", "a")],\n'
+                f'    "{self.SCHEMA}",\n'
+                ').writeTo("local.db.events").append()\n'
+            )
+        else:
+            raise AssertionError(f"unknown Spark write action: {action}")
+
+        script = (
+            textwrap.dedent(
+                f"""\
+                from pyspark.sql import SparkSession
+
+                spark = (
+                    SparkSession.builder
+                    .appName("BenoDB Out Of Band Append")
+                    .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+                    .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
+                    .config("spark.sql.catalog.local.type", "hadoop")
+                    .config("spark.sql.catalog.local.warehouse", "{warehouse}")
+                    .getOrCreate()
+                )
+                """
+            )
+            + statement
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+            f.write(script)
+            script_path = f.name
+        try:
+            cmd = ["spark-submit", "--master", "local[*]"]
+            if REQUIRE_JVM_INTEROP:
+                cmd += _spark_runtime_args()
+            cmd.append(script_path)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                # The pip wheel ships no Iceberg runtime, so a local run without
+                # the pinned jar fails at catalog construction rather than at an
+                # assertion about rows. Java reports that as a plain
+                # `ClassNotFoundException: org.apache.iceberg...`, not as the
+                # `SparkClassNotFoundException` Spark uses for data sources.
+                output = f"{result.stdout}\n{result.stderr}"
+                if any(
+                    marker in output
+                    for marker in (
+                        "ClassNotFoundException: org.apache.iceberg",
+                        "NoClassDefFoundError: org/apache/iceberg",
+                        "SparkClassNotFoundException",
+                        "DATA_SOURCE_NOT_FOUND",
+                    )
+                ):
+                    _require_or_skip("Iceberg Spark runtime JAR not available")
+                assert result.returncode == 0, (
+                    f"spark-submit failed:\n{result.stderr}\n{result.stdout}"
+                )
+        finally:
+            if os.path.exists(script_path):
+                os.remove(script_path)
+
+    def test_spark_appends_out_of_band_between_builds(self, tmp_path):
+        """Append upstream after the index is built, then reconcile."""
+        if not _spark_submit_available():
+            _require_or_skip("spark-submit not available")
+        # The pip-installed pyspark carries no Iceberg runtime, so a per-PR shard
+        # would start a JVM only to discover that. The interop workflow sets
+        # BDB_REQUIRE_JVM_INTEROP=1 and supplies the pinned jar, which is where
+        # this test is meant to run.
+        if not REQUIRE_JVM_INTEROP and (
+            os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+        ):
+            pytest.skip("pyspark pip package lacks Iceberg JAR in CI")
+
+        warehouse = tmp_path / "warehouse"
+        overlay = tmp_path / "overlay"
+        warehouse.mkdir()
+        overlay.mkdir()
+
+        self._spark_write(warehouse, "create")
+
+        table = bdb.Table.mount_external_iceberg(
+            table_uri=f"file://{warehouse}/db/events",
+            overlay_storage_uri=f"file://{overlay}",
+        )
+        table.add_index("title", "bm25")
+        table.wait_for_background_tasks()
+
+        pinned = table.detached_catalog()["upstream_snapshot_id"]
+        assert pinned is not None, "Spark committed a snapshot, so the mount must pin one"
+
+        # The index serves the imported snapshot.
+        assert sorted(table.sql("SELECT id FROM t").column("id").to_pylist()) == [1, 2, 3]
+        plan = table.explain("title = 'alpha'")
+        assert "Inverted Index" in plan or "BM25" in plan, (
+            f"expected the BM25 index to serve the mounted snapshot:\n{plan}"
+        )
+        assert "access: Full Scan" not in plan, (
+            f"expected index access, not a full scan:\n{plan}"
+        )
+
+        # Out of band: a second Spark process appends two rows.
+        self._spark_write(warehouse, "append")
+
+        # No sync yet. The overlay must stay pinned rather than adopt a snapshot
+        # it has not imported, and must return that snapshot's rows.
+        assert table.detached_catalog()["upstream_snapshot_id"] == pinned, (
+            "the mount adopted an upstream snapshot it never imported"
+        )
+        assert sorted(table.sql("SELECT id FROM t").column("id").to_pylist()) == [1, 2, 3]
+
+        # The sync imports the appended files. Nothing waits for the index build
+        # here: the new files have no sidecar yet, which is the case the Parquet
+        # fallback exists for, and all five rows must still come back.
+        assert table.sync_detached_overlay() is True
+        assert sorted(table.sql("SELECT id FROM t").column("id").to_pylist()) == [
+            1,
+            2,
+            3,
+            4,
+            5,
+        ], "rows from the appended file were missed after the sync"
+        assert table.detached_catalog()["upstream_snapshot_id"] != pinned
+
+        table.wait_for_background_tasks()
+
+        # Reconciling did not drop the index that was already serving the first
+        # file, and the appended row is readable by value, not just by count.
+        plan = table.explain("title = 'alpha'")
+        assert "Inverted Index" in plan or "BM25" in plan, (
+            f"expected the BM25 index to survive the reconcile:\n{plan}"
+        )
+        assert "access: Full Scan" not in plan, (
+            f"expected index access after the reconcile:\n{plan}"
+        )
+        row = table.sql("SELECT title FROM t WHERE id = 5")
+        assert row.num_rows == 1
+        assert row.column("title")[0].as_py() == "epsilon"
+
+
 # Helper functions for manual testing
 def create_sample_table_for_spark():
     """Create a sample table for manual Spark testing"""
