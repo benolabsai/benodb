@@ -357,7 +357,11 @@ pub fn create_object_store(uri: &str) -> Result<Arc<dyn ObjectStore>> {
     // `memory://` and `file://` are always local; remote schemes must
     // pass the address check below.
     if ssrf_guard_enabled() {
-        if uri.contains("://") && !uri.starts_with("file://") && !uri.starts_with("memory://") {
+        if uri.contains("://")
+            && !uri.starts_with("file://")
+            && !uri.starts_with("file:/")
+            && !uri.starts_with("memory://")
+        {
             validate_external_uri(uri)?;
         }
         // Custom S3/Azure/GCS endpoints come from env vars, not the URI.
@@ -366,8 +370,12 @@ pub fn create_object_store(uri: &str) -> Result<Arc<dyn ObjectStore>> {
 
     let output_store: Arc<dyn ObjectStore>;
 
-    if uri.starts_with('/') || uri.starts_with("file://") || !uri.contains("://") {
-        let path = uri.strip_prefix("file://").unwrap_or(uri);
+    if uri.starts_with('/')
+        || uri.starts_with("file://")
+        || uri.starts_with("file:/")
+        || !uri.contains("://")
+    {
+        let path = benodb_iceberg::strip_file_scheme(uri);
         if !std::path::Path::new(path).exists() {
             std::fs::create_dir_all(path).context("Failed to create local directory")?;
         }

@@ -147,7 +147,7 @@ pub(crate) async fn resolve_iceberg_metadata_uri(
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 metadata filename"))?
             .to_string();
 
-        let store_uri = if trimmed.starts_with("file://") {
+        let store_uri = if trimmed.starts_with("file://") || trimmed.starts_with("file:/") {
             format!("file://{}", parent.display())
         } else {
             let mut base = url.clone();
@@ -187,13 +187,13 @@ pub(crate) async fn resolve_iceberg_metadata_uri(
     Ok((metadata_file_uri, store_uri, filename))
 }
 
-/// Normalize a bare absolute filesystem path (`/path/to/table`) into a `file://`
-/// URI so callers do not have to remember the scheme prefix.
+/// Normalize a bare absolute filesystem path (`/path/to/table`) or Java/Hadoop
+/// `file:/path/to/table` URI into canonical `file://` form.
 fn normalize_uri(uri: &str) -> String {
     if uri.starts_with('/') {
         format!("file://{uri}")
     } else {
-        uri.to_string()
+        benodb_iceberg::normalize_file_uri(uri)
     }
 }
 
@@ -203,7 +203,10 @@ fn normalize_uri(uri: &str) -> String {
 /// Iceberg manifests store absolute URIs, so the data store must be rooted at
 /// the bucket (or filesystem root) rather than the table directory.
 pub(crate) fn upstream_data_store_uri(location: &str) -> Result<String> {
-    if location.starts_with("file://") || location.starts_with('/') {
+    if location.starts_with("file://")
+        || location.starts_with("file:/")
+        || location.starts_with('/')
+    {
         Ok("file:///".to_string())
     } else if location.starts_with("s3://") {
         let url = url::Url::parse(location)?;
@@ -481,12 +484,23 @@ mod tests {
             "file:///"
         );
         assert_eq!(
+            upstream_data_store_uri("file:/tmp/warehouse").unwrap(),
+            "file:///"
+        );
+        assert_eq!(
             upstream_data_store_uri("/tmp/warehouse").unwrap(),
             "file:///"
         );
         assert_eq!(
             upstream_data_store_uri("s3://enterprise-data/warehouse").unwrap(),
             "s3://enterprise-data/"
+        );
+        assert_eq!(
+            crate::core::segment::relativize_against(
+                "file:///tmp/overlay",
+                "file:/tmp/warehouse/db/events/data/00000.parquet"
+            ),
+            "tmp/warehouse/db/events/data/00000.parquet"
         );
     }
 

@@ -95,6 +95,30 @@ pub static FULL_DELETE_FILE_CACHE: Lazy<
         .build()
 });
 
+/// Normalize single-slash local file URIs emitted by Java/Hadoop (`file:/path`)
+/// into standard `file:///path` form while leaving other schemes unchanged.
+pub fn normalize_file_uri(uri: &str) -> String {
+    if uri.starts_with("file:/") && !uri.starts_with("file://") {
+        format!("file://{}", &uri["file:".len()..])
+    } else {
+        uri.to_string()
+    }
+}
+
+/// Strip a `file://` or single-slash `file:` prefix, returning `&str` untouched
+/// for bare paths or non-`file` URIs.
+pub fn strip_file_scheme(uri: &str) -> &str {
+    uri.strip_prefix("file://")
+        .or_else(|| {
+            if uri.starts_with("file:/") {
+                uri.strip_prefix("file:")
+            } else {
+                None
+            }
+        })
+        .unwrap_or(uri)
+}
+
 /// Qualify a manifest-relative data-file path to the absolute URI that Iceberg
 /// manifests record.
 ///
@@ -103,13 +127,37 @@ pub static FULL_DELETE_FILE_CACHE: Lazy<
 /// internally, so deletes need this conversion at write time; otherwise readers
 /// cannot match a delete to its file and silently return the deleted row.
 pub fn qualify_data_file_path(root_uri: &str, path: &str) -> String {
-    if path.contains("://") || path.starts_with('/') {
-        path.to_string()
+    if path.contains("://") || path.starts_with("file:/") || path.starts_with('/') {
+        normalize_file_uri(path)
     } else {
         format!(
             "{}/{}",
-            root_uri.trim_end_matches('/'),
+            normalize_file_uri(root_uri).trim_end_matches('/'),
             path.trim_start_matches('/')
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn qualify_and_normalize_handles_hadoop_single_slash_file_uris() {
+        assert_eq!(
+            normalize_file_uri("file:/tmp/warehouse/db/events"),
+            "file:///tmp/warehouse/db/events"
+        );
+        assert_eq!(
+            qualify_data_file_path(
+                "file:/tmp/warehouse/db/events",
+                "file:/tmp/warehouse/db/events/data/00000.parquet"
+            ),
+            "file:///tmp/warehouse/db/events/data/00000.parquet"
+        );
+        assert_eq!(
+            qualify_data_file_path("file:/tmp/warehouse/db/events", "data/00000.parquet"),
+            "file:///tmp/warehouse/db/events/data/00000.parquet"
+        );
     }
 }

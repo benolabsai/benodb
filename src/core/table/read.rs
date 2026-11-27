@@ -2236,7 +2236,9 @@ impl Table {
         for entry in all_entries {
             if let Some(expected_checksum) = &entry.file_checksum {
                 let file_path = &entry.file_path;
-                let is_remote = file_path.contains("://") && !file_path.starts_with("file://");
+                let is_remote = file_path.contains("://")
+                    && !file_path.starts_with("file://")
+                    && !file_path.starts_with("file:/");
 
                 let mut hasher = sha2::Sha256::new();
                 use futures::StreamExt;
@@ -2282,15 +2284,16 @@ impl Table {
                         hasher.update(&chunk);
                     }
                 } else {
-                    let mut local_path = std::path::PathBuf::from(
-                        self.uri.strip_prefix("file://").unwrap_or(&self.uri),
-                    );
-                    if !file_path.starts_with('/') && !file_path.starts_with("file://") {
+                    let mut local_path =
+                        std::path::PathBuf::from(benodb_iceberg::strip_file_scheme(&self.uri));
+                    if !file_path.starts_with('/')
+                        && !file_path.starts_with("file://")
+                        && !file_path.starts_with("file:/")
+                    {
                         local_path.push(file_path);
                     } else {
-                        local_path = std::path::PathBuf::from(
-                            file_path.strip_prefix("file://").unwrap_or(file_path),
-                        );
+                        local_path =
+                            std::path::PathBuf::from(benodb_iceberg::strip_file_scheme(file_path));
                     }
 
                     tracing::debug!(

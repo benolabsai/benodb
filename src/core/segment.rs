@@ -130,14 +130,12 @@ pub(crate) fn ensure_prefix(prefix: &str, path: &str) -> String {
 }
 
 pub(crate) fn relativize_against(root_uri: &str, file_path: &str) -> String {
-    if !file_path.starts_with('/') && !file_path.contains("://") {
+    if !file_path.starts_with('/') && !file_path.contains("://") && !file_path.starts_with("file:/")
+    {
         return file_path.to_string();
     }
-    fn strip_scheme(s: &str) -> &str {
-        s.strip_prefix("file://").unwrap_or(s)
-    }
-    let root = strip_scheme(root_uri).trim_end_matches('/');
-    let p = strip_scheme(file_path);
+    let root = benodb_iceberg::strip_file_scheme(root_uri).trim_end_matches('/');
+    let p = benodb_iceberg::strip_file_scheme(file_path);
     if !root.is_empty() {
         if let Some(rest) = p.strip_prefix(root) {
             if rest.is_empty() || rest.starts_with('/') {
@@ -145,7 +143,7 @@ pub(crate) fn relativize_against(root_uri: &str, file_path: &str) -> String {
             }
         }
     }
-    if file_path.contains("://") {
+    if file_path.contains("://") || file_path.starts_with("file:/") {
         if let Ok(url) = url::Url::parse(file_path) {
             return url.path().trim_start_matches('/').to_string();
         }

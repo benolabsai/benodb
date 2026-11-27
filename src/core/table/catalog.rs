@@ -177,7 +177,10 @@ impl Table {
         let mut table = Self::create_async(uri.clone(), schema_ref.clone()).await?;
 
         // Root data_store carefully: if file, root at / to support absolute paths in manifests.
-        let data_store_uri = if iceberg_meta.location.starts_with("file://") {
+        let data_store_uri = if iceberg_meta.location.starts_with("file://")
+            || iceberg_meta.location.starts_with("file:/")
+            || iceberg_meta.location.starts_with('/')
+        {
             "file:///".to_string()
         } else if iceberg_meta.location.starts_with("s3://") {
             let url = url::Url::parse(&iceberg_meta.location)?;
@@ -571,7 +574,11 @@ impl Table {
                             }
                             data_entries.push(*me);
                         }
-                        Ok(crate::core::iceberg::IcebergManifestObject::Delete(df)) => {
+                        Ok(crate::core::iceberg::IcebergManifestObject::Delete(mut df)) => {
+                            df.file_path = crate::core::iceberg::qualify_data_file_path(
+                                &meta.location,
+                                &df.file_path,
+                            );
                             delete_files.push(df);
                         }
                         Err(e) => tracing::warn!("Error converting Iceberg entry: {}", e),
