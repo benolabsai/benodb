@@ -270,8 +270,11 @@ mod tests {
         let mut b = base();
         b.current_schema_id = 2;
         let mut tx = Transaction::new(&b);
-        let mut schema = Schema::default();
-        schema.schema_id = 0; // unset: the transaction assigns
+        // schema_id 0 is the unset sentinel: the transaction assigns.
+        let schema = Schema {
+            schema_id: 0,
+            ..Default::default()
+        };
         tx.add_schema(schema);
         let next = tx.apply(&b).unwrap();
         assert_eq!(next.current_schema_id, 3);

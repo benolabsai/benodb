@@ -206,8 +206,8 @@ mod tests {
     /// translation.
     #[test]
     fn commit_payload_serialization_matches_the_rest_shapes() {
-        let requirements = vec![TableRequirement::AssertTableUuid { uuid: "u-1".into() }];
-        let updates = vec![TableUpdate::SetLocation {
+        let requirements = [TableRequirement::AssertTableUuid { uuid: "u-1".into() }];
+        let updates = [TableUpdate::SetLocation {
             location: "s3://bucket/t2".to_string(),
         }];
         let requirements_json: Vec<serde_json::Value> = requirements

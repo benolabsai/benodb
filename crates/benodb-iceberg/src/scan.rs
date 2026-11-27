@@ -299,7 +299,7 @@ mod tests {
         let expr = Expression::predicate(PredicateOp::Eq, 1, Literal::Long(5));
         let rewritten = transform_literals(expr, &spec);
 
-        let values = vec![serde_json::json!(5)];
+        let values = [serde_json::json!(5)];
         let mut resolve = |id: i32| -> Option<Literal> {
             if id == 1 {
                 json_to_literal(&values[0])

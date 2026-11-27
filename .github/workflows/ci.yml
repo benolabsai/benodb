@@ -65,18 +65,24 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      # `--workspace` is load bearing. This manifest is both the package and the
+      # workspace root, so a bare `cargo clippy` selects the default members,
+      # which is the root package alone, and the members under `crates/` are
+      # never linted. `crates/benodb-iceberg` carries `#![deny(warnings)]`, and
+      # two lints in its test module (useless_vec, field_reassign_with_default)
+      # reached main past a green pipeline through exactly that gap.
       - name: Run Clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --workspace --all-targets
 
       # `#![deny(warnings)]` includes rustdoc's lints, but nothing in CI built the
       # docs, so an intra-doc link to a private item only surfaced in the Pages
       # workflow (and failed it after the change had already landed). Building the
       # docs here makes the lint part of the normal gate.
       - name: Build API docs
-        run: cargo doc --no-deps --features java
+        run: cargo doc --workspace --no-deps --features java
 
       - name: Run Cargo Check
-        run: cargo check --all-targets
+        run: cargo check --workspace --all-targets
 
       # Binary targets are not linted reliably by clippy (it re-lints the
       # same-package lib), but they must at least *build*: this is what catches
@@ -84,7 +90,7 @@ jobs:
       # library's.
       - name: Check binary targets
         run: |
-          cargo check --bins
+          cargo check --workspace --bins
 
   #########################
   # Version single-source
@@ -186,6 +192,18 @@ jobs:
           RUST_LOG: "error"
           LD_LIBRARY_PATH: /usr/local/cuda/lib64/stubs:${{ env.LD_LIBRARY_PATH }}
         run: cargo test --lib --tests
+
+      # The format crate's unit tests are the only exercise of the Avro
+      # manifest writer, Puffin deletion vectors, the expression model, the
+      # catalog payload shapes, the transaction validator, and scan planning.
+      # The root package selections above never reach that package, so it is
+      # named explicitly rather than through `--workspace`, which would also
+      # pull the connector crates into this job's feature set.
+      - name: Run benodb-iceberg tests
+        env:
+          SKIP_GPU_TESTS: "1"
+          RUST_LOG: "error"
+        run: cargo test -p benodb-iceberg --lib
 
       - name: Run Cargo Tests (with python feature)
         timeout-minutes: 20
