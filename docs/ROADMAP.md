@@ -91,9 +91,13 @@ BenoDB implements an **indexed, compute-disaggregated lakehouse architecture**:
 - **`Table::subscribe()` + predicate-filtered subscriptions**:
   - Per-table `tokio::sync::broadcast` channel emitting committed `RecordBatch`es
     plus a `Commit` marker; exposed in Python, as the `subscribe_events` SQL table
-    function, a Flight streaming ticket, and an MCP tool.
+    function, a Flight `benodb.Subscribe` ticket, and an MCP tool.
     `Table::subscribe_filtered("age > 30")` re-applies the predicate above each
     batch.
+  - The Flight ticket is a **bounded drain**, not a live subscription: `DoGet`
+    collects `subscribe_events(...)` for at most `max_events`/`timeout_ms` and
+    then ends the stream. Long-lived streaming with backpressure and disconnect
+    handling is #117.
 - **End-to-end benchmark suite**:
   - Vector ANN (SIFT/HNSW/TurboQuant), graph analytics, SQL OLAP, lexical &
     hybrid (BEIR), production concurrency/maintenance/recovery, and the
@@ -221,15 +225,27 @@ Themes are ordered by priority.
     incrementally builds indexes for the **new files only** (HNSW append-insert +
     BM25 posting merge). Poll interval adapts to the observed change rate
     (backoff + jitter), with an explicit `refresh()` for query-time staleness.
+  - **Shipped for external Iceberg.** `DetachedOverlayCatalog` pins the upstream
+    snapshot the overlay was synchronized against, and
+    `sync_detached_overlay_async` / `start_detached_sync_worker` reconcile it.
+    The `_delta_log` and Hudi timeline halves are #97 and #98.
 - [ ] **Out-of-band append correctness (the Overlay Invariant)** — 🟠 **High**:
   - Until the background build catches up, the planner searches the existing
     HNSW/BM25 index for the old data and falls back to a Parquet scan for the
     newly appended files — 100% snapshot correctness at all times.
+  - **Mechanism shipped.** Each index entry carries `source_data_checksum`, and
+    the reader rejects a sidecar that no longer matches its data file
+    (`src/lib.rs`), so a file the overlay has not seen has no sidecar and a
+    rewritten file has a mismatching one. What is missing is the regression test:
+    no test appends upstream between builds and asserts the fallback (#100).
 - [ ] **Out-of-core sidecars (mmap)** — 🟢 **Deferred**:
   - Extend the existing `MmapCsrGraph` pattern to the HNSW/BM25 sidecars: mmap
     the graph/postings, keep only the hot top-level (centroids, entry points)
     resident, and page in on demand via `BDB_DISK_CACHE_DIR`. This is the only
     way a sidecar can exceed host memory.
+  - **HNSW shipped.** `ArrowHnsw::load_from_mmap` aliases an Arrow `Buffer` over
+    the file's `Mmap`, so the page cache serves the graph and nothing is copied
+    into the heap. The BM25 postings still read into resident memory (#101).
 
 ### Theme 4: Hardware-Accelerated CPU Distance Kernels via SimSIMD (ARM NEON, AVX-512, VNNI) — 🔴 **High**
 *Deliver hand-tuned SIMD vector distance execution on ARM64 and modern x86 without manual assembly maintenance.*
