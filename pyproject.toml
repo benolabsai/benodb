@@ -55,6 +55,10 @@ dev = [
     "pandas",
     "hypothesis",
     "jinja2",
+    # Used by tests/integration/test_catalog.py and
+    # tests/integration/test_external_crash_recovery.py to talk to the HTTP
+    # endpoints they spin up. Not pulled in transitively by any other dev dep.
+    "requests>=2.28",
 ]
 # Hardware acceleration extras
 all_gpu = []
