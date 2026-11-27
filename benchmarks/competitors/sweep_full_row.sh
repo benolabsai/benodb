@@ -268,7 +268,9 @@ ROW_ENGINES=(
     weaviate
     weaviate_sq
     milvus
-    milvus_sq
+    # Spelled out, not `milvus_sq`: the quantized lane is HNSW_SQ, and the old
+    # key could not be told apart from an IVF_SQ8 measurement (#125).
+    milvus_hnsw_sq
     opensearch
 )
 

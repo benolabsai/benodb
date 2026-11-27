@@ -131,6 +131,13 @@ class VectorAdapter:
     module: str
     server_side: bool = field(default=False)
     _impl: Any = field(default=None, repr=False)
+    # Family and quantization are recorded separately from `name`. A name like
+    # `milvus_sq` said only that some compression happened, and one lane it
+    # covered (IVF_SQ8) was a different algorithm from the HNSW_SQ beside it in
+    # the same table (#125). Empty means "not declared by this adapter", and the
+    # record omits the key rather than inventing a value.
+    index_family: str = ""
+    index_quantization: str = ""
 
     def available(self) -> bool:
         try:
@@ -262,6 +269,21 @@ class FaissAdapter(VectorAdapter):
                 )
                 index.replace_invlists(inv)
             chunk = int(os.environ.get("FAISS_ADD_CHUNK", "1000000") or 1000000)
+            # When the source is a memmap the pages read during the build stay
+            # resident in the page cache. Under cgroup v2 those pages count
+            # against memory.max, so a 12.8 GB BigANN source plus a 12.8 GB SQ8
+            # code index can exceed a 16 GiB cap even though the index itself
+            # fits. MADV_DONTNEED is a no-op for MAP_SHARED file mappings on
+            # Linux, so this is best effort; what actually bounds the resident
+            # set is the kernel reclaiming the clean source pages under
+            # pressure, which is why RSS tracks the code index, not the source.
+            import mmap as _mmap_mod
+            _src_mmap = getattr(src, "_mmap", None)
+            _evict = (
+                _src_mmap is not None
+                and hasattr(_src_mmap, "madvise")
+                and os.environ.get("FAISS_NO_MADVISE", "") != "1"
+            )
             for start in range(0, n, chunk):
                 c = np.ascontiguousarray(src[start:start + chunk])
                 if c.dtype != np.float32:
@@ -269,6 +291,23 @@ class FaissAdapter(VectorAdapter):
                 if metric == "cosine":
                     faiss.normalize_L2(c)
                 index.add(c)
+                del c
+                if _evict:
+                    try:
+                        _src_mmap.madvise(_mmap_mod.MADV_DONTNEED)
+                    except Exception:
+                        _evict = False
+                _done = start + chunk
+                if (start // chunk) % max(1, (n // chunk) // 10) == 0:
+                    try:
+                        with open("/proc/self/statm") as _sf:
+                            _rss = int(_sf.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+                    except Exception:
+                        _rss = 0
+                    print(
+                        f"  faiss add {min(_done, n)}/{n} rss={_rss / 1e9:.2f}G evict={_evict}",
+                        flush=True,
+                    )
             self._train = src
             self._ivf = index
             index.nprobe = (
@@ -365,6 +404,24 @@ class FaissAdapter(VectorAdapter):
     def index_bytes(self, handle):
         import faiss
         index = handle[0] if isinstance(handle, tuple) else handle
+        # faiss.serialize_index() materialises a full in-memory copy of the
+        # index. For a 100M SQ8 index that is another ~12.8 GB on top of the
+        # ~12.8 GB already resident, which OOMs a 16 GiB container *after* the
+        # build succeeds. Compute the resident footprint from the inverted-list
+        # geometry instead: codes (ntotal * code_size) plus int64 ids
+        # (ntotal * 8), plus a small allowance for the coarse centroids.
+        try:
+            ntotal = int(index.ntotal)
+            code_size = int(getattr(index, "code_size", 0) or 0)
+            # The 50M threshold keeps the 10M numbers on the serialize path, so
+            # the published 10M index sizes stay reproducible; only the 100M
+            # builds, which serialize_index cannot fit in memory, use geometry.
+            if ntotal >= 50_000_000 and code_size > 0:
+                nlist = int(getattr(index, "nlist", 0) or 0)
+                dim = int(getattr(index, "d", 0) or 0)
+                return ntotal * (code_size + 8) + nlist * dim * 4
+        except Exception:
+            pass
         try:
             return int(len(faiss.serialize_index(index)))
         except Exception:
@@ -673,15 +730,24 @@ class LanceDbAdapter(VectorAdapter):
 
         uri = ctx.get("path") or tempfile.mkdtemp(prefix="lancedb_bench_")
         db = lancedb.connect(uri)
+        # Build the vector column from the flattened numpy buffer, not
+        # `[row.tolist() for row in train]`, which materialises one Python list
+        # of 128 ints per vector (~35 GB of interpreter objects at 10M rows) and
+        # OOMs a 16 GiB container. The float32 upcast plus a fixed-size Arrow
+        # list is ~10 GB transient and is released once the Lance table is written.
+        dim = int(train.shape[1])
+        flat_f32 = np.ascontiguousarray(train, dtype=np.float32).reshape(-1)
+        vector_col = pa.FixedSizeListArray.from_arrays(pa.array(flat_f32), dim)
         tbl = pa.table(
             {
                 "id": pa.array(np.arange(len(train), dtype=np.int64)),
-                "vector": pa.array(
-                    [row.tolist() for row in train], type=pa.list_(pa.float32())
-                ),
+                "vector": vector_col,
             }
         )
         t = db.create_table("bench", data=tbl, mode="overwrite")
+        # The Lance table is written to disk; release the ~10 GB float32 Arrow
+        # source so the index build does not run at the edge of the 16 GiB cap.
+        del tbl, vector_col, flat_f32
         # LanceDB distance types are l2 / cosine / dot. A dot-product dataset
         # must use "dot" (not l2), or the ranking uses the wrong metric.
         # Declared Any: the lancedb stubs narrow `distance_type` to a Literal, and the
@@ -947,7 +1013,9 @@ class QdrantAdapter(VectorAdapter):
             ),
             quantization_config=quant_config,
         )
-        batch = 512
+        # 512-point synchronous batches meant ~19,500 round-trips at 10M. A
+        # larger batch amortises the per-call HTTP + HNSW-update cost by ~16x.
+        batch = int(os.environ.get("QDRANT_UPSERT_BATCH", "8192") or 8192)
         for start in range(0, len(train), batch):
             end = min(start + batch, len(train))
             client.upsert(
@@ -1025,12 +1093,28 @@ class QdrantAdapter(VectorAdapter):
 class MilvusAdapter(VectorAdapter):
     """Milvus (dense collection + HNSW / HNSW_SQ) via pymilvus."""
 
+    # (family, quantization, report name) per Milvus index type. The report name
+    # spells out both, because `milvus_sq` could not distinguish an IVF_SQ8
+    # measurement from the HNSW_SQ one it was compared against (#125).
+    _INDEX_SHAPES = {
+        "hnsw": ("HNSW", "f32", "milvus"),
+        "hnsw_sq": ("HNSW", "SQ8", "milvus_hnsw_sq"),
+        "ivf_sq8": ("IVF", "SQ8", "milvus_ivf_sq8"),
+    }
+
     def __init__(self, index_type: str = "hnsw") -> None:
-        quantized = index_type in ("hnsw_sq", "ivf_sq8")
-        name = "milvus_sq" if quantized else "milvus"
+        try:
+            family, quantization, name = self._INDEX_SHAPES[index_type]
+        except KeyError:
+            raise ValueError(
+                f"unknown Milvus index type {index_type!r}; "
+                f"expected one of {sorted(self._INDEX_SHAPES)}"
+            ) from None
         super().__init__(name=name, module="pymilvus", server_side=True)
         self.index_type = index_type
-        self.index_precision = "sq" if quantized else "f32"
+        self.index_family = family
+        self.index_quantization = quantization
+        self.index_precision = "f32" if quantization == "f32" else "sq"
         self._nlist = 0
 
     def build(self, train, params, ctx):
@@ -1057,7 +1141,21 @@ class MilvusAdapter(VectorAdapter):
         # in here, not added via a later `create_index` call. `Strong` (rather than
         # the default `Bounded`) keeps the build-then-search sequence deterministic.
         index_params = IndexParams()
-        if self.index_type in ("hnsw_sq", "ivf_sq8"):
+        if self.index_type == "ivf_sq8":
+            # IVF_SQ8 is what this lane says it is. It used to be aliased to
+            # HNSW_SQ, which made the label disagree with the algorithm. The
+            # reason HNSW_SQ is the *default* quantized lane is recorded on the
+            # branch below; that is a measurement choice, not a licence to report
+            # one index family as another.
+            self._nlist = int(params.get("nlist") or self._nlist or 1024)
+            index_params.add_index(
+                field_name="vector",
+                index_type="IVF_SQ8",
+                index_name="bdb_ivf_sq8",
+                metric_type=metric,
+                params={"nlist": self._nlist},
+            )
+        elif self.index_type == "hnsw_sq":
             # HNSW_SQ: graph traversal over 8-bit scalar-quantized vectors. Chosen
             # over IVF_SQ8 because IVF partitions on L2 centroids, which is a poor
             # router for a dot-product metric: on lastfm-64-dot IVF_SQ8 with
@@ -1117,11 +1215,29 @@ class MilvusAdapter(VectorAdapter):
         client.create_index(name, index_params=index_params)
         # Wait for the index build to finish; searching a half-built index returns
         # whatever is already indexed.
+        #
+        # While waiting, check that the index Milvus reports is the index that was
+        # requested. A collection once reported `AUTOINDEX` while the code asked
+        # for HNSW, which is indistinguishable from a slow index in the numbers,
+        # and attributing a measurement to the wrong family is how IVF_SQ8 and
+        # HNSW_SQ ended up in one column (#125).
+        expected_index_type = {
+            "hnsw": "HNSW",
+            "hnsw_sq": "HNSW_SQ",
+            "ivf_sq8": "IVF_SQ8",
+        }[self.index_type]
         deadline = time.time() + 600
         while time.time() < deadline:
-            names = client.list_indexes(name)
-            if names:
-                info = client.describe_index(name, names[0])
+            index_names = client.list_indexes(name)
+            if index_names:
+                info = client.describe_index(name, index_names[0])
+                reported = info.get("index_type")
+                if reported is not None and str(reported).upper() != expected_index_type:
+                    raise RuntimeError(
+                        f"Milvus reported index_type={reported!r} for a "
+                        f"{expected_index_type} request; the result would be "
+                        f"attributed to the wrong index family"
+                    )
                 if str(info.get("state", "")).lower() == "finished":
                     break
             time.sleep(0.2)
@@ -1319,7 +1435,13 @@ def vector_adapters() -> dict[str, VectorAdapter]:
         # HNSW_SQ, not IVF_SQ8: see the note in `MilvusAdapter.build`. IVF routing
         # measured the L2 centroid layout rather than the quantization on the
         # dot-product dataset.
+        "milvus_hnsw_sq": MilvusAdapter("hnsw_sq"),
+        # The old key still resolves to HNSW_SQ, because that is what it has
+        # measured since 2771d46a; it no longer stands for a family of its own.
         "milvus_sq": MilvusAdapter("hnsw_sq"),
+        # IVF_SQ8 as its own lane, so the two quantized families are separate
+        # rows instead of one ambiguous column (#125).
+        "milvus_ivf_sq8": MilvusAdapter("ivf_sq8"),
         "weaviate": WeaviateAdapter("flat"),
         "weaviate_sq": WeaviateAdapter("hnsw_sq"),
     }
@@ -1515,7 +1637,7 @@ def run_vector(adapter: VectorAdapter, args) -> dict:
     full_p50 = float(np.percentile(full_latencies, 50) * 1000)
     full_p99 = float(np.percentile(full_latencies, 99) * 1000)
 
-    return {
+    record = {
         "engine": adapter.name,
         "index_type": getattr(adapter, "index_type", "hnsw"),
         "index_precision": getattr(adapter, "index_precision", "f32"),
@@ -1551,6 +1673,14 @@ def run_vector(adapter: VectorAdapter, args) -> dict:
         "p50_ms": round(full_p50, 3),
         "p99_ms": round(full_p99, 3),
     }
+    # Family and quantization as separate keys, so no table can place an IVF
+    # index beside a graph index in one column. Adapters that do not declare
+    # them stay absent rather than carrying a blank field.
+    for key in ("index_family", "index_quantization"):
+        declared = getattr(adapter, key, "")
+        if declared:
+            record[key] = declared
+    return record
 
 
 # --------------------------------------------------------------------------- #

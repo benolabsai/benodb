@@ -193,9 +193,11 @@ COMPETITOR_CONFIG = [
      "collection HNSW: uncompressed f32 & SQ (8-bit scalar quantization); distance cosine/dot/l2-squared",
      "client → server (Weaviate)"),
     ("vector", "milvus",
-     "collection HNSW (uncompressed f32) & HNSW_SQ (8-bit scalar quantization), M/ef_construction, "
-     "ef = ef_search, metric_type IP/COSINE/L2. Not IVF_SQ8: IVF partitions on L2 centroids, which "
-     "routed badly under a dot-product metric and reported 0.8608 where HNSW_SQ reports 0.9854 on lastfm",
+     "collection HNSW (uncompressed f32) and HNSW_SQ (8-bit scalar quantization — the quantized lane "
+     "measured here), M/ef_construction, ef = ef_search, metric_type IP/COSINE/L2. IVF_SQ8 is a "
+     "separate opt-in lane (`milvus_ivf_sq8`), not the default: IVF partitions on L2 centroids, which "
+     "routed badly under a dot-product metric and reported 0.8608 where HNSW_SQ reported 0.9854 on "
+     "lastfm",
      "client → server (Milvus)"),
     ("vector", "diskann",
      "DiskANN / SSD Vamana (`diskannpy 0.7.0`): R=32, L=64, 128B in-memory routing codes "

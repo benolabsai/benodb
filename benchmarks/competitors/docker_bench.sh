@@ -44,7 +44,7 @@ EFS=200
 # `benodb` is full-precision HNSW (parity with the other float HNSW
 # engines); `benodb_tq8` is the TurboQuant-compressed variant, so
 # the recall/size trade-off is visible rather than conflated.
-CPU_ENGINES="faiss faiss_sq hnswlib lancedb lancedb_sq pgvector opensearch qdrant qdrant_sq milvus milvus_sq weaviate weaviate_sq benodb benodb_tq8 benodb_sq"
+CPU_ENGINES="faiss faiss_sq hnswlib lancedb lancedb_sq pgvector opensearch qdrant qdrant_sq milvus milvus_hnsw_sq weaviate weaviate_sq benodb benodb_tq8 benodb_sq"
 # The GPU pass runs only engines with a *working* GPU execution path. CPU-only
 # competitors run on the CPU inside the GPU container and now correctly report
 # device=cpu (per-engine backend), so re-measuring them adds nothing — the CPU
